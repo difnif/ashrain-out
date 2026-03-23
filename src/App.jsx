@@ -414,10 +414,213 @@ export default function App() {
     setManualView(null);
   }, []);
 
+  // Mouse wheel zoom
+  const handleWheel = useCallback((e) => {
+    e.preventDefault();
+    const vb = getActiveVB();
+    const zoomFactor = e.deltaY > 0 ? 1.12 : 0.88; // scroll down = zoom out, up = zoom in
+    const svg = svgRef.current;
+    if (!svg) return;
+    // Zoom toward mouse position
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+    const newW = vb.w * zoomFactor, newH = vb.h * zoomFactor;
+    const ratio = (zoomFactor - 1);
+    const newX = vb.x - (svgPt.x - vb.x) * ratio;
+    const newY = vb.y - (svgPt.y - vb.y) * ratio;
+    setManualView({ x: newX, y: newY, w: Math.max(50, newW), h: Math.max(50, newH) });
+  }, [getActiveVB]);
+
+  // Middle mouse button pan
+  const middleMouseRef = useRef({ active: false, startX: 0, startY: 0, startVB: null });
+
+  const handleMouseDown = useCallback((e) => {
+    if (e.button === 1) { // middle button
+      e.preventDefault();
+      middleMouseRef.current = {
+        active: true,
+        startX: e.clientX, startY: e.clientY,
+        startVB: { ...getActiveVB() },
+      };
+    }
+  }, [getActiveVB]);
+
+  const handleMouseMove = useCallback((e) => {
+    const mm = middleMouseRef.current;
+    if (!mm.active) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const pixToSvgX = mm.startVB.w / rect.width;
+    const pixToSvgY = mm.startVB.h / rect.height;
+    const dx = (mm.startX - e.clientX) * pixToSvgX;
+    const dy = (mm.startY - e.clientY) * pixToSvgY;
+    setManualView({ x: mm.startVB.x + dx, y: mm.startVB.y + dy, w: mm.startVB.w, h: mm.startVB.h });
+  }, []);
+
+  const handleMouseUp = useCallback((e) => {
+    if (e.button === 1) middleMouseRef.current.active = false;
+  }, []);
+
+  // PC detection for responsive layout
+  const [isPC, setIsPC] = useState(window.innerWidth > 768);
+  useEffect(() => {
+    const check = () => setIsPC(window.innerWidth > 768);
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  // Student data (admin managed)
+  const [students, setStudents] = useState([
+    { id: "student01", name: "학생1", nickname: "", pw: "1234" },
+  ]);
+  const [loginId, setLoginId] = useState("");
+  const [loginPw, setLoginPw] = useState("");
+  const [loginError, setLoginError] = useState("");
+
+  const handleLogin = useCallback(() => {
+    // Admin login
+    if (loginId === "admin" && loginPw === "admin1234") {
+      setUser({ name: "관리자", role: "admin" });
+      setIsAdmin(true);
+      setScreen("menu");
+      setLoginError("");
+      return;
+    }
+    // Student login
+    const found = students.find(s => s.id === loginId && s.pw === loginPw);
+    if (found) {
+      setUser({ name: found.name, nickname: found.nickname, role: "student", id: found.id });
+      setIsAdmin(false);
+      setScreen("menu");
+      setLoginError("");
+    } else {
+      setLoginError("아이디 또는 비밀번호가 올바르지 않아요.");
+      playSfx("error");
+    }
+  }, [loginId, loginPw, students, playSfx]);
+
+  // Jakdo (작도) state
+  const [jakdoTool, setJakdoTool] = useState(null); // "compass" | "ruler"
+  const [jakdoArcs, setJakdoArcs] = useState([]); // drawn arcs
+  const [jakdoRulerLines, setJakdoRulerLines] = useState([]); // drawn ruler lines
+  const [compassCenter, setCompassCenter] = useState(null);
+  const [compassRadius, setCompassRadius] = useState(0);
+  const [isDrawingArc, setIsDrawingArc] = useState(false);
+  const [rulerStart, setRulerStart] = useState(null);
+  const [crossedEdges, setCrossedEdges] = useState(0); // how many edges the arc crosses
+
   const showMsg = useCallback((msg, duration = 2500) => {
     setFloatingMsg(msg);
     setTimeout(() => setFloatingMsg(null), duration);
   }, []);
+
+  // --- Jakdo (작도) Interaction ---
+  const svgCoords = useCallback((e) => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const pt = svg.createSVGPoint();
+    if (e.touches) { pt.x = e.touches[0].clientX; pt.y = e.touches[0].clientY; }
+    else { pt.x = e.clientX; pt.y = e.clientY; }
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }, []);
+
+  const handleJakdoDown = useCallback((e) => {
+    if (!triangle || buildPhase !== "jakdo") return;
+    const p = svgCoords(e);
+    if (!p) return;
+    const { A, B, C } = triangle;
+
+    if (jakdoTool === "compass") {
+      // Find nearest vertex for compass center
+      const verts = [A, B, C];
+      let nearest = null, minD = 30;
+      for (const v of verts) {
+        const d = dist(p, v);
+        if (d < minD) { minD = d; nearest = v; }
+      }
+      // Also check jedoCenter if exists
+      if (jedoCenter && dist(p, jedoCenter) < minD) {
+        nearest = jedoCenter;
+      }
+      if (nearest) {
+        setCompassCenter(nearest);
+        setCompassRadius(0);
+        setIsDrawingArc(true);
+        setCrossedEdges(0);
+        playSfx("click");
+      }
+    } else if (jakdoTool === "ruler") {
+      // Start ruler line - snap to intersection points or vertices
+      const snapPoints = [A, B, C, ...jakdoArcs.flatMap(a => a.intersections || [])];
+      if (jedoCenter) snapPoints.push(jedoCenter);
+      let nearest = null, minD = 20;
+      for (const sp of snapPoints) {
+        const d = dist(p, sp);
+        if (d < minD) { minD = d; nearest = sp; }
+      }
+      if (nearest) {
+        setRulerStart(nearest);
+        playSfx("click");
+      }
+    }
+  }, [triangle, buildPhase, jakdoTool, jedoCenter, jakdoArcs, svgCoords, playSfx]);
+
+  const handleJakdoMove = useCallback((e) => {
+    if (!triangle || buildPhase !== "jakdo") return;
+    const p = svgCoords(e);
+    if (!p) return;
+
+    if (jakdoTool === "compass" && isDrawingArc && compassCenter) {
+      const r = dist(p, compassCenter);
+      setCompassRadius(r);
+      // Count how many edges the circle crosses
+      const { A, B, C } = triangle;
+      const edges = [[A,B],[B,C],[A,C]];
+      let crossed = 0;
+      for (const [e1, e2] of edges) {
+        const d = pointToSegDist(compassCenter, e1, e2);
+        if (d < r + 2 && d > Math.abs(r - dist(e1,e2)*0.5)) crossed++;
+      }
+      setCrossedEdges(crossed);
+    }
+  }, [triangle, buildPhase, jakdoTool, isDrawingArc, compassCenter, svgCoords]);
+
+  const handleJakdoUp = useCallback((e) => {
+    if (!triangle || buildPhase !== "jakdo") return;
+
+    if (jakdoTool === "compass" && isDrawingArc && compassCenter && compassRadius > 5) {
+      // Save the arc
+      const newArc = { center: compassCenter, radius: compassRadius, crossedEdges, id: Date.now() };
+      setJakdoArcs(prev => [...prev, newArc]);
+      setIsDrawingArc(false);
+      playSfx("draw");
+
+      // Show feedback based on crossed edges
+      if (crossedEdges === 1) showMsg(activeTone.guide.oneEdge, 2000);
+      else if (crossedEdges >= 2) showMsg(activeTone.guide.twoEdge, 2000);
+    } else if (jakdoTool === "ruler" && rulerStart) {
+      const p = svgCoords(e.changedTouches ? e.changedTouches[0] : e);
+      if (!p) { setRulerStart(null); return; }
+      // Snap end point
+      const { A, B, C } = triangle;
+      const snapPoints = [A, B, C, ...jakdoArcs.flatMap(a => a.intersections || [])];
+      if (jedoCenter) snapPoints.push(jedoCenter);
+      let nearest = p, minD = 20;
+      for (const sp of snapPoints) {
+        const d = dist(p, sp);
+        if (d < minD) { minD = d; nearest = sp; }
+      }
+      if (dist(rulerStart, nearest) > 10) {
+        setJakdoRulerLines(prev => [...prev, { start: rulerStart, end: nearest }]);
+        playSfx("draw");
+      }
+      setRulerStart(null);
+    }
+
+    setIsDrawingArc(false);
+  }, [triangle, buildPhase, jakdoTool, isDrawingArc, compassCenter, compassRadius, crossedEdges, rulerStart, jedoCenter, jakdoArcs, svgCoords, playSfx, showMsg, activeTone]);
 
   // --- Triangle Generation from SSS ---
   const generateTriangle = useCallback((a, b, c) => {
@@ -615,6 +818,14 @@ export default function App() {
     setViewBox(null);
     setManualView(null);
     setSssInput({ a: "", b: "", c: "" });
+    setJakdoTool(null);
+    setJakdoArcs([]);
+    setJakdoRulerLines([]);
+    setCompassCenter(null);
+    setCompassRadius(0);
+    setIsDrawingArc(false);
+    setRulerStart(null);
+    setCrossedEdges(0);
   };
 
   // --- Properties Data with highlight info ---
@@ -1512,28 +1723,37 @@ export default function App() {
           </p>
 
           <input
-            type="text" placeholder="아이디"
+            type="text" placeholder="아이디" value={loginId}
+            onChange={e => { setLoginId(e.target.value); setLoginError(""); }}
+            onKeyDown={e => e.key === "Enter" && handleLogin()}
             style={{
               width: "100%", padding: "14px 18px", borderRadius: 14,
-              border: `1.5px solid ${PASTEL.blush}`, fontSize: 14, marginBottom: 12,
+              border: `1.5px solid ${loginError ? PASTEL.coral : PASTEL.blush}`, fontSize: 14, marginBottom: 12,
               background: "rgba(255,248,240,0.6)", color: "#4A3F35",
               fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box",
               transition: "all 0.3s ease",
             }}
           />
           <input
-            type="password" placeholder="비밀번호"
+            type="password" placeholder="비밀번호" value={loginPw}
+            onChange={e => { setLoginPw(e.target.value); setLoginError(""); }}
+            onKeyDown={e => e.key === "Enter" && handleLogin()}
             style={{
               width: "100%", padding: "14px 18px", borderRadius: 14,
-              border: `1.5px solid ${PASTEL.blush}`, fontSize: 14, marginBottom: 24,
+              border: `1.5px solid ${loginError ? PASTEL.coral : PASTEL.blush}`, fontSize: 14, marginBottom: loginError ? 8 : 24,
               background: "rgba(255,248,240,0.6)", color: "#4A3F35",
               fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box",
               transition: "all 0.3s ease",
             }}
           />
+          {loginError && (
+            <p style={{ fontSize: 12, color: PASTEL.coral, marginBottom: 16, fontFamily: "'Noto Serif KR', serif" }}>
+              {loginError}
+            </p>
+          )}
 
           <button
-            onClick={() => { setUser({ name: "학생" }); setScreen("menu"); }}
+            onClick={handleLogin}
             style={{
               width: "100%", padding: "15px", borderRadius: 14, border: "none",
               background: `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
@@ -1660,13 +1880,131 @@ export default function App() {
     const adminItems = [
       { icon: "💬", label: "대사 스크립트", desc: "말투별 대사 수정", action: () => setScreen("admin-scripts") },
       { icon: "🔊", label: "효과음 관리", desc: "모드별 효과음 설정", disabled: true },
-      { icon: "👤", label: "학생 관리", desc: "계정 · 비밀번호", disabled: true },
+      { icon: "👤", label: "학생 관리", desc: "계정 · 비밀번호", action: () => setScreen("admin-students") },
       { icon: "📊", label: "통계/랭킹", desc: "진행 현황 확인", disabled: true },
     ];
     return (
       <ScreenWrap title="관리자" back="메뉴" backTo="menu">
         <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
           <MenuGrid items={adminItems} />
+        </div>
+      </ScreenWrap>
+    );
+  }
+
+  // --- Admin Student Management ---
+  if (screen === "admin-students") {
+    const [editingIdx, setEditingIdx] = useState(null);
+    const [newStudent, setNewStudent] = useState({ id: "", name: "", pw: "1234" });
+
+    const addStudent = () => {
+      if (!newStudent.id || !newStudent.name) return;
+      if (students.find(s => s.id === newStudent.id)) {
+        showMsg("이미 존재하는 아이디입니다!", 2000); return;
+      }
+      setStudents(prev => [...prev, { ...newStudent, nickname: "" }]);
+      setNewStudent({ id: "", name: "", pw: "1234" });
+      playSfx("success");
+    };
+
+    const deleteStudent = (idx) => {
+      setStudents(prev => prev.filter((_, i) => i !== idx));
+      playSfx("pop");
+    };
+
+    const updateStudent = (idx, field, value) => {
+      setStudents(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
+    };
+
+    return (
+      <ScreenWrap title="학생 관리" back="관리자" backTo="admin">
+        <div style={{ flex:1, overflowY:"auto", padding:"16px", WebkitOverflowScrolling:"touch" }}>
+          {/* Add new student */}
+          <div style={{
+            background: theme.card, borderRadius: 16, border: `1.5px solid ${PASTEL.mint}`,
+            padding: 16, marginBottom: 20, animation: "fadeIn 0.4s ease",
+          }}>
+            <label style={{ fontSize: 13, fontWeight: 700, color: PASTEL.mint, display: "block", marginBottom: 12 }}>
+              + 학생 추가
+            </label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input placeholder="이름" value={newStudent.name}
+                onChange={e => setNewStudent(p => ({ ...p, name: e.target.value }))}
+                style={{ flex: "1 1 80px", padding: "10px", borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif" }} />
+              <input placeholder="아이디" value={newStudent.id}
+                onChange={e => setNewStudent(p => ({ ...p, id: e.target.value }))}
+                style={{ flex: "1 1 80px", padding: "10px", borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif" }} />
+              <input placeholder="비밀번호" value={newStudent.pw}
+                onChange={e => setNewStudent(p => ({ ...p, pw: e.target.value }))}
+                style={{ flex: "1 1 80px", padding: "10px", borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif" }} />
+              <button onClick={addStudent} style={{
+                padding: "10px 20px", borderRadius: 10, border: "none",
+                background: PASTEL.mint, color: "white", fontSize: 13, cursor: "pointer",
+                fontWeight: 700, fontFamily: "'Noto Serif KR', serif",
+              }}>추가</button>
+            </div>
+          </div>
+
+          {/* Student list */}
+          <label style={{ fontSize: 12, color: theme.textSec, marginBottom: 8, display: "block" }}>
+            등록된 학생 ({students.length}명)
+          </label>
+          {students.map((s, i) => (
+            <div key={i} style={{
+              background: theme.card, borderRadius: 14, border: `1px solid ${theme.border}`,
+              padding: 14, marginBottom: 10, animation: `fadeIn ${0.3 + i * 0.05}s ease`,
+            }}>
+              {editingIdx === i ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 10, color: theme.textSec }}>이름</label>
+                      <input value={s.name} onChange={e => updateStudent(i, "name", e.target.value)}
+                        style={{ width: "100%", padding: "8px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 10, color: theme.textSec }}>아이디</label>
+                      <input value={s.id} onChange={e => updateStudent(i, "id", e.target.value)}
+                        style={{ width: "100%", padding: "8px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" }} />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 10, color: theme.textSec }}>비밀번호</label>
+                      <input value={s.pw} onChange={e => updateStudent(i, "pw", e.target.value)}
+                        style={{ width: "100%", padding: "8px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" }} />
+                    </div>
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
+                      <button onClick={() => setEditingIdx(null)} style={{
+                        padding: "8px 14px", borderRadius: 8, border: "none",
+                        background: PASTEL.coral, color: "white", fontSize: 12, cursor: "pointer",
+                      }}>저장</button>
+                      <button onClick={() => deleteStudent(i)} style={{
+                        padding: "8px 14px", borderRadius: 8, border: `1px solid ${PASTEL.coral}`,
+                        background: "transparent", color: PASTEL.coral, fontSize: 12, cursor: "pointer",
+                      }}>삭제</button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                  onClick={() => setEditingIdx(i)}>
+                  <div>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>{s.name}</span>
+                    <span style={{ fontSize: 12, color: theme.textSec, marginLeft: 8 }}>@{s.id}</span>
+                    {s.nickname && <span style={{ fontSize: 11, color: PASTEL.lavender, marginLeft: 6 }}>"{s.nickname}"</span>}
+                  </div>
+                  <span style={{ fontSize: 11, color: theme.textSec, cursor: "pointer" }}>편집 ›</span>
+                </div>
+              )}
+            </div>
+          ))}
+          {students.length === 0 && (
+            <p style={{ textAlign: "center", color: theme.textSec, fontSize: 13, marginTop: 40 }}>
+              등록된 학생이 없어요. 위에서 추가해주세요!
+            </p>
+          )}
+          <div style={{ height: 60 }} />
         </div>
       </ScreenWrap>
     );
@@ -1899,6 +2237,16 @@ export default function App() {
           }}>초기화</button>
         </div>
 
+        {/* Content area: PC = row (SVG left, panels right), Mobile = column */}
+        <div style={{
+          flex: 1, display: "flex",
+          flexDirection: isPC ? "row" : "column",
+          overflow: "hidden",
+        }}>
+
+        {/* Left section: mode tabs + SVG + properties */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+
         {/* Mode tabs */}
         {buildPhase === "input" && (
           <div style={{ display: "flex", gap: 8, padding: "12px 20px", animation: "fadeIn 0.4s ease" }}>
@@ -1955,15 +2303,19 @@ export default function App() {
               background: theme.svgBg, borderRadius: canvasCollapsed ? 12 : 20,
               border: `1.5px solid ${showProperties && selectedProp ? getProperties().find(p=>p.id===selectedProp)?.color || theme.border : theme.border}`,
               boxShadow: `0 4px 20px rgba(0,0,0,${themeKey === "dark" ? "0.2" : "0.05"})`,
-              cursor: buildPhase === "jedo" ? "crosshair" : "default",
+              cursor: buildPhase === "jedo" ? "crosshair" : buildPhase === "jakdo" ? (jakdoTool === "compass" ? "crosshair" : "default") : "default",
               transition: "height 0.4s ease, border-color 0.3s ease, border-radius 0.3s ease",
               width: "100%", maxWidth: svgSize.w,
               touchAction: "none",
             }}
-            onClick={handleJedoClick}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
+            onClick={buildPhase === "jedo" ? handleJedoClick : undefined}
+            onWheel={handleWheel}
+            onMouseDown={(e) => { handleMouseDown(e); if(buildPhase==="jakdo") handleJakdoDown(e); }}
+            onMouseMove={(e) => { handleMouseMove(e); if(buildPhase==="jakdo") handleJakdoMove(e); }}
+            onMouseUp={(e) => { handleMouseUp(e); if(buildPhase==="jakdo") handleJakdoUp(e); }}
+            onTouchStart={(e) => { handleTouchStart(e); if(buildPhase==="jakdo") handleJakdoDown(e); }}
+            onTouchMove={(e) => { handleTouchMove(e); if(buildPhase==="jakdo") handleJakdoMove(e); }}
+            onTouchEnd={(e) => { handleTouchEnd(e); if(buildPhase==="jakdo") handleJakdoUp(e); }}
           >
             {/* Grid dots */}
             {[...Array(Math.floor(svgSize.w / 30))].map((_, i) =>
@@ -1977,6 +2329,28 @@ export default function App() {
 
             {/* Property highlight overlay */}
             {showProperties && renderHighlight()}
+
+            {/* Jakdo drawn arcs */}
+            {jakdoArcs.map((arc, i) => (
+              <circle key={`arc${i}`} cx={arc.center.x} cy={arc.center.y} r={arc.radius}
+                fill="none" stroke={PASTEL.lavender} strokeWidth={1.5} opacity={0.7} />
+            ))}
+            {/* Jakdo ruler lines */}
+            {jakdoRulerLines.map((line, i) => (
+              <line key={`rl${i}`} x1={line.start.x} y1={line.start.y} x2={line.end.x} y2={line.end.y}
+                stroke={PASTEL.sky} strokeWidth={1.5} opacity={0.8} />
+            ))}
+            {/* Compass preview (drawing) */}
+            {isDrawingArc && compassCenter && compassRadius > 0 && (
+              <circle cx={compassCenter.x} cy={compassCenter.y} r={compassRadius}
+                fill="none" stroke={PASTEL.coral} strokeWidth={2} strokeDasharray="6 3" opacity={0.6} />
+            )}
+            {/* Ruler preview */}
+            {rulerStart && buildPhase === "jakdo" && jakdoTool === "ruler" && (
+              <circle cx={rulerStart.x} cy={rulerStart.y} r={5} fill={PASTEL.sky} opacity={0.8}>
+                <animate attributeName="r" values="4;7;4" dur="1s" repeatCount="indefinite" />
+              </circle>
+            )}
 
             {/* Fail animation */}
             {failAnim && (
@@ -2087,6 +2461,16 @@ export default function App() {
             </div>
           </div>
         )}
+
+        </div>{/* end left section */}
+
+        {/* Right section: panels (PC = sidebar, Mobile = bottom) */}
+        <div style={{
+          ...(isPC ? {
+            width: 320, flexShrink: 0, borderLeft: `1px solid ${theme.border}`,
+            overflowY: "auto", background: theme.card,
+          } : {}),
+        }}>
 
         {/* Input Panel */}
         {buildPhase === "input" && triMode === "sss" && (
@@ -2265,34 +2649,66 @@ export default function App() {
         {/* Jakdo placeholder */}
         {buildPhase === "jakdo" && (
           <div style={{
-            padding: "20px", borderTop: `1px solid ${theme.border}`,
+            padding: "16px 20px", borderTop: `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.5s ease",
-            textAlign: "center",
           }}>
-            <p style={{ fontSize: 14, color: theme.text, marginBottom: 12 }}>작도 모드</p>
-            <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
-              <button style={{
-                padding: "14px 28px", borderRadius: 14,
-                border: `2px solid ${PASTEL.sky}`, background: theme.card,
+            <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+              <button onClick={() => {
+                if (!jakdoTool) { setJakdoTool("compass"); showMsg(activeTone.guide.compassStart, 2000); playSfx("click"); }
+                else setJakdoTool("compass");
+              }} style={{
+                flex: 1, padding: "12px", borderRadius: 14,
+                border: `2px solid ${jakdoTool === "compass" ? PASTEL.coral : theme.border}`,
+                background: jakdoTool === "compass" ? theme.accentSoft : theme.card,
                 color: theme.text, fontSize: 14, cursor: "pointer",
-                fontFamily: "'Noto Serif KR', serif", fontWeight: 700,
+                fontFamily: "'Noto Serif KR', serif", fontWeight: jakdoTool === "compass" ? 700 : 400,
               }}>
                 🔵 컴퍼스
               </button>
-              <button onClick={() => showMsg(activeTone.guide.rulerFirst, 2000)} style={{
-                padding: "14px 28px", borderRadius: 14,
-                border: `2px solid ${theme.border}`, background: theme.card,
-                color: theme.textSec, fontSize: 14, cursor: "pointer",
-                fontFamily: "'Noto Serif KR', serif",
+              <button onClick={() => {
+                if (!jakdoTool || jakdoArcs.length === 0) {
+                  showMsg(activeTone.guide.rulerFirst, 2000); playSfx("error"); return;
+                }
+                setJakdoTool("ruler"); playSfx("click");
+              }} style={{
+                flex: 1, padding: "12px", borderRadius: 14,
+                border: `2px solid ${jakdoTool === "ruler" ? PASTEL.sky : theme.border}`,
+                background: jakdoTool === "ruler" ? `${PASTEL.sky}20` : theme.card,
+                color: jakdoArcs.length > 0 ? theme.text : theme.textSec,
+                fontSize: 14, cursor: "pointer",
+                fontFamily: "'Noto Serif KR', serif", fontWeight: jakdoTool === "ruler" ? 700 : 400,
               }}>
                 📏 눈금없는 자
               </button>
             </div>
-            <p style={{ fontSize: 11, color: theme.textSec, marginTop: 12 }}>
-              ✦ 작도 모드는 다음 업데이트에서 완전히 구현됩니다
-            </p>
+            {/* Status */}
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, color: theme.textSec, padding: "4px 10px", background: theme.bg, borderRadius: 8 }}>
+                호: {jakdoArcs.length}개
+              </span>
+              <span style={{ fontSize: 11, color: theme.textSec, padding: "4px 10px", background: theme.bg, borderRadius: 8 }}>
+                선: {jakdoRulerLines.length}개
+              </span>
+              {crossedEdges > 0 && isDrawingArc && (
+                <span style={{ fontSize: 11, color: PASTEL.coral, padding: "4px 10px", background: `${PASTEL.coral}15`, borderRadius: 8, fontWeight: 700 }}>
+                  {crossedEdges === 1 ? "수직이등분선?" : "각이등분선?"}
+                </span>
+              )}
+            </div>
+            {jakdoTool === "compass" && (
+              <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center", marginTop: 8 }}>
+                꼭지점을 터치하고 드래그하여 호를 그리세요
+              </p>
+            )}
+            {jakdoTool === "ruler" && (
+              <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center", marginTop: 8 }}>
+                두 점을 터치하여 직선을 그으세요
+              </p>
+            )}
           </div>
         )}
+        </div>{/* end right section */}
+        </div>{/* end content area */}
       </div>
     );
   }
