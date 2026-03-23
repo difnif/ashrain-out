@@ -218,13 +218,50 @@ function InfoPanel({ data, theme }) {
 // Main App
 // ============================================================
 export default function App() {
-  const [screen, setScreen] = useState("login");
-  const [themeKey, setThemeKey] = useState("light");
-  const [toneKey, setToneKey] = useState("default");
-  const [user, setUser] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  // Session persistence
+  const savedUser = useMemo(() => { try { return JSON.parse(localStorage.getItem("ar_user")); } catch { return null; } }, []);
+  const savedScreen = useMemo(() => {
+    const s = localStorage.getItem("ar_screen");
+    return (savedUser && s && s !== "login") ? s : (savedUser ? "menu" : "login");
+  }, [savedUser]);
+
+  const [screen, setScreenRaw] = useState(savedScreen);
+  const [themeKey, setThemeKey] = useState(() => localStorage.getItem("ar_theme") || "light");
+  const [toneKey, setToneKey] = useState(() => localStorage.getItem("ar_tone") || "default");
+  const [user, setUser] = useState(savedUser);
+  const [isAdmin, setIsAdmin] = useState(() => savedUser?.role === "admin");
   const theme = THEMES[themeKey];
   const tone = TONES[toneKey];
+
+  // Screen setter with history + localStorage
+  const setScreen = useCallback((s) => {
+    setScreenRaw(s);
+    localStorage.setItem("ar_screen", s);
+    window.history.pushState({ screen: s }, "", `#${s}`);
+  }, []);
+
+  // Back button support
+  useEffect(() => {
+    const onPop = (e) => {
+      const s = e.state?.screen || "menu";
+      setScreenRaw(s);
+      localStorage.setItem("ar_screen", s);
+    };
+    window.addEventListener("popstate", onPop);
+    // Set initial history state
+    if (!window.history.state) window.history.replaceState({ screen: screen }, "", `#${screen}`);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  // Persist user login
+  useEffect(() => {
+    if (user) localStorage.setItem("ar_user", JSON.stringify(user));
+    else localStorage.removeItem("ar_user");
+  }, [user]);
+
+  // Persist theme/tone
+  useEffect(() => { localStorage.setItem("ar_theme", themeKey); }, [themeKey]);
+  useEffect(() => { localStorage.setItem("ar_tone", toneKey); }, [toneKey]);
 
   // Audio state
   const [bgmOn, setBgmOn] = useState(true);
@@ -464,11 +501,13 @@ export default function App() {
   }, []);
 
   // PC detection for responsive layout
-  const [isPC, setIsPC] = useState(window.innerWidth > 768);
+  // PC mode = wide screen OR mobile landscape
+  const [isPC, setIsPC] = useState(() => window.innerWidth > 768 || (window.innerWidth > window.innerHeight && window.innerWidth > 600));
   useEffect(() => {
-    const check = () => setIsPC(window.innerWidth > 768);
+    const check = () => setIsPC(window.innerWidth > 768 || (window.innerWidth > window.innerHeight && window.innerWidth > 600));
     window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
+    window.addEventListener("orientationchange", () => setTimeout(check, 200));
+    return () => { window.removeEventListener("resize", check); window.removeEventListener("orientationchange", check); };
   }, []);
 
   // Student data (admin managed)
@@ -503,124 +542,228 @@ export default function App() {
 
   // Jakdo (작도) state
   const [jakdoTool, setJakdoTool] = useState(null); // "compass" | "ruler"
-  const [jakdoArcs, setJakdoArcs] = useState([]); // drawn arcs
-  const [jakdoRulerLines, setJakdoRulerLines] = useState([]); // drawn ruler lines
+  const [jakdoArcs, setJakdoArcs] = useState([]); // {center, radius, startAngle, endAngle, intersections[]}
+  const [jakdoRulerLines, setJakdoRulerLines] = useState([]);
+  const [compassPhase, setCompassPhase] = useState("idle"); // "idle"|"radiusSet"|"drawingArc"
   const [compassCenter, setCompassCenter] = useState(null);
   const [compassRadius, setCompassRadius] = useState(0);
-  const [isDrawingArc, setIsDrawingArc] = useState(false);
+  const [compassDragPt, setCompassDragPt] = useState(null); // live drag point for radius preview
+  const [arcDrawPoints, setArcDrawPoints] = useState([]); // freehand points while drawing arc
   const [rulerStart, setRulerStart] = useState(null);
-  const [crossedEdges, setCrossedEdges] = useState(0); // how many edges the arc crosses
+  const [crossedEdges, setCrossedEdges] = useState(0);
+
+  // All snap points (vertices + arc-edge intersections + arc-arc intersections)
+  const jakdoSnaps = useMemo(() => {
+    if (!triangle) return [];
+    const { A, B, C } = triangle;
+    const pts = [{ ...A, label: "A" }, { ...B, label: "B" }, { ...C, label: "C" }];
+    jakdoArcs.forEach(arc => { if (arc.intersections) arc.intersections.forEach(ip => pts.push(ip)); });
+    if (jedoCenter) pts.push(jedoCenter);
+    return pts;
+  }, [triangle, jakdoArcs, jedoCenter]);
+
+  // Circle-segment intersection
+  const circleSegIntersect = useCallback((cx, cy, r, p1, p2) => {
+    const dx = p2.x-p1.x, dy = p2.y-p1.y;
+    const fx = p1.x-cx, fy = p1.y-cy;
+    const a = dx*dx+dy*dy, b = 2*(fx*dx+fy*dy), c2 = fx*fx+fy*fy-r*r;
+    let disc = b*b-4*a*c2;
+    if (disc < 0) return [];
+    disc = Math.sqrt(disc);
+    const pts = [];
+    for (const t of [(-b-disc)/(2*a), (-b+disc)/(2*a)]) {
+      if (t >= -0.02 && t <= 1.02) pts.push({ x: p1.x+t*dx, y: p1.y+t*dy });
+    }
+    return pts;
+  }, []);
 
   const showMsg = useCallback((msg, duration = 2500) => {
     setFloatingMsg(msg);
     setTimeout(() => setFloatingMsg(null), duration);
   }, []);
 
-  // --- Jakdo (작도) Interaction ---
+  // --- Jakdo SVG coord helper ---
   const svgCoords = useCallback((e) => {
     const svg = svgRef.current;
     if (!svg) return null;
     const pt = svg.createSVGPoint();
-    if (e.touches) { pt.x = e.touches[0].clientX; pt.y = e.touches[0].clientY; }
-    else { pt.x = e.clientX; pt.y = e.clientY; }
+    const src = e.touches ? e.touches[0] : e;
+    if (!src) return null;
+    pt.x = src.clientX; pt.y = src.clientY;
     return pt.matrixTransform(svg.getScreenCTM().inverse());
   }, []);
 
+  // --- Jakdo Compass Interaction (3 phases) ---
   const handleJakdoDown = useCallback((e) => {
     if (!triangle || buildPhase !== "jakdo") return;
+    if (e.button === 1) return; // middle button = pan, not jakdo
     const p = svgCoords(e);
     if (!p) return;
-    const { A, B, C } = triangle;
 
     if (jakdoTool === "compass") {
-      // Find nearest vertex for compass center
-      const verts = [A, B, C];
-      let nearest = null, minD = 30;
-      for (const v of verts) {
-        const d = dist(p, v);
-        if (d < minD) { minD = d; nearest = v; }
-      }
-      // Also check jedoCenter if exists
-      if (jedoCenter && dist(p, jedoCenter) < minD) {
-        nearest = jedoCenter;
-      }
-      if (nearest) {
-        setCompassCenter(nearest);
-        setCompassRadius(0);
-        setIsDrawingArc(true);
-        setCrossedEdges(0);
-        playSfx("click");
+      if (compassPhase === "idle") {
+        // Phase 1: Pick center — snap to vertices/intersections
+        let nearest = null, minD = 25;
+        for (const sp of jakdoSnaps) {
+          const d = dist(p, sp);
+          if (d < minD) { minD = d; nearest = sp; }
+        }
+        if (nearest) {
+          setCompassCenter({ x: nearest.x, y: nearest.y });
+          setCompassPhase("radiusSet");
+          setCompassDragPt(p);
+          playSfx("click");
+        }
+      } else if (compassPhase === "radiusSet") {
+        // Phase 2: Drag to set radius → when released, radius is locked
+        // This is handled in move+up
+        setCompassDragPt(p);
+      } else if (compassPhase === "drawingArc") {
+        // Phase 3: Draw freehand arc at locked radius
+        setArcDrawPoints([p]);
       }
     } else if (jakdoTool === "ruler") {
-      // Start ruler line - snap to intersection points or vertices
-      const snapPoints = [A, B, C, ...jakdoArcs.flatMap(a => a.intersections || [])];
-      if (jedoCenter) snapPoints.push(jedoCenter);
-      let nearest = null, minD = 20;
-      for (const sp of snapPoints) {
+      let nearest = null, minD = 25;
+      for (const sp of jakdoSnaps) {
         const d = dist(p, sp);
         if (d < minD) { minD = d; nearest = sp; }
       }
-      if (nearest) {
-        setRulerStart(nearest);
-        playSfx("click");
-      }
+      if (nearest) { setRulerStart({ x: nearest.x, y: nearest.y }); playSfx("click"); }
     }
-  }, [triangle, buildPhase, jakdoTool, jedoCenter, jakdoArcs, svgCoords, playSfx]);
+  }, [triangle, buildPhase, jakdoTool, compassPhase, jakdoSnaps, svgCoords, playSfx]);
 
   const handleJakdoMove = useCallback((e) => {
     if (!triangle || buildPhase !== "jakdo") return;
     const p = svgCoords(e);
     if (!p) return;
 
-    if (jakdoTool === "compass" && isDrawingArc && compassCenter) {
-      const r = dist(p, compassCenter);
-      setCompassRadius(r);
-      // Count how many edges the circle crosses
-      const { A, B, C } = triangle;
-      const edges = [[A,B],[B,C],[A,C]];
-      let crossed = 0;
-      for (const [e1, e2] of edges) {
-        const d = pointToSegDist(compassCenter, e1, e2);
-        if (d < r + 2 && d > Math.abs(r - dist(e1,e2)*0.5)) crossed++;
+    if (jakdoTool === "compass") {
+      if (compassPhase === "radiusSet" && compassCenter) {
+        setCompassDragPt(p);
+        setCompassRadius(dist(p, compassCenter));
+        // Count edge crossings
+        const { A, B, C } = triangle;
+        const r = dist(p, compassCenter);
+        let crossed = 0;
+        for (const [e1, e2] of [[A,B],[B,C],[A,C]]) {
+          const ips = circleSegIntersect(compassCenter.x, compassCenter.y, r, e1, e2);
+          if (ips.length > 0) crossed++;
+        }
+        setCrossedEdges(crossed);
+      } else if (compassPhase === "drawingArc") {
+        setArcDrawPoints(prev => [...prev, p]);
       }
-      setCrossedEdges(crossed);
     }
-  }, [triangle, buildPhase, jakdoTool, isDrawingArc, compassCenter, svgCoords]);
+  }, [triangle, buildPhase, jakdoTool, compassPhase, compassCenter, svgCoords, circleSegIntersect]);
 
   const handleJakdoUp = useCallback((e) => {
     if (!triangle || buildPhase !== "jakdo") return;
 
-    if (jakdoTool === "compass" && isDrawingArc && compassCenter && compassRadius > 5) {
-      // Save the arc
-      const newArc = { center: compassCenter, radius: compassRadius, crossedEdges, id: Date.now() };
-      setJakdoArcs(prev => [...prev, newArc]);
-      setIsDrawingArc(false);
-      playSfx("draw");
+    if (jakdoTool === "compass") {
+      if (compassPhase === "radiusSet" && compassCenter && compassRadius > 8) {
+        // Lock radius, switch to arc drawing phase
+        setCompassPhase("drawingArc");
+        setArcDrawPoints([]);
+        showMsg("반지름 고정! 이제 호를 그려주세요.", 2000);
+        playSfx("pop");
+      } else if (compassPhase === "radiusSet") {
+        // Too short
+        setCompassPhase("idle"); setCompassCenter(null); setCompassRadius(0);
+      } else if (compassPhase === "drawingArc" && arcDrawPoints.length > 3) {
+        // Convert freehand to arc: calculate start/end angles
+        const firstPt = arcDrawPoints[0], lastPt = arcDrawPoints[arcDrawPoints.length - 1];
+        const startAngle = Math.atan2(firstPt.y - compassCenter.y, firstPt.x - compassCenter.x);
+        const endAngle = Math.atan2(lastPt.y - compassCenter.y, lastPt.x - compassCenter.x);
 
-      // Show feedback based on crossed edges
-      if (crossedEdges === 1) showMsg(activeTone.guide.oneEdge, 2000);
-      else if (crossedEdges >= 2) showMsg(activeTone.guide.twoEdge, 2000);
+        // Find intersections with triangle edges
+        const { A, B, C } = triangle;
+        const intersections = [];
+        for (const [e1, e2] of [[A,B],[B,C],[A,C]]) {
+          const ips = circleSegIntersect(compassCenter.x, compassCenter.y, compassRadius, e1, e2);
+          intersections.push(...ips);
+        }
+        // Also find intersections with existing arcs
+        jakdoArcs.forEach(prevArc => {
+          // Circle-circle intersection
+          const d = dist(compassCenter, prevArc.center);
+          if (d < compassRadius + prevArc.radius && d > Math.abs(compassRadius - prevArc.radius)) {
+            const a2 = (compassRadius**2 - prevArc.radius**2 + d**2) / (2*d);
+            const h = Math.sqrt(Math.max(0, compassRadius**2 - a2**2));
+            const dx = (prevArc.center.x - compassCenter.x)/d, dy = (prevArc.center.y - compassCenter.y)/d;
+            const mx = compassCenter.x + a2*dx, my = compassCenter.y + a2*dy;
+            intersections.push({ x: mx + h*(-dy), y: my + h*dx });
+            intersections.push({ x: mx - h*(-dy), y: my - h*dx });
+          }
+        });
+
+        const newArc = { center: {...compassCenter}, radius: compassRadius, startAngle, endAngle, intersections, id: Date.now() };
+        setJakdoArcs(prev => [...prev, newArc]);
+        playSfx("draw");
+
+        // Show edge crossing feedback
+        if (crossedEdges === 1) showMsg(activeTone.guide.oneEdge, 2000);
+        else if (crossedEdges >= 2) showMsg(activeTone.guide.twoEdge, 2000);
+
+        // Reset compass
+        setCompassPhase("idle"); setCompassCenter(null); setCompassRadius(0);
+        setArcDrawPoints([]); setCrossedEdges(0);
+      }
     } else if (jakdoTool === "ruler" && rulerStart) {
       const p = svgCoords(e.changedTouches ? e.changedTouches[0] : e);
       if (!p) { setRulerStart(null); return; }
-      // Snap end point
-      const { A, B, C } = triangle;
-      const snapPoints = [A, B, C, ...jakdoArcs.flatMap(a => a.intersections || [])];
-      if (jedoCenter) snapPoints.push(jedoCenter);
-      let nearest = p, minD = 20;
-      for (const sp of snapPoints) {
+      let nearest = p, minD = 25;
+      for (const sp of jakdoSnaps) {
         const d = dist(p, sp);
         if (d < minD) { minD = d; nearest = sp; }
       }
       if (dist(rulerStart, nearest) > 10) {
-        setJakdoRulerLines(prev => [...prev, { start: rulerStart, end: nearest }]);
+        setJakdoRulerLines(prev => [...prev, { start: rulerStart, end: { x: nearest.x, y: nearest.y } }]);
         playSfx("draw");
       }
       setRulerStart(null);
     }
+  }, [triangle, buildPhase, jakdoTool, compassPhase, compassCenter, compassRadius, arcDrawPoints, crossedEdges, rulerStart, jakdoSnaps, jakdoArcs, svgCoords, playSfx, showMsg, activeTone, circleSegIntersect]);
 
-    setIsDrawingArc(false);
-  }, [triangle, buildPhase, jakdoTool, isDrawingArc, compassCenter, compassRadius, crossedEdges, rulerStart, jedoCenter, jakdoArcs, svgCoords, playSfx, showMsg, activeTone]);
+  // Random idle dialogue
+  const [idleMsg, setIdleMsg] = useState("");
+  const idleDialogues = useMemo(() => ({
+    default: ["오늘도 기하학 해볼까?", "삼각형의 비밀을 찾아보자!", "수학은 아름다워요.", "천천히 생각해봐요.", "외심? 내심? 뭐부터 해볼까?"],
+    nagging: ["빨리 해!! 뭐해!!", "멍때리지 말고 시작해!!", "오늘 안에 끝내자!!", "집중!! 집중!!!", "한 문제라도 풀어봐!!"],
+    cute: ["오늘도 같이 해요~♡", "삼각형이 기다려요~", "화이팅이에요~♡", "천천히 해도 괜찮아요~", "멋진 하루 되세요~♡"],
+  }), []);
+  useEffect(() => {
+    const show = () => {
+      const msgs = idleDialogues[toneKey] || idleDialogues.default;
+      setIdleMsg(msgs[Math.floor(Math.random() * msgs.length)]);
+    };
+    show();
+    const interval = setInterval(show, 15000);
+    return () => clearInterval(interval);
+  }, [toneKey, idleDialogues]);
+
+  // Archive state
+  const [archives, setArchives] = useState([]);
+  const [showArchiveSave, setShowArchiveSave] = useState(false);
+  const [archivePublic, setArchivePublic] = useState(true);
+
+  const saveToArchive = useCallback(() => {
+    if (!triangle || !jedoCircle) return;
+    const entry = {
+      id: Date.now(),
+      triangle: { ...triangle },
+      jedoType, jedoCenter, jedoCircle,
+      jedoLines: [...jedoLines],
+      jakdoArcs: [...jakdoArcs],
+      jakdoRulerLines: [...jakdoRulerLines],
+      isPublic: archivePublic,
+      date: new Date().toISOString(),
+      user: user?.name || "익명",
+    };
+    setArchives(prev => [entry, ...prev]);
+    playSfx("success");
+    setShowArchiveSave(false);
+    setScreen("menu"); // or "archive" when implemented
+  }, [triangle, jedoCircle, jedoType, jedoCenter, jedoLines, jakdoArcs, jakdoRulerLines, archivePublic, user, playSfx, setScreen]);
 
   // --- Triangle Generation from SSS ---
   const generateTriangle = useCallback((a, b, c) => {
@@ -821,11 +964,14 @@ export default function App() {
     setJakdoTool(null);
     setJakdoArcs([]);
     setJakdoRulerLines([]);
+    setCompassPhase("idle");
     setCompassCenter(null);
     setCompassRadius(0);
-    setIsDrawingArc(false);
+    setCompassDragPt(null);
+    setArcDrawPoints([]);
     setRulerStart(null);
     setCrossedEdges(0);
+    setShowArchiveSave(false);
   };
 
   // --- Properties Data with highlight info ---
@@ -2330,27 +2476,77 @@ export default function App() {
             {/* Property highlight overlay */}
             {showProperties && renderHighlight()}
 
-            {/* Jakdo drawn arcs */}
-            {jakdoArcs.map((arc, i) => (
-              <circle key={`arc${i}`} cx={arc.center.x} cy={arc.center.y} r={arc.radius}
-                fill="none" stroke={PASTEL.lavender} strokeWidth={1.5} opacity={0.7} />
-            ))}
+            {/* Jakdo drawn arcs (proper arc paths) */}
+            {jakdoArcs.map((arc, i) => {
+              const sx = arc.center.x + arc.radius * Math.cos(arc.startAngle);
+              const sy = arc.center.y + arc.radius * Math.sin(arc.startAngle);
+              const ex = arc.center.x + arc.radius * Math.cos(arc.endAngle);
+              const ey = arc.center.y + arc.radius * Math.sin(arc.endAngle);
+              let diff = arc.endAngle - arc.startAngle;
+              if (diff < -Math.PI) diff += 2*Math.PI;
+              if (diff > Math.PI) diff -= 2*Math.PI;
+              const largeArc = Math.abs(diff) > Math.PI ? 1 : 0;
+              const sweep = diff > 0 ? 1 : 0;
+              return (
+                <g key={`arc${i}`}>
+                  <path d={`M ${sx} ${sy} A ${arc.radius} ${arc.radius} 0 ${largeArc} ${sweep} ${ex} ${ey}`}
+                    fill="none" stroke={PASTEL.lavender} strokeWidth={2} opacity={0.8} />
+                  {/* Intersection points (clickable for next compass) */}
+                  {arc.intersections?.map((ip, j) => (
+                    <circle key={j} cx={ip.x} cy={ip.y} r={5}
+                      fill={PASTEL.coral} stroke="white" strokeWidth={1.5} opacity={0.9}
+                      style={{ cursor: "pointer" }}>
+                      <animate attributeName="r" values="4;6;4" dur="1.5s" repeatCount="indefinite" />
+                    </circle>
+                  ))}
+                </g>
+              );
+            })}
             {/* Jakdo ruler lines */}
             {jakdoRulerLines.map((line, i) => (
               <line key={`rl${i}`} x1={line.start.x} y1={line.start.y} x2={line.end.x} y2={line.end.y}
-                stroke={PASTEL.sky} strokeWidth={1.5} opacity={0.8} />
+                stroke={PASTEL.sky} strokeWidth={2} opacity={0.8} />
             ))}
-            {/* Compass preview (drawing) */}
-            {isDrawingArc && compassCenter && compassRadius > 0 && (
-              <circle cx={compassCenter.x} cy={compassCenter.y} r={compassRadius}
-                fill="none" stroke={PASTEL.coral} strokeWidth={2} strokeDasharray="6 3" opacity={0.6} />
+            {/* Compass Phase 2: radius preview (dotted line) */}
+            {compassPhase === "radiusSet" && compassCenter && compassDragPt && (
+              <g>
+                <line x1={compassCenter.x} y1={compassCenter.y} x2={compassDragPt.x} y2={compassDragPt.y}
+                  stroke={PASTEL.coral} strokeWidth={1.5} strokeDasharray="5 3" opacity={0.7} />
+                <circle cx={compassCenter.x} cy={compassCenter.y} r={compassRadius}
+                  fill="none" stroke={PASTEL.coral} strokeWidth={1} strokeDasharray="3 5" opacity={0.3} />
+                <text x={compassCenter.x + 10} y={compassCenter.y - 10} fill={PASTEL.coral}
+                  fontSize={11} fontFamily="'Noto Serif KR', serif">
+                  r={compassRadius > 0 ? (compassRadius / (triangle?.scale || 1)).toFixed(1) : "..."}
+                </text>
+              </g>
             )}
-            {/* Ruler preview */}
+            {/* Compass Phase 3: freehand arc preview */}
+            {compassPhase === "drawingArc" && compassCenter && compassRadius > 0 && (
+              <g>
+                <circle cx={compassCenter.x} cy={compassCenter.y} r={compassRadius}
+                  fill="none" stroke={PASTEL.lavender} strokeWidth={1} strokeDasharray="3 5" opacity={0.2} />
+                <circle cx={compassCenter.x} cy={compassCenter.y} r={3} fill={PASTEL.coral} />
+                {arcDrawPoints.length > 1 && (
+                  <polyline
+                    points={arcDrawPoints.map(p => {
+                      const a = Math.atan2(p.y - compassCenter.y, p.x - compassCenter.x);
+                      return `${compassCenter.x + compassRadius*Math.cos(a)},${compassCenter.y + compassRadius*Math.sin(a)}`;
+                    }).join(" ")}
+                    fill="none" stroke={PASTEL.coral} strokeWidth={2.5} opacity={0.8} />
+                )}
+              </g>
+            )}
+            {/* Ruler start point preview */}
             {rulerStart && buildPhase === "jakdo" && jakdoTool === "ruler" && (
               <circle cx={rulerStart.x} cy={rulerStart.y} r={5} fill={PASTEL.sky} opacity={0.8}>
                 <animate attributeName="r" values="4;7;4" dur="1s" repeatCount="indefinite" />
               </circle>
             )}
+            {/* Snap points glow in jakdo mode */}
+            {buildPhase === "jakdo" && compassPhase === "idle" && jakdoSnaps.map((sp, i) => (
+              <circle key={`snap${i}`} cx={sp.x} cy={sp.y} r={8}
+                fill="transparent" stroke={PASTEL.coral} strokeWidth={1} strokeDasharray="2 2" opacity={0.4} />
+            ))}
 
             {/* Fail animation */}
             {failAnim && (
@@ -2458,6 +2654,15 @@ export default function App() {
                   </button>
                 );
               })}
+              {/* Archive save in mobile properties */}
+              {!isPC && jedoCircle && (
+                <button onClick={() => setShowArchiveSave(true)} style={{
+                  width: "100%", padding: "12px", borderRadius: 12, marginTop: 12,
+                  border: `1.5px solid ${PASTEL.mint}`, background: `${PASTEL.mint}15`,
+                  color: theme.text, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                  fontFamily: "'Noto Serif KR', serif",
+                }}>📁 아카이브에 저장</button>
+              )}
             </div>
           </div>
         )}
@@ -2473,6 +2678,90 @@ export default function App() {
         }}>
 
         {/* Input Panel */}
+        {/* Idle dialogue when no active input needed */}
+        {buildPhase && buildPhase !== "input" && !showProperties && !showArchiveSave && (
+          <div style={{
+            padding: "16px 20px", borderTop: isPC ? "none" : `1px solid ${theme.border}`,
+            background: isPC ? "transparent" : theme.card,
+            textAlign: "center", animation: "fadeIn 0.5s ease",
+          }}>
+            <p style={{ fontSize: 13, color: theme.textSec, fontFamily: "'Noto Serif KR', serif", fontStyle: "italic" }}>
+              {idleMsg}
+            </p>
+          </div>
+        )}
+
+        {/* Archive save dialog */}
+        {showArchiveSave && (
+          <div style={{
+            padding: "20px", borderTop: `1px solid ${theme.border}`,
+            background: theme.card, animation: "fadeIn 0.4s ease",
+          }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: theme.text, marginBottom: 14, fontFamily: "'Playfair Display', serif" }}>
+              아카이브에 저장
+            </p>
+            <label style={{
+              display: "flex", alignItems: "center", gap: 10, marginBottom: 16,
+              fontSize: 13, color: theme.text, cursor: "pointer", fontFamily: "'Noto Serif KR', serif",
+            }}>
+              <input type="checkbox" checked={archivePublic} onChange={e => setArchivePublic(e.target.checked)}
+                style={{ width: 18, height: 18, accentColor: PASTEL.coral }} />
+              공개로 저장 (피드에 공유)
+            </label>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={saveToArchive} style={{
+                flex: 1, padding: "12px", borderRadius: 12, border: "none",
+                background: `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
+                color: "white", fontSize: 14, fontWeight: 700, cursor: "pointer",
+                fontFamily: "'Noto Serif KR', serif",
+              }}>저장하기</button>
+              <button onClick={() => setShowArchiveSave(false)} style={{
+                padding: "12px 20px", borderRadius: 12,
+                border: `1px solid ${theme.border}`, background: theme.card,
+                color: theme.textSec, fontSize: 13, cursor: "pointer",
+                fontFamily: "'Noto Serif KR', serif",
+              }}>취소</button>
+            </div>
+          </div>
+        )}
+
+        {/* Properties "성질 확인" + archive save in right panel for PC */}
+        {jedoCircle && showProperties && isPC && (
+          <div style={{ padding: "12px 16px 60px 16px", overflowY: "auto", flex: 1, borderTop: `1px solid ${theme.border}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: theme.text, fontFamily: "'Playfair Display', serif" }}>
+                ✦ {jedoType === "circum" ? "외심 & 외접원" : "내심 & 내접원"}
+              </span>
+              <button onClick={() => { setShowProperties(false); setSelectedProp(null); }} style={{
+                background: "none", border: "none", color: theme.textSec, fontSize: 12, cursor: "pointer",
+              }}>접기 ▲</button>
+            </div>
+            {getProperties().map((item, i) => {
+              const isSelected = selectedProp === item.id;
+              return (
+                <button key={item.id} onClick={() => setSelectedProp(isSelected ? null : item.id)} style={{
+                  width: "100%", textAlign: "left", padding: "12px 14px", marginBottom: 6, borderRadius: 12,
+                  background: isSelected ? `${item.color}20` : theme.card,
+                  border: `1.5px solid ${isSelected ? item.color : theme.border}`,
+                  cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
+                }}>
+                  <div style={{ width: 4, minHeight: 28, borderRadius: 2, background: item.color, opacity: isSelected ? 1 : 0.4 }} />
+                  <span style={{ fontSize: 12, color: isSelected ? item.color : theme.text, fontWeight: item.bold ? 700 : 400,
+                    fontFamily: "'Noto Serif KR', serif", lineHeight: 1.5 }}>{item.text}</span>
+                </button>
+              );
+            })}
+            {/* Archive save button in properties */}
+            <button onClick={() => setShowArchiveSave(true)} style={{
+              width: "100%", padding: "12px", borderRadius: 12, marginTop: 12,
+              border: `1.5px solid ${PASTEL.mint}`, background: `${PASTEL.mint}15`,
+              color: theme.text, fontSize: 13, fontWeight: 700, cursor: "pointer",
+              fontFamily: "'Noto Serif KR', serif",
+            }}>📁 아카이브에 저장</button>
+          </div>
+        )}
+
+        {/* Input Panel (original for non-PC or when PC properties not shown) */}
         {buildPhase === "input" && triMode === "sss" && (
           <div style={{
             padding: "20px", borderTop: `1px solid ${theme.border}`,
@@ -2654,8 +2943,8 @@ export default function App() {
           }}>
             <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
               <button onClick={() => {
-                if (!jakdoTool) { setJakdoTool("compass"); showMsg(activeTone.guide.compassStart, 2000); playSfx("click"); }
-                else setJakdoTool("compass");
+                if (!jakdoTool) { setJakdoTool("compass"); setCompassPhase("idle"); showMsg(activeTone.guide.compassStart, 2000); playSfx("click"); }
+                else { setJakdoTool("compass"); setCompassPhase("idle"); }
               }} style={{
                 flex: 1, padding: "12px", borderRadius: 14,
                 border: `2px solid ${jakdoTool === "compass" ? PASTEL.coral : theme.border}`,
@@ -2681,30 +2970,33 @@ export default function App() {
                 📏 눈금없는 자
               </button>
             </div>
-            {/* Status */}
-            <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+            {/* Status bar */}
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginBottom: 8 }}>
               <span style={{ fontSize: 11, color: theme.textSec, padding: "4px 10px", background: theme.bg, borderRadius: 8 }}>
-                호: {jakdoArcs.length}개
+                호: {jakdoArcs.length}
               </span>
               <span style={{ fontSize: 11, color: theme.textSec, padding: "4px 10px", background: theme.bg, borderRadius: 8 }}>
-                선: {jakdoRulerLines.length}개
+                선: {jakdoRulerLines.length}
               </span>
-              {crossedEdges > 0 && isDrawingArc && (
+              {compassPhase !== "idle" && (
                 <span style={{ fontSize: 11, color: PASTEL.coral, padding: "4px 10px", background: `${PASTEL.coral}15`, borderRadius: 8, fontWeight: 700 }}>
-                  {crossedEdges === 1 ? "수직이등분선?" : "각이등분선?"}
+                  {compassPhase === "radiusSet" ? "반지름 설정 중..." : "호 그리는 중..."}
+                </span>
+              )}
+              {crossedEdges > 0 && compassPhase === "radiusSet" && (
+                <span style={{ fontSize: 11, color: PASTEL.mint, padding: "4px 10px", background: `${PASTEL.mint}15`, borderRadius: 8, fontWeight: 700 }}>
+                  {crossedEdges === 1 ? "수직이등분선?" : "각이등분선!"}
                 </span>
               )}
             </div>
-            {jakdoTool === "compass" && (
-              <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center", marginTop: 8 }}>
-                꼭지점을 터치하고 드래그하여 호를 그리세요
-              </p>
-            )}
-            {jakdoTool === "ruler" && (
-              <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center", marginTop: 8 }}>
-                두 점을 터치하여 직선을 그으세요
-              </p>
-            )}
+            {/* Phase guide */}
+            <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center" }}>
+              {jakdoTool === "compass" && compassPhase === "idle" && "꼭지점이나 교점을 터치하세요"}
+              {jakdoTool === "compass" && compassPhase === "radiusSet" && "드래그하여 반지름을 설정하세요 (놓으면 고정)"}
+              {jakdoTool === "compass" && compassPhase === "drawingArc" && "터치하고 움직여서 호를 그려주세요"}
+              {jakdoTool === "ruler" && "두 점을 터치하여 직선을 그으세요"}
+              {!jakdoTool && "도구를 선택해주세요"}
+            </p>
           </div>
         )}
         </div>{/* end right section */}
