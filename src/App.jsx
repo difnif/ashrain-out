@@ -86,13 +86,13 @@ function perpBisector(p1, p2, triA, triB, triC) {
   const dx = p2.x - p1.x, dy = p2.y - p1.y;
   const d = Math.sqrt(dx * dx + dy * dy);
   const nx = -dy / d, ny = dx / d;
-  // Extend well beyond the triangle
+  // Limit to just beyond triangle bounds (not infinite)
   const allPts = [triA, triB, triC];
   const maxDim = Math.max(
     Math.max(...allPts.map(p => p.x)) - Math.min(...allPts.map(p => p.x)),
     Math.max(...allPts.map(p => p.y)) - Math.min(...allPts.map(p => p.y))
   );
-  const len = maxDim * 2;
+  const len = maxDim * 0.8;
   return { start: { x: mid.x - nx * len, y: mid.y - ny * len }, end: { x: mid.x + nx * len, y: mid.y + ny * len }, mid };
 }
 
@@ -103,13 +103,13 @@ function angleBisector(vertex, p1, p2, triA, triB, triC) {
   const bis = { x: u1.x + u2.x, y: u1.y + u2.y };
   const bisLen = Math.sqrt(bis.x ** 2 + bis.y ** 2);
   if (bisLen < 0.001) return null;
-  // Extend well beyond the triangle
+  // Limit to just beyond triangle
   const allPts = [triA, triB, triC];
   const maxDim = Math.max(
     Math.max(...allPts.map(p => p.x)) - Math.min(...allPts.map(p => p.x)),
     Math.max(...allPts.map(p => p.y)) - Math.min(...allPts.map(p => p.y))
   );
-  const len = maxDim * 2;
+  const len = maxDim * 0.8;
   return { start: vertex, end: { x: vertex.x + (bis.x / bisLen) * len, y: vertex.y + (bis.y / bisLen) * len } };
 }
 
@@ -799,6 +799,39 @@ export default function App() {
       B: { x: Bx, y: By },
       C: { x: Cx, y: Cy },
       sides: sides.map(s => s.len),
+      scale,
+    };
+  }, [svgSize]);
+
+  // Fixed base version: baseLen is the bottom (BC), side1=AB, side2=AC
+  const generateTriangleWithBase = useCallback((baseLen, side1, side2) => {
+    const bl = parseFloat(baseLen), s1 = parseFloat(side1), s2 = parseFloat(side2);
+    if (isNaN(bl) || isNaN(s1) || isNaN(s2) || bl <= 0 || s1 <= 0 || s2 <= 0) return null;
+    const maxS = Math.max(bl, s1, s2);
+    if (maxS >= (bl + s1 + s2 - maxS)) return null;
+
+    const scale = (svgSize.w * 0.6) / maxS;
+    const base = bl * scale;
+    const ab = s1 * scale; // B→A
+    const ac = s2 * scale; // C→A
+
+    const cx = svgSize.w / 2;
+    const baseY = svgSize.h * 0.7;
+    const Bx = cx - base / 2, By = baseY;
+    const Cx = cx + base / 2, Cy = baseY;
+
+    // cosine of angle B: (AB² + BC² - AC²) / (2·AB·BC)
+    const cosB = (ab * ab + base * base - ac * ac) / (2 * ab * base);
+    if (Math.abs(cosB) > 1) return null;
+    const sinB = Math.sqrt(1 - cosB * cosB);
+    const Ax = Bx + ab * cosB;
+    const Ay = By - ab * sinB;
+
+    return {
+      A: { x: Ax, y: Ay },
+      B: { x: Bx, y: By },
+      C: { x: Cx, y: Cy },
+      sides: [bl, s1, s2].sort((a, b) => a - b),
       scale,
     };
   }, [svgSize]);
@@ -1628,7 +1661,15 @@ export default function App() {
           strokeWidth={2.5}
         />
         {/* Vertices */}
-        {[A, B, C].map((p, i) => (
+        {[A, B, C].map((p, i) => {
+          // Smart label position: away from centroid
+          const centroid = { x: (A.x+B.x+C.x)/3, y: (A.y+B.y+C.y)/3 };
+          const dx = p.x - centroid.x, dy = p.y - centroid.y;
+          const d = Math.sqrt(dx*dx + dy*dy) || 1;
+          const labelDist = 18;
+          const lx = p.x + (dx/d) * labelDist;
+          const ly = p.y + (dy/d) * labelDist;
+          return (
           <g key={i}>
             <circle cx={p.x} cy={p.y} r={buildPhase === "jedo" ? 14 : 6}
               fill={buildPhase === "jedo" ? "transparent" : PASTEL.coral}
@@ -1638,12 +1679,13 @@ export default function App() {
               style={{ cursor: buildPhase === "jedo" ? "pointer" : "default" }}
             />
             <circle cx={p.x} cy={p.y} r={4} fill={PASTEL.coral} />
-            <text x={p.x} y={p.y - 14} textAnchor="middle" fill={theme.text}
+            <text x={lx} y={ly} textAnchor="middle" dominantBaseline="central" fill={theme.text}
               fontSize={13} fontFamily="'Playfair Display', serif" fontWeight={700}>
               {["A", "B", "C"][i]}
             </text>
           </g>
-        ))}
+          );
+        })}
         {/* Edge labels + Angle arcs — visible only in modeSelect */}
         {buildPhase === "modeSelect" && (
           <g style={{ animation: "fadeIn 0.5s ease" }}>
@@ -1652,10 +1694,16 @@ export default function App() {
               const mid = midpoint(p1, p2);
               const dx = p2.x - p1.x, dy = p2.y - p1.y;
               const len = Math.sqrt(dx * dx + dy * dy);
-              const nx = -dy / len * 16, ny = dx / len * 16;
+              // Normal offset, push label outward from centroid
+              const centroid = { x: (A.x+B.x+C.x)/3, y: (A.y+B.y+C.y)/3 };
+              const midToCx = mid.x - centroid.x, midToCy = mid.y - centroid.y;
+              const midToCD = Math.sqrt(midToCx*midToCx + midToCy*midToCy) || 1;
+              const offset = 18;
+              const lx = mid.x + (midToCx/midToCD) * offset;
+              const ly = mid.y + (midToCy/midToCD) * offset;
               const val = dist(p1, p2) / (triangle.scale || 1);
               return (
-                <text key={`edge${i}`} x={mid.x + nx} y={mid.y + ny} textAnchor="middle"
+                <text key={`edge${i}`} x={lx} y={ly} textAnchor="middle" dominantBaseline="central"
                   fill={theme.textSec} fontSize={11} fontFamily="'Noto Serif KR', serif">
                   {label}={val.toFixed(1)}
                 </text>
@@ -1773,7 +1821,21 @@ export default function App() {
           />
         ))}
         {/* Center point */}
-        {jedoCenter && (
+        {jedoCenter && (() => {
+          // Find label position that avoids vertices
+          const verts = [A, B, C];
+          let lx = jedoCenter.x + 16, ly = jedoCenter.y - 8;
+          // Check if default position is too close to any vertex
+          const tooClose = verts.some(v => dist(v, { x: lx, y: ly }) < 25);
+          if (tooClose) {
+            // Place label on opposite side of nearest vertex
+            const centroid = { x: (A.x+B.x+C.x)/3, y: (A.y+B.y+C.y)/3 };
+            const awayX = jedoCenter.x - centroid.x, awayY = jedoCenter.y - centroid.y;
+            const awayLen = Math.sqrt(awayX*awayX+awayY*awayY) || 1;
+            lx = jedoCenter.x + (awayX/awayLen) * 20;
+            ly = jedoCenter.y + (awayY/awayLen) * 20 - 6;
+          }
+          return (
           <g style={{ cursor: "pointer" }}>
             <circle cx={jedoCenter.x} cy={jedoCenter.y} r={12}
               fill="transparent" stroke={PASTEL.coral} strokeWidth={2}>
@@ -1782,11 +1844,11 @@ export default function App() {
               )}
             </circle>
             <circle cx={jedoCenter.x} cy={jedoCenter.y} r={4} fill={PASTEL.coral} />
-            <text x={jedoCenter.x + 16} y={jedoCenter.y - 8} fill={theme.text}
+            <text x={lx} y={ly} fill={theme.text}
               fontSize={12} fontFamily="'Noto Serif KR', serif" fontWeight={700}>
               {jedoType === "circum" ? "외심" : "내심"}
             </text>
-            {/* Guide lines (gray leads) */}
+            {/* Guide lines */}
             {jedoType === "circum" && jedoLines.length >= 3 && !jedoCircle && [A, B, C].map((p, i) => (
               <line key={`lead${i}`} x1={jedoCenter.x} y1={jedoCenter.y} x2={p.x} y2={p.y}
                 stroke={theme.lineLight} strokeWidth={1} strokeDasharray="4 4" opacity={0.5} />
@@ -1799,7 +1861,8 @@ export default function App() {
               );
             })}
           </g>
-        )}
+          );
+        })()}
         {/* Circle */}
         {jedoCircle && (
           <circle cx={jedoCircle.cx} cy={jedoCircle.cy} r={jedoCircle.r}
@@ -2393,8 +2456,8 @@ export default function App() {
         {/* Left section: mode tabs + SVG + properties */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
 
-        {/* Mode tabs */}
-        {buildPhase === "input" && (
+        {/* Mode tabs - only when truly in input mode with no existing triangle */}
+        {buildPhase === "input" && !triangle && (
           <div style={{ display: "flex", gap: 8, padding: "12px 20px", animation: "fadeIn 0.4s ease" }}>
             {[["sss", "SSS"], ["sas", "SAS"], ["asa", "ASA"]].map(([key, label]) => (
               <button key={key} onClick={() => setTriMode(key)} style={{
@@ -2590,8 +2653,8 @@ export default function App() {
           )}
         </div>
 
-        {/* Scrollable Properties List — only this scrolls */}
-        {showProperties && (
+        {/* Scrollable Properties List — only this scrolls (mobile only, PC uses right panel) */}
+        {showProperties && !isPC && (
           <div ref={scrollContainerRef} style={{
             flex: 1, overflowY: "auto", overflowX: "hidden",
             WebkitOverflowScrolling: "touch",
@@ -2670,11 +2733,13 @@ export default function App() {
         </div>{/* end left section */}
 
         {/* Right section: panels (PC = sidebar, Mobile = bottom) */}
+        {/* On mobile, hide right section when properties scroll is open */}
         <div style={{
           ...(isPC ? {
             width: 320, flexShrink: 0, borderLeft: `1px solid ${theme.border}`,
             overflowY: "auto", background: theme.card,
           } : {}),
+          display: (!isPC && showProperties && !showArchiveSave) ? "none" : undefined,
         }}>
 
         {/* Input Panel */}
@@ -2762,7 +2827,7 @@ export default function App() {
         )}
 
         {/* Input Panel (original for non-PC or when PC properties not shown) */}
-        {buildPhase === "input" && triMode === "sss" && (
+        {buildPhase === "input" && !triangle && triMode === "sss" && (
           <div style={{
             padding: "20px", borderTop: `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.4s ease",
@@ -2797,7 +2862,7 @@ export default function App() {
           </div>
         )}
 
-        {buildPhase === "input" && triMode === "sas" && (
+        {buildPhase === "input" && !triangle && triMode === "sas" && (
           <div style={{
             padding: "20px", borderTop: `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.4s ease",
@@ -2827,7 +2892,8 @@ export default function App() {
               }
               const rad = ang * Math.PI / 180;
               const a = Math.sqrt(b * b + c * c - 2 * b * c * Math.cos(rad));
-              const tri = generateTriangle(a, b, c);
+              // a=BC (base), c=AB (side1 from B to A), b=AC (side2 from C to A)
+              const tri = generateTriangleWithBase(a, c, b);
               if (!tri) { showMsg(activeTone.guide.triangleFail, 2500); return; }
               setTriangle({ ...tri, mode: "sas", sasData: { b, c, angle: ang } });
               setBuildPhase("animating");
@@ -2842,7 +2908,7 @@ export default function App() {
           </div>
         )}
 
-        {buildPhase === "input" && triMode === "asa" && (
+        {buildPhase === "input" && !triangle && triMode === "asa" && (
           <div style={{
             padding: "20px", borderTop: `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.4s ease",
@@ -2874,7 +2940,8 @@ export default function App() {
               const radA = angA * Math.PI / 180, radB = angB * Math.PI / 180;
               const b = a * Math.sin(radB) / Math.sin(radA);
               const c = a * Math.sin(angC * Math.PI / 180) / Math.sin(radA);
-              const tri = generateTriangle(a, b, c);
+              // a=BC (base), b=AC (side from C to A), c=AB (side from B to A)
+              const tri = generateTriangleWithBase(a, c, b);
               if (!tri) { showMsg(activeTone.guide.triangleFail, 2500); return; }
               setTriangle({ ...tri, mode: "asa", asaData: { a, angB, angC } });
               setBuildPhase("animating");
@@ -2889,8 +2956,8 @@ export default function App() {
           </div>
         )}
 
-        {/* Mode Selection */}
-        {buildPhase === "modeSelect" && (
+        {/* Mode Selection - hidden when properties are open */}
+        {buildPhase === "modeSelect" && !showProperties && (
           <div style={{
             padding: "20px", borderTop: `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.5s ease",
