@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { detectTriangleFromStroke } from "./config.js";
 
 // ============================================================
 // ashrain.out — Interactive Geometry Education App
@@ -170,6 +169,64 @@ function angleAtVertex(vertex, p1, p2) {
   const dot = v1.x * v2.x + v1.y * v2.y;
   const cross = v1.x * v2.y - v1.y * v2.x;
   return Math.atan2(Math.abs(cross), dot);
+}
+
+// --- Freehand → Triangle Detector ---
+function detectTriangleFromStroke(points, svgW, svgH) {
+  if (points.length < 10) return null;
+  const simplified = rdpSimplify(points, 8);
+  if (simplified.length < 4) return null;
+  const corners = findCorners(simplified, 25);
+  if (corners.length < 3) return null;
+  corners.sort((a, b) => b.angle - a.angle);
+  const top3 = corners.slice(0, 3).sort((a, b) => a.idx - b.idx);
+  const A = simplified[top3[0].idx];
+  const B = simplified[top3[1].idx];
+  const C = simplified[top3[2].idx];
+  const area = Math.abs((B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)) / 2;
+  if (area < 400) return null;
+  const ab = dist(A, B), bc = dist(B, C), ac = dist(A, C);
+  const minSide = Math.min(ab, bc, ac);
+  if (minSide < 20) return null;
+  const maxSide = Math.max(ab, bc, ac);
+  if (maxSide >= ab + bc + ac - maxSide) return null;
+  const maxS = Math.max(ab, bc, ac);
+  const scale = maxS / 10;
+  return {
+    A: { x: A.x, y: A.y }, B: { x: B.x, y: B.y }, C: { x: C.x, y: C.y },
+    sides: [ab / scale, bc / scale, ac / scale].sort((a, b) => a - b), scale,
+  };
+}
+function rdpSimplify(pts, epsilon) {
+  if (pts.length <= 2) return pts;
+  let maxDist = 0, maxIdx = 0;
+  const start = pts[0], end = pts[pts.length - 1];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const dx = end.x - start.x, dy = end.y - start.y;
+    const lenSq = dx * dx + dy * dy;
+    const d = lenSq === 0 ? dist(pts[i], start) :
+      dist(pts[i], { x: start.x + ((pts[i].x-start.x)*dx+(pts[i].y-start.y)*dy)/lenSq*dx,
+                      y: start.y + ((pts[i].x-start.x)*dx+(pts[i].y-start.y)*dy)/lenSq*dy });
+    if (d > maxDist) { maxDist = d; maxIdx = i; }
+  }
+  if (maxDist > epsilon) {
+    const left = rdpSimplify(pts.slice(0, maxIdx + 1), epsilon);
+    const right = rdpSimplify(pts.slice(maxIdx), epsilon);
+    return [...left.slice(0, -1), ...right];
+  }
+  return [start, end];
+}
+function findCorners(pts, minAngleDeg) {
+  const corners = [], minRad = minAngleDeg * Math.PI / 180;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const prev = pts[i-1], cur = pts[i], next = pts[i+1];
+    const a1 = Math.atan2(cur.y-prev.y, cur.x-prev.x);
+    const a2 = Math.atan2(next.y-cur.y, next.x-cur.x);
+    let diff = Math.abs(a2 - a1);
+    if (diff > Math.PI) diff = 2*Math.PI - diff;
+    if (diff > minRad) corners.push({ idx: i, angle: diff });
+  }
+  return corners;
 }
 
 // --- Components ---
