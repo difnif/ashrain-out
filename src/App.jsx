@@ -529,15 +529,23 @@ export default function App() {
   }, []);
 
   // Student data (admin managed)
-  const [students, setStudents] = useState([
-    { id: "student01", name: "학생1", nickname: "", pw: "1234" },
-  ]);
+  const [students, setStudents] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ar_students")) || []; } catch { return []; }
+  });
+  const [signupRequests, setSignupRequests] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ar_signups")) || []; } catch { return []; }
+  });
+  const [autoApprove, setAutoApprove] = useState(() => localStorage.getItem("ar_autoapprove") === "true");
   const [loginId, setLoginId] = useState("");
   const [loginPw, setLoginPw] = useState("");
   const [loginError, setLoginError] = useState("");
 
+  // Persist students + signups
+  useEffect(() => { localStorage.setItem("ar_students", JSON.stringify(students)); }, [students]);
+  useEffect(() => { localStorage.setItem("ar_signups", JSON.stringify(signupRequests)); }, [signupRequests]);
+  useEffect(() => { localStorage.setItem("ar_autoapprove", autoApprove ? "true" : "false"); }, [autoApprove]);
+
   const handleLogin = useCallback(() => {
-    // Admin login
     if (loginId === "admin" && loginPw === "admin1234") {
       setUser({ name: "관리자", role: "admin" });
       setIsAdmin(true);
@@ -545,7 +553,6 @@ export default function App() {
       setLoginError("");
       return;
     }
-    // Student login
     const found = students.find(s => s.id === loginId && s.pw === loginPw);
     if (found) {
       setUser({ name: found.name, nickname: found.nickname, role: "student", id: found.id });
@@ -556,7 +563,49 @@ export default function App() {
       setLoginError("아이디 또는 비밀번호가 올바르지 않아요.");
       playSfx("error");
     }
-  }, [loginId, loginPw, students, playSfx]);
+  }, [loginId, loginPw, students, playSfx, setScreen]);
+
+  const handleLogout = useCallback(() => {
+    setUser(null);
+    setIsAdmin(false);
+    localStorage.removeItem("ar_user");
+    localStorage.removeItem("ar_screen");
+    sessionStorage.removeItem("ar_work");
+    setLoginId(""); setLoginPw(""); setLoginError("");
+    setScreenRaw("login");
+    window.history.replaceState({ screen: "login" }, "", "#login");
+    playSfx("click");
+  }, [playSfx]);
+
+  const handleSignupRequest = useCallback((name, id, pw) => {
+    if (!name || !id || !pw) return "모든 항목을 입력해주세요.";
+    if (students.find(s => s.id === id)) return "이미 존재하는 아이디입니다.";
+    if (signupRequests.find(s => s.id === id)) return "이미 신청된 아이디입니다.";
+    if (id === "admin") return "사용할 수 없는 아이디입니다.";
+
+    if (autoApprove) {
+      setStudents(prev => [...prev, { id, name, nickname: "", pw }]);
+      playSfx("success");
+      return "auto";
+    } else {
+      setSignupRequests(prev => [...prev, { id, name, pw, date: new Date().toISOString() }]);
+      playSfx("success");
+      return "pending";
+    }
+  }, [students, signupRequests, autoApprove, playSfx]);
+
+  const approveSignup = useCallback((reqId) => {
+    const req = signupRequests.find(r => r.id === reqId);
+    if (!req) return;
+    setStudents(prev => [...prev, { id: req.id, name: req.name, nickname: "", pw: req.pw }]);
+    setSignupRequests(prev => prev.filter(r => r.id !== reqId));
+    playSfx("success");
+  }, [signupRequests, playSfx]);
+
+  const rejectSignup = useCallback((reqId) => {
+    setSignupRequests(prev => prev.filter(r => r.id !== reqId));
+    playSfx("pop");
+  }, [playSfx]);
 
   // Jakdo (작도) state
   const [jakdoTool, setJakdoTool] = useState(null); // "compass" | "ruler"
@@ -570,6 +619,42 @@ export default function App() {
   const [rulerStart, setRulerStart] = useState(null);
   const [crossedEdges, setCrossedEdges] = useState(0);
   const [rulerPhase, setRulerPhase] = useState("idle"); // "idle"|"drawing"
+  const [pressedSnap, setPressedSnap] = useState(null); // currently pressed snap point
+  const MAX_ARCS = 12;
+  const MAX_RULER_LINES = 8;
+
+  // Custom cursors (data URI SVGs)
+  const compassCursors = useMemo(() => {
+    const needle = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="28" r="2" fill="%23E8A598"/><line x1="16" y1="28" x2="16" y2="4" stroke="%23E8A598" stroke-width="2"/><circle cx="16" cy="4" r="3" fill="none" stroke="%23E8A598" stroke-width="1.5"/></svg>')}") 16 28, crosshair`;
+    const handle = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><line x1="8" y1="28" x2="16" y2="4" stroke="%23C3B1E1" stroke-width="2"/><line x1="24" y1="28" x2="16" y2="4" stroke="%23C3B1E1" stroke-width="2"/><circle cx="16" cy="4" r="3" fill="%23C3B1E1"/></svg>')}") 16 4, crosshair`;
+    const pencil = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><line x1="16" y1="28" x2="10" y2="4" stroke="%23E8A598" stroke-width="2"/><line x1="16" y1="28" x2="22" y2="4" stroke="%23C3B1E1" stroke-width="1.5" stroke-dasharray="3 2"/><circle cx="16" cy="28" r="2.5" fill="%23E8A598"/></svg>')}") 16 28, crosshair`;
+    const ruler = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect x="4" y="12" width="24" height="8" rx="2" fill="none" stroke="%23B5D5E8" stroke-width="1.5"/><line x1="8" y1="12" x2="8" y2="16" stroke="%23B5D5E8" stroke-width="1"/><line x1="12" y1="12" x2="12" y2="16" stroke="%23B5D5E8" stroke-width="1"/><line x1="16" y1="12" x2="16" y2="18" stroke="%23B5D5E8" stroke-width="1.5"/><line x1="20" y1="12" x2="20" y2="16" stroke="%23B5D5E8" stroke-width="1"/><line x1="24" y1="12" x2="24" y2="16" stroke="%23B5D5E8" stroke-width="1"/></svg>')}") 16 16, crosshair`;
+    return { needle, handle, pencil, ruler };
+  }, []);
+
+  const getJakdoCursor = useCallback(() => {
+    if (buildPhase !== "jakdo") return "default";
+    if (jakdoTool === "ruler") return compassCursors.ruler;
+    if (jakdoTool === "compass") {
+      if (compassPhase === "idle") return compassCursors.needle;
+      if (compassPhase === "radiusSet") return compassCursors.handle;
+      if (compassPhase === "drawingArc") return compassCursors.pencil;
+    }
+    return "crosshair";
+  }, [buildPhase, jakdoTool, compassPhase, compassCursors]);
+
+  // Delete arc/line by index
+  const deleteArc = useCallback((idx) => {
+    pushUndo();
+    setJakdoArcs(prev => prev.filter((_, i) => i !== idx));
+    playSfx("pop");
+  }, [pushUndo, playSfx]);
+
+  const deleteRulerLine = useCallback((idx) => {
+    pushUndo();
+    setJakdoRulerLines(prev => prev.filter((_, i) => i !== idx));
+    playSfx("pop");
+  }, [pushUndo, playSfx]);
 
   // Compass sub-step (for 3-button UI)
   const compassStep = compassPhase === "idle" ? 0 : compassPhase === "radiusSet" ? 1 : 2;
@@ -664,41 +749,54 @@ export default function App() {
   // --- Jakdo Compass Interaction (3 phases) ---
   const handleJakdoDown = useCallback((e) => {
     if (!triangle || buildPhase !== "jakdo") return;
-    if (e.button === 1) return; // middle button = pan, not jakdo
+    if (e.button === 1) return;
     const p = svgCoords(e);
     if (!p) return;
 
     if (jakdoTool === "compass") {
       if (compassPhase === "idle") {
-        // Phase 1: Pick center — snap to vertices/intersections
+        // Check max arcs
+        if (jakdoArcs.length >= MAX_ARCS) {
+          showMsg(`호는 최대 ${MAX_ARCS}개까지! 기존 호를 삭제해주세요.`, 2500);
+          playSfx("error"); return;
+        }
         let nearest = null, minD = 25;
         for (const sp of jakdoSnaps) {
           const d = dist(p, sp);
           if (d < minD) { minD = d; nearest = sp; }
         }
         if (nearest) {
+          setPressedSnap({ x: nearest.x, y: nearest.y });
           setCompassCenter({ x: nearest.x, y: nearest.y });
           setCompassPhase("radiusSet");
           setCompassDragPt(p);
           playSfx("click");
+          // Clear press after short delay
+          setTimeout(() => setPressedSnap(null), 400);
         }
       } else if (compassPhase === "radiusSet") {
-        // Phase 2: Drag to set radius → when released, radius is locked
-        // This is handled in move+up
         setCompassDragPt(p);
       } else if (compassPhase === "drawingArc") {
-        // Phase 3: Draw freehand arc at locked radius
         setArcDrawPoints([p]);
       }
     } else if (jakdoTool === "ruler") {
+      if (jakdoRulerLines.length >= MAX_RULER_LINES) {
+        showMsg(`직선은 최대 ${MAX_RULER_LINES}개까지!`, 2500);
+        playSfx("error"); return;
+      }
       let nearest = null, minD = 25;
       for (const sp of jakdoSnaps) {
         const d = dist(p, sp);
         if (d < minD) { minD = d; nearest = sp; }
       }
-      if (nearest) { setRulerStart({ x: nearest.x, y: nearest.y }); playSfx("click"); }
+      if (nearest) {
+        setPressedSnap({ x: nearest.x, y: nearest.y });
+        setRulerStart({ x: nearest.x, y: nearest.y });
+        playSfx("click");
+        setTimeout(() => setPressedSnap(null), 400);
+      }
     }
-  }, [triangle, buildPhase, jakdoTool, compassPhase, jakdoSnaps, svgCoords, playSfx]);
+  }, [triangle, buildPhase, jakdoTool, compassPhase, jakdoSnaps, jakdoArcs, jakdoRulerLines, svgCoords, playSfx, showMsg]);
 
   const handleJakdoMove = useCallback((e) => {
     if (!triangle || buildPhase !== "jakdo") return;
@@ -2117,6 +2215,20 @@ export default function App() {
           >
             로그인
           </button>
+
+          <button
+            onClick={() => setScreenRaw("signup")}
+            style={{
+              width: "100%", padding: "13px", borderRadius: 14, marginTop: 10,
+              border: `1.5px solid ${PASTEL.blush}`,
+              background: "rgba(255,248,240,0.6)",
+              color: "#8B7E74", fontSize: 13, cursor: "pointer",
+              fontFamily: "'Noto Serif KR', serif", letterSpacing: 0.5,
+              transition: "all 0.3s ease",
+            }}
+          >
+            회원가입
+          </button>
         </div>
 
         <p style={{
@@ -2125,6 +2237,115 @@ export default function App() {
         }}>
           © 2026 ashrain.out
         </p>
+      </div>
+    );
+  }
+
+  // --- Signup Screen ---
+  if (screen === "signup") {
+    const [sName, setSName] = useState("");
+    const [sId, setSId] = useState("");
+    const [sPw, setSPw] = useState("");
+    const [sPwConfirm, setSPwConfirm] = useState("");
+    const [sMsg, setSMsg] = useState("");
+    const [sDone, setSDone] = useState(false);
+
+    const doSignup = () => {
+      if (sPw !== sPwConfirm) { setSMsg("비밀번호가 일치하지 않아요."); return; }
+      if (sPw.length < 4) { setSMsg("비밀번호는 4자 이상으로 해주세요."); return; }
+      if (sId.length < 3) { setSMsg("아이디는 3자 이상으로 해주세요."); return; }
+      const result = handleSignupRequest(sName, sId, sPw);
+      if (result === "auto") {
+        setSMsg(""); setSDone(true);
+      } else if (result === "pending") {
+        setSMsg(""); setSDone(true);
+      } else {
+        setSMsg(result);
+      }
+    };
+
+    return (
+      <div style={{
+        minHeight: "100vh", display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        background: `linear-gradient(135deg, ${PASTEL.cream} 0%, ${PASTEL.blush} 30%, ${PASTEL.lilac} 60%, ${PASTEL.sky} 100%)`,
+        fontFamily: "'Noto Serif KR', serif", padding: 20,
+      }}>
+        <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Noto+Serif+KR:wght@400;700&display=swap" rel="stylesheet" />
+        <style>{`@keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+          input:focus { outline: none; border-color: ${PASTEL.coral} !important; box-shadow: 0 0 0 3px rgba(232,165,152,0.2); }`}</style>
+
+        <div style={{
+          background: "rgba(255,255,255,0.85)", backdropFilter: "blur(20px)",
+          borderRadius: 28, padding: "40px 36px", width: "min(380px, 90vw)",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.08)", border: "1px solid rgba(255,255,255,0.6)",
+          animation: "fadeIn 0.6s ease", textAlign: "center",
+        }}>
+          <h2 style={{ fontSize: 24, color: "#4A3F35", margin: "0 0 6px 0", fontFamily: "'Playfair Display', serif" }}>
+            회원가입
+          </h2>
+          <p style={{ fontSize: 12, color: "#8B7E74", margin: "0 0 28px 0", fontStyle: "italic" }}>
+            ashrain.out에 오신 것을 환영해요
+          </p>
+
+          {sDone ? (
+            <div style={{ animation: "fadeIn 0.4s ease" }}>
+              <p style={{ fontSize: 48, marginBottom: 12 }}>{autoApprove ? "🎉" : "📨"}</p>
+              <p style={{ fontSize: 15, color: "#4A3F35", fontWeight: 700, marginBottom: 8 }}>
+                {autoApprove ? "가입이 완료되었어요!" : "가입 신청이 접수되었어요!"}
+              </p>
+              <p style={{ fontSize: 12, color: "#8B7E74", marginBottom: 24, lineHeight: 1.6 }}>
+                {autoApprove 
+                  ? "바로 로그인할 수 있어요." 
+                  : "선생님이 승인하면 로그인할 수 있어요.\n조금만 기다려주세요!"}
+              </p>
+              <button onClick={() => setScreenRaw("login")} style={{
+                width: "100%", padding: "14px", borderRadius: 14, border: "none",
+                background: `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
+                color: "white", fontSize: 14, fontWeight: 700, cursor: "pointer",
+              }}>로그인으로 돌아가기</button>
+            </div>
+          ) : (
+            <>
+              <input placeholder="이름 (실명)" value={sName} onChange={e => setSName(e.target.value)}
+                style={{ width: "100%", padding: "13px 16px", borderRadius: 14, border: `1.5px solid ${PASTEL.blush}`,
+                  fontSize: 14, marginBottom: 10, background: "rgba(255,248,240,0.6)", color: "#4A3F35",
+                  fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" }} />
+              <input placeholder="아이디 (3자 이상)" value={sId} onChange={e => setSId(e.target.value)}
+                style={{ width: "100%", padding: "13px 16px", borderRadius: 14, border: `1.5px solid ${PASTEL.blush}`,
+                  fontSize: 14, marginBottom: 10, background: "rgba(255,248,240,0.6)", color: "#4A3F35",
+                  fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" }} />
+              <input type="password" placeholder="비밀번호 (4자 이상)" value={sPw} onChange={e => setSPw(e.target.value)}
+                style={{ width: "100%", padding: "13px 16px", borderRadius: 14, border: `1.5px solid ${PASTEL.blush}`,
+                  fontSize: 14, marginBottom: 10, background: "rgba(255,248,240,0.6)", color: "#4A3F35",
+                  fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" }} />
+              <input type="password" placeholder="비밀번호 확인" value={sPwConfirm} onChange={e => setSPwConfirm(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && doSignup()}
+                style={{ width: "100%", padding: "13px 16px", borderRadius: 14, border: `1.5px solid ${PASTEL.blush}`,
+                  fontSize: 14, marginBottom: sMsg ? 8 : 20, background: "rgba(255,248,240,0.6)", color: "#4A3F35",
+                  fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" }} />
+
+              {sMsg && <p style={{ fontSize: 12, color: PASTEL.coral, marginBottom: 12 }}>{sMsg}</p>}
+
+              <button onClick={doSignup} style={{
+                width: "100%", padding: "14px", borderRadius: 14, border: "none",
+                background: `linear-gradient(135deg, ${PASTEL.mint}, ${PASTEL.sage})`,
+                color: "white", fontSize: 14, fontWeight: 700, cursor: "pointer",
+                marginBottom: 10,
+              }}>가입 신청하기</button>
+
+              <button onClick={() => setScreenRaw("login")} style={{
+                width: "100%", padding: "12px", borderRadius: 14,
+                border: `1.5px solid ${PASTEL.blush}`, background: "transparent",
+                color: "#8B7E74", fontSize: 13, cursor: "pointer",
+              }}>← 로그인으로 돌아가기</button>
+
+              <p style={{ fontSize: 11, color: "#B5A99A", marginTop: 16, lineHeight: 1.5 }}>
+                가입 후 선생님의 승인이 필요합니다.
+              </p>
+            </>
+          )}
+        </div>
       </div>
     );
   }
@@ -2184,7 +2405,18 @@ export default function App() {
         <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
           <div style={{ textAlign:"center", marginBottom:40, animation:"fadeIn 0.6s ease" }}>
             <div style={{ fontSize:11, letterSpacing:6, color:theme.textSec, textTransform:"uppercase", marginBottom:8 }}>geometry atelier</div>
-            <h1 style={{ fontSize:32, color:theme.text, margin:0, fontFamily:"'Playfair Display', serif" }}>ashrain.out</h1>
+            <h1 style={{ fontSize:32, color:theme.text, margin:"0 0 12px 0", fontFamily:"'Playfair Display', serif" }}>ashrain.out</h1>
+            {/* User info + logout */}
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+              <span style={{ fontSize:12, color:theme.textSec }}>
+                {user?.name || "게스트"}{isAdmin ? " (관리자)" : ""}
+              </span>
+              <button onClick={handleLogout} style={{
+                background:"none", border:`1px solid ${theme.border}`, borderRadius:8,
+                padding:"4px 10px", fontSize:11, color:theme.textSec, cursor:"pointer",
+                fontFamily:"'Noto Serif KR', serif",
+              }}>로그아웃</button>
+            </div>
           </div>
           <MenuGrid items={menuItems} />
         </div>
@@ -2232,6 +2464,7 @@ export default function App() {
       { icon: "💬", label: "대사 스크립트", desc: "말투별 대사 수정", action: () => setScreen("admin-scripts") },
       { icon: "🔊", label: "효과음 관리", desc: "모드별 효과음 설정", disabled: true },
       { icon: "👤", label: "학생 관리", desc: "계정 · 비밀번호", action: () => setScreen("admin-students") },
+      { icon: signupRequests.length > 0 ? "🔔" : "📋", label: "가입 신청", desc: signupRequests.length > 0 ? `${signupRequests.length}건 대기 중` : "신청 관리 · 자동승인", action: () => setScreen("admin-signups") },
       { icon: "📊", label: "통계/랭킹", desc: "진행 현황 확인", disabled: true },
     ];
     return (
@@ -2355,6 +2588,95 @@ export default function App() {
               등록된 학생이 없어요. 위에서 추가해주세요!
             </p>
           )}
+          <div style={{ height: 60 }} />
+        </div>
+      </ScreenWrap>
+    );
+  }
+
+  // --- Admin Signup Management ---
+  if (screen === "admin-signups") {
+    return (
+      <ScreenWrap title="가입 신청 관리" back="관리자" backTo="admin">
+        <div style={{ flex:1, overflowY:"auto", padding:"16px", WebkitOverflowScrolling:"touch" }}>
+          {/* Auto-approve toggle */}
+          <div style={{
+            background: theme.card, borderRadius: 16, border: `1.5px solid ${autoApprove ? PASTEL.mint : theme.border}`,
+            padding: 16, marginBottom: 20, animation: "fadeIn 0.3s ease",
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+          }}>
+            <div>
+              <span style={{ fontSize: 14, fontWeight: 700, color: theme.text, fontFamily: "'Noto Serif KR', serif" }}>
+                자동 승인
+              </span>
+              <p style={{ fontSize: 11, color: theme.textSec, margin: "4px 0 0 0" }}>
+                {autoApprove ? "신청 즉시 가입이 완료됩니다" : "관리자가 직접 승인해야 합니다"}
+              </p>
+            </div>
+            <button onClick={() => setAutoApprove(!autoApprove)} style={{
+              width: 52, height: 28, borderRadius: 14, border: "none",
+              background: autoApprove ? PASTEL.mint : theme.lineLight,
+              cursor: "pointer", position: "relative", transition: "background 0.3s",
+            }}>
+              <div style={{
+                width: 22, height: 22, borderRadius: 11, background: "white",
+                position: "absolute", top: 3,
+                left: autoApprove ? 27 : 3, transition: "left 0.3s",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+              }} />
+            </button>
+          </div>
+
+          {/* Pending requests */}
+          <label style={{ fontSize: 12, color: theme.textSec, marginBottom: 8, display: "block" }}>
+            대기 중인 신청 ({signupRequests.length}건)
+          </label>
+          {signupRequests.length === 0 && (
+            <div style={{
+              textAlign: "center", padding: "40px 20px", color: theme.textSec,
+              fontSize: 13, animation: "fadeIn 0.4s ease",
+            }}>
+              대기 중인 가입 신청이 없어요.
+            </div>
+          )}
+          {signupRequests.map((req, i) => (
+            <div key={req.id} style={{
+              background: theme.card, borderRadius: 14, border: `1px solid ${theme.border}`,
+              padding: 14, marginBottom: 10, animation: `fadeIn ${0.3 + i * 0.05}s ease`,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>{req.name}</span>
+                  <span style={{ fontSize: 12, color: theme.textSec, marginLeft: 8 }}>@{req.id}</span>
+                </div>
+                <span style={{ fontSize: 10, color: theme.textSec }}>
+                  {new Date(req.date).toLocaleDateString("ko-KR")}
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => approveSignup(req.id)} style={{
+                  flex: 1, padding: "10px", borderRadius: 10, border: "none",
+                  background: PASTEL.mint, color: "white", fontSize: 13, fontWeight: 700,
+                  cursor: "pointer", fontFamily: "'Noto Serif KR', serif",
+                }}>승인</button>
+                <button onClick={() => rejectSignup(req.id)} style={{
+                  padding: "10px 16px", borderRadius: 10,
+                  border: `1px solid ${PASTEL.coral}`, background: "transparent",
+                  color: PASTEL.coral, fontSize: 13, cursor: "pointer",
+                  fontFamily: "'Noto Serif KR', serif",
+                }}>거절</button>
+              </div>
+            </div>
+          ))}
+
+          {/* Approved students count */}
+          <div style={{
+            marginTop: 20, padding: 14, borderRadius: 14,
+            background: theme.bg, border: `1px solid ${theme.border}`,
+            textAlign: "center", fontSize: 12, color: theme.textSec,
+          }}>
+            현재 등록된 학생: {students.length}명
+          </div>
           <div style={{ height: 60 }} />
         </div>
       </ScreenWrap>
@@ -2689,7 +3011,7 @@ export default function App() {
               background: theme.svgBg, borderRadius: canvasCollapsed ? 12 : 20,
               border: `1.5px solid ${showProperties && selectedProp ? getProperties().find(p=>p.id===selectedProp)?.color || theme.border : theme.border}`,
               boxShadow: `0 4px 20px rgba(0,0,0,${themeKey === "dark" ? "0.2" : "0.05"})`,
-              cursor: buildPhase === "jedo" ? "crosshair" : buildPhase === "jakdo" ? (jakdoTool === "compass" ? "crosshair" : "default") : "default",
+              cursor: buildPhase === "jedo" ? "crosshair" : buildPhase === "jakdo" ? getJakdoCursor() : inputMode === "B" && buildPhase === "input" && !triangle ? "crosshair" : "default",
               transition: "height 0.4s ease, border-color 0.3s ease, border-radius 0.3s ease",
               width: "100%", maxWidth: svgSize.w,
               touchAction: "none",
@@ -2834,12 +3156,20 @@ export default function App() {
               </FixedG>
             )}
             {/* Snap points glow in jakdo mode */}
-            {buildPhase === "jakdo" && compassPhase === "idle" && jakdoSnaps.map((sp, i) => (
-              <FixedG key={`snap${i}`} x={sp.x} y={sp.y}>
-                <circle cx={sp.x} cy={sp.y} r={8}
-                  fill="transparent" stroke={PASTEL.coral} strokeWidth={1} strokeDasharray="2 2" opacity={0.4} />
-              </FixedG>
-            ))}
+            {buildPhase === "jakdo" && (compassPhase === "idle" || jakdoTool === "ruler") && jakdoSnaps.map((sp, i) => {
+              const isPressed = pressedSnap && Math.abs(sp.x - pressedSnap.x) < 2 && Math.abs(sp.y - pressedSnap.y) < 2;
+              return (
+                <FixedG key={`snap${i}`} x={sp.x} y={sp.y}>
+                  <circle cx={sp.x} cy={sp.y} r={isPressed ? 12 : 8}
+                    fill={isPressed ? `${PASTEL.coral}40` : "transparent"}
+                    stroke={isPressed ? PASTEL.coral : PASTEL.coral}
+                    strokeWidth={isPressed ? 2.5 : 1}
+                    strokeDasharray={isPressed ? "none" : "2 2"}
+                    opacity={isPressed ? 1 : 0.4}
+                    style={{ transition: "all 0.15s ease" }} />
+                </FixedG>
+              );
+            })}
 
             {/* Fail animation */}
             {failAnim && (
@@ -3383,10 +3713,10 @@ export default function App() {
               </div>
             )}
 
-            {/* Status + guide */}
+            {/* Status + Work list */}
             <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap", marginBottom: 6 }}>
               <span style={{ fontSize: 10, color: theme.textSec, padding: "3px 8px", background: theme.bg, borderRadius: 6 }}>
-                호 {jakdoArcs.length} · 선 {jakdoRulerLines.length}
+                호 {jakdoArcs.length}/{MAX_ARCS} · 선 {jakdoRulerLines.length}/{MAX_RULER_LINES}
               </span>
               {crossedEdges > 0 && compassPhase === "radiusSet" && (
                 <span style={{ fontSize: 10, color: PASTEL.mint, padding: "3px 8px", background: `${PASTEL.mint}15`, borderRadius: 6, fontWeight: 700 }}>
@@ -3394,6 +3724,30 @@ export default function App() {
                 </span>
               )}
             </div>
+
+            {/* Work history (deletable) */}
+            {(jakdoArcs.length > 0 || jakdoRulerLines.length > 0) && (
+              <div style={{ maxHeight: 80, overflowY: "auto", marginBottom: 8, borderRadius: 8, background: theme.bg, padding: "6px" }}>
+                {jakdoArcs.map((arc, i) => (
+                  <div key={`a${i}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 6px", fontSize: 10, color: PASTEL.lavender }}>
+                    <span>⭕ 호 #{i+1}</span>
+                    <button onClick={() => deleteArc(i)} style={{
+                      background: "none", border: "none", color: PASTEL.coral, fontSize: 10, cursor: "pointer", padding: "2px 6px",
+                    }}>✕</button>
+                  </div>
+                ))}
+                {jakdoRulerLines.map((_, i) => (
+                  <div key={`l${i}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 6px", fontSize: 10, color: PASTEL.sky }}>
+                    <span>📏 선 #{i+1}</span>
+                    <button onClick={() => deleteRulerLine(i)} style={{
+                      background: "none", border: "none", color: PASTEL.coral, fontSize: 10, cursor: "pointer", padding: "2px 6px",
+                    }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Guide text */}
             <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center", margin: 0 }}>
               {jakdoTool === "compass" && compassStep === 0 && "꼭지점이나 교점을 터치하세요"}
               {jakdoTool === "compass" && compassStep === 1 && "드래그해서 반지름을 정해주세요"}
