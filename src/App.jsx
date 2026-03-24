@@ -762,23 +762,10 @@ function AppInner() {
     return "crosshair";
   }, [buildPhase, jakdoTool, compassPhase, compassCursors]);
 
-  // Delete arc/line by index
-  const deleteArc = useCallback((idx) => {
-    pushUndo();
-    setJakdoArcs(prev => prev.filter((_, i) => i !== idx));
-    playSfx("pop");
-  }, [pushUndo, playSfx]);
-
-  const deleteRulerLine = useCallback((idx) => {
-    pushUndo();
-    setJakdoRulerLines(prev => prev.filter((_, i) => i !== idx));
-    playSfx("pop");
-  }, [pushUndo, playSfx]);
-
   // Compass sub-step (for 3-button UI)
   const compassStep = compassPhase === "idle" ? 0 : compassPhase === "radiusSet" ? 1 : 2;
 
-  // Undo history
+  // Undo history — must be before deleteArc/deleteRulerLine
   const [undoStack, setUndoStack] = useState([]);
   const pushUndo = useCallback(() => {
     setUndoStack(prev => [...prev.slice(-20), {
@@ -796,6 +783,19 @@ function AppInner() {
     setJakdoArcs(last.jakdoArcs); setJakdoRulerLines(last.jakdoRulerLines);
     playSfx("pop");
   }, [undoStack, playSfx]);
+
+  // Delete arc/line by index
+  const deleteArc = useCallback((idx) => {
+    pushUndo();
+    setJakdoArcs(prev => prev.filter((_, i) => i !== idx));
+    playSfx("pop");
+  }, [pushUndo, playSfx]);
+
+  const deleteRulerLine = useCallback((idx) => {
+    pushUndo();
+    setJakdoRulerLines(prev => prev.filter((_, i) => i !== idx));
+    playSfx("pop");
+  }, [pushUndo, playSfx]);
 
   // Auto-save work in progress
   useEffect(() => {
