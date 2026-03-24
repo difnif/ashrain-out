@@ -528,9 +528,16 @@ export default function App() {
     return () => { window.removeEventListener("resize", check); window.removeEventListener("orientationchange", check); };
   }, []);
 
-  // Student data (admin managed)
-  const [students, setStudents] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("ar_students")) || []; } catch { return []; }
+  // --- User & Role System ---
+  // Roles: admin(관리자), assistant(조교), student(수강생), external(외부생)
+  const ROLES = { admin: "관리자", assistant: "조교", student: "수강생", external: "외부생" };
+  const [members, setMembers] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("ar_members"));
+      if (saved && saved.length > 0) return saved;
+      // Default admin account
+      return [{ id: "admin", name: "관리자", nickname: "선생님", pw: "admin1234", role: "admin" }];
+    } catch { return [{ id: "admin", name: "관리자", nickname: "선생님", pw: "admin1234", role: "admin" }]; }
   });
   const [signupRequests, setSignupRequests] = useState(() => {
     try { return JSON.parse(localStorage.getItem("ar_signups")) || []; } catch { return []; }
@@ -540,30 +547,33 @@ export default function App() {
   const [loginPw, setLoginPw] = useState("");
   const [loginError, setLoginError] = useState("");
 
-  // Persist students + signups
-  useEffect(() => { localStorage.setItem("ar_students", JSON.stringify(students)); }, [students]);
+  // Persist
+  useEffect(() => { localStorage.setItem("ar_members", JSON.stringify(members)); }, [members]);
   useEffect(() => { localStorage.setItem("ar_signups", JSON.stringify(signupRequests)); }, [signupRequests]);
   useEffect(() => { localStorage.setItem("ar_autoapprove", autoApprove ? "true" : "false"); }, [autoApprove]);
 
+  // Permission helpers
+  const userRole = user?.role || "external";
+  const canAdmin = userRole === "admin" || userRole === "assistant";
+  const canArchive = userRole !== "external";
+  const canEditMember = useCallback((targetRole) => {
+    if (userRole === "admin") return true;
+    if (userRole === "assistant") return targetRole === "student" || targetRole === "external";
+    return false;
+  }, [userRole]);
+
   const handleLogin = useCallback(() => {
-    if (loginId === "admin" && loginPw === "admin1234") {
-      setUser({ name: "관리자", role: "admin" });
-      setIsAdmin(true);
-      setScreen("menu");
-      setLoginError("");
-      return;
-    }
-    const found = students.find(s => s.id === loginId && s.pw === loginPw);
+    const found = members.find(s => s.id === loginId && s.pw === loginPw);
     if (found) {
-      setUser({ name: found.name, nickname: found.nickname, role: "student", id: found.id });
-      setIsAdmin(false);
+      setUser({ name: found.name, nickname: found.nickname, role: found.role, id: found.id });
+      setIsAdmin(found.role === "admin" || found.role === "assistant");
       setScreen("menu");
       setLoginError("");
     } else {
       setLoginError("아이디 또는 비밀번호가 올바르지 않아요.");
       playSfx("error");
     }
-  }, [loginId, loginPw, students, playSfx, setScreen]);
+  }, [loginId, loginPw, members, playSfx, setScreen]);
 
   const handleLogout = useCallback(() => {
     setUser(null);
@@ -577,27 +587,27 @@ export default function App() {
     playSfx("click");
   }, [playSfx]);
 
-  const handleSignupRequest = useCallback((name, id, pw) => {
+  const handleSignupRequest = useCallback((name, id, pw, requestedRole = "student") => {
     if (!name || !id || !pw) return "모든 항목을 입력해주세요.";
-    if (students.find(s => s.id === id)) return "이미 존재하는 아이디입니다.";
+    if (members.find(s => s.id === id)) return "이미 존재하는 아이디입니다.";
     if (signupRequests.find(s => s.id === id)) return "이미 신청된 아이디입니다.";
-    if (id === "admin") return "사용할 수 없는 아이디입니다.";
+    if (id.length < 3) return "아이디는 3자 이상이어야 합니다.";
 
     if (autoApprove) {
-      setStudents(prev => [...prev, { id, name, nickname: "", pw }]);
+      setMembers(prev => [...prev, { id, name, nickname: "", pw, role: requestedRole }]);
       playSfx("success");
       return "auto";
     } else {
-      setSignupRequests(prev => [...prev, { id, name, pw, date: new Date().toISOString() }]);
+      setSignupRequests(prev => [...prev, { id, name, pw, role: requestedRole, date: new Date().toISOString() }]);
       playSfx("success");
       return "pending";
     }
-  }, [students, signupRequests, autoApprove, playSfx]);
+  }, [members, signupRequests, autoApprove, playSfx]);
 
   const approveSignup = useCallback((reqId) => {
     const req = signupRequests.find(r => r.id === reqId);
     if (!req) return;
-    setStudents(prev => [...prev, { id: req.id, name: req.name, nickname: "", pw: req.pw }]);
+    setMembers(prev => [...prev, { id: req.id, name: req.name, nickname: "", pw: req.pw, role: req.role || "student" }]);
     setSignupRequests(prev => prev.filter(r => r.id !== reqId));
     playSfx("success");
   }, [signupRequests, playSfx]);
@@ -606,6 +616,19 @@ export default function App() {
     setSignupRequests(prev => prev.filter(r => r.id !== reqId));
     playSfx("pop");
   }, [playSfx]);
+
+  // Update member (admin/assistant can edit based on permissions)
+  const updateMember = useCallback((targetId, updates) => {
+    setMembers(prev => prev.map(m => m.id === targetId ? { ...m, ...updates } : m));
+  }, []);
+
+  const deleteMember = useCallback((targetId) => {
+    setMembers(prev => prev.filter(m => m.id !== targetId));
+    playSfx("pop");
+  }, [playSfx]);
+
+  // Backward compat: students = non-admin members
+  const students = useMemo(() => members.filter(m => m.role !== "admin"), [members]);
 
   // Jakdo (작도) state
   const [jakdoTool, setJakdoTool] = useState(null); // "compass" | "ruler"
@@ -2394,11 +2417,11 @@ export default function App() {
   if (screen === "menu") {
     const menuItems = [
       { icon: "📖", label: "공부하기", desc: "기하학 개념 학습", action: () => setScreen("study") },
-      { icon: "◎", label: "아카이브", desc: "나만의 작품 갤러리", disabled: true },
-      { icon: "♡", label: "피드백", desc: "선생님과 소통하세요", disabled: true },
+      { icon: "◎", label: "아카이브", desc: "나만의 작품 갤러리", disabled: !canArchive, action: canArchive ? () => {} : undefined },
+      { icon: "🏛️", label: "광장", desc: "실시간 채팅 · 순위", action: () => setScreen("plaza") },
       { icon: "✦", label: "설정", desc: "테마, 알림, 말투 모드", action: () => setScreen("settings") },
     ];
-    if (isAdmin) menuItems.push({ icon: "🔧", label: "관리자", desc: "대사·효과음 관리", action: () => setScreen("admin") });
+    if (canAdmin) menuItems.push({ icon: "🔧", label: "관리자", desc: "회원·대사·효과음 관리", action: () => setScreen("admin") });
 
     return (
       <ScreenWrap>
@@ -2409,7 +2432,10 @@ export default function App() {
             {/* User info + logout */}
             <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
               <span style={{ fontSize:12, color:theme.textSec }}>
-                {user?.name || "게스트"}{isAdmin ? " (관리자)" : ""}
+                {user?.nickname || user?.name || "게스트"}
+              </span>
+              <span style={{ fontSize:9, padding:"2px 8px", borderRadius:6, background:`${PASTEL.coral}15`, color:PASTEL.coral, fontWeight:700 }}>
+                {ROLES[userRole]}
               </span>
               <button onClick={handleLogout} style={{
                 background:"none", border:`1px solid ${theme.border}`, borderRadius:8,
@@ -2438,11 +2464,121 @@ export default function App() {
     );
   }
 
+  // --- Plaza (광장) Screen ---
+  if (screen === "plaza") {
+    const [chatMsg, setChatMsg] = useState("");
+    const [chatLog, setChatLog] = useState(() => {
+      try { return JSON.parse(localStorage.getItem("ar_chat")) || []; } catch { return []; }
+    });
+    const [chatNotif, setChatNotif] = useState(true);
+    const chatEndRef = useRef(null);
+
+    const sendChat = () => {
+      if (!chatMsg.trim()) return;
+      const newMsg = { user: user?.nickname || user?.name || "익명", role: userRole, text: chatMsg.trim(), time: Date.now() };
+      const updated = [...chatLog, newMsg].slice(-100); // keep last 100
+      setChatLog(updated);
+      localStorage.setItem("ar_chat", JSON.stringify(updated));
+      setChatMsg("");
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    };
+
+    const roleColors = { admin: PASTEL.coral, assistant: PASTEL.lavender, student: PASTEL.sky, external: PASTEL.sage };
+
+    return (
+      <ScreenWrap title="광장" back="메뉴" backTo="menu">
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {/* Chat area */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", WebkitOverflowScrolling: "touch" }}>
+            {chatLog.length === 0 && (
+              <p style={{ textAlign: "center", color: theme.textSec, fontSize: 13, marginTop: 40 }}>
+                아직 대화가 없어요. 첫 메시지를 보내보세요!
+              </p>
+            )}
+            {chatLog.map((msg, i) => {
+              const isMe = msg.user === (user?.nickname || user?.name);
+              return (
+                <div key={i} style={{
+                  display: "flex", flexDirection: isMe ? "row-reverse" : "row",
+                  marginBottom: 8, animation: "fadeIn 0.3s ease",
+                }}>
+                  <div style={{
+                    maxWidth: "75%", padding: "10px 14px", borderRadius: 14,
+                    background: isMe ? `${PASTEL.coral}20` : theme.card,
+                    border: `1px solid ${isMe ? PASTEL.coral : theme.border}`,
+                  }}>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
+                      <span style={{
+                        fontSize: 9, padding: "1px 6px", borderRadius: 4,
+                        background: `${roleColors[msg.role] || theme.textSec}20`,
+                        color: roleColors[msg.role] || theme.textSec,
+                      }}>{ROLES[msg.role] || ""}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: theme.text }}>{msg.user}</span>
+                      <span style={{ fontSize: 9, color: theme.textSec }}>
+                        {new Date(msg.time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: 13, color: theme.text, margin: 0, lineHeight: 1.5, fontFamily: "'Noto Serif KR', serif" }}>
+                      {msg.text}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Chat input */}
+          <div style={{
+            display: "flex", gap: 8, padding: "12px 16px",
+            borderTop: `1px solid ${theme.border}`, background: theme.card,
+          }}>
+            <button onClick={() => setChatNotif(!chatNotif)} style={{
+              width: 36, height: 36, borderRadius: 10, border: `1px solid ${theme.border}`,
+              background: chatNotif ? `${PASTEL.coral}15` : theme.bg,
+              fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+            }}>{chatNotif ? "🔔" : "🔕"}</button>
+            <input value={chatMsg} onChange={e => setChatMsg(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && sendChat()}
+              placeholder="메시지를 입력하세요..."
+              style={{
+                flex: 1, padding: "10px 14px", borderRadius: 12,
+                border: `1.5px solid ${theme.border}`, background: theme.bg,
+                color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif",
+              }} />
+            <button onClick={sendChat} style={{
+              padding: "10px 18px", borderRadius: 12, border: "none",
+              background: `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
+              color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer",
+            }}>전송</button>
+          </div>
+        </div>
+      </ScreenWrap>
+    );
+  }
+
   // --- Polygons & Circles Screen (다각형과 원) ---
   if (screen === "polygons") {
+    const hasSavedWork = (() => { try { return !!JSON.parse(sessionStorage.getItem("ar_work"))?.triangle; } catch { return false; } })();
+
+    const enterDraw = (loadSaved) => {
+      if (loadSaved) {
+        // Work will auto-restore from sessionStorage via the existing useEffect
+        setScreen("draw");
+      } else {
+        sessionStorage.removeItem("ar_work");
+        resetAll();
+        setScreen("draw");
+        setBuildPhase("input");
+        setTriMode("sss");
+      }
+    };
+
+    const [showLoadDialog, setShowLoadDialog] = useState(false);
+
     const topics = [
-      { icon: "△", label: "삼각형 작도", desc: "SSS · SAS · ASA", compact: true,
-        action: () => { setScreen("draw"); setBuildPhase("input"); setTriMode("sss"); } },
+      { icon: "△", label: "삼각형 작도", desc: hasSavedWork ? "이전 작업 있음 ✦" : "SSS · SAS · ASA", compact: true,
+        action: () => { if (hasSavedWork) setShowLoadDialog(true); else enterDraw(false); } },
       { icon: "⊙⊙", label: "외접원 옆에 내접원", desc: "두 원의 관계", compact: true, disabled: true },
       { icon: "O · I", label: "외심 옆에 내심", desc: "두 중심의 비교", compact: true, disabled: true },
       { icon: "▲", label: "이등변삼각형", desc: "성질과 활용", compact: true, disabled: true },
@@ -2450,9 +2586,46 @@ export default function App() {
     ];
     return (
       <ScreenWrap title="다각형과 원" back="공부하기" backTo="study">
-        <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16 }}>
+        <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16, position:"relative" }}>
           <p style={{ fontSize:12, color:theme.textSec, textAlign:"center", margin:"20px 0 0 0" }}>중1-2 · 중2-2 기하 단원</p>
           <MenuGrid items={topics} cols={2} />
+
+          {/* Saved work dialog */}
+          {showLoadDialog && (
+            <div style={{
+              position:"fixed", top:0, left:0, right:0, bottom:0,
+              background:"rgba(0,0,0,0.4)", display:"flex", alignItems:"center", justifyContent:"center",
+              zIndex:1000, animation:"fadeIn 0.2s ease",
+            }} onClick={() => setShowLoadDialog(false)}>
+              <div onClick={e => e.stopPropagation()} style={{
+                background:theme.card, borderRadius:24, padding:"32px 28px",
+                width:"min(340px, 85vw)", boxShadow:"0 20px 60px rgba(0,0,0,0.2)",
+                border:`1px solid ${theme.border}`, textAlign:"center",
+              }}>
+                <p style={{ fontSize:18, marginBottom:4 }}>📂</p>
+                <p style={{ fontSize:15, fontWeight:700, color:theme.text, marginBottom:8, fontFamily:"'Playfair Display', serif" }}>
+                  이전 작업이 있어요
+                </p>
+                <p style={{ fontSize:12, color:theme.textSec, marginBottom:20, lineHeight:1.5, fontFamily:"'Noto Serif KR', serif" }}>
+                  저장된 작업을 이어서 하시겠어요?
+                </p>
+                <div style={{ display:"flex", gap:10 }}>
+                  <button onClick={() => { setShowLoadDialog(false); enterDraw(true); }} style={{
+                    flex:1, padding:"14px", borderRadius:14, border:"none",
+                    background:`linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
+                    color:"white", fontSize:14, fontWeight:700, cursor:"pointer",
+                    fontFamily:"'Noto Serif KR', serif",
+                  }}>이어서 하기</button>
+                  <button onClick={() => { setShowLoadDialog(false); enterDraw(false); }} style={{
+                    flex:1, padding:"14px", borderRadius:14,
+                    border:`1.5px solid ${theme.border}`, background:theme.card,
+                    color:theme.textSec, fontSize:13, cursor:"pointer",
+                    fontFamily:"'Noto Serif KR', serif",
+                  }}>새로 시작</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </ScreenWrap>
     );
@@ -2463,7 +2636,7 @@ export default function App() {
     const adminItems = [
       { icon: "💬", label: "대사 스크립트", desc: "말투별 대사 수정", action: () => setScreen("admin-scripts") },
       { icon: "🔊", label: "효과음 관리", desc: "모드별 효과음 설정", disabled: true },
-      { icon: "👤", label: "학생 관리", desc: "계정 · 비밀번호", action: () => setScreen("admin-students") },
+      { icon: "👤", label: "회원 관리", desc: "권한 · 계정 · 비밀번호", action: () => setScreen("admin-students") },
       { icon: signupRequests.length > 0 ? "🔔" : "📋", label: "가입 신청", desc: signupRequests.length > 0 ? `${signupRequests.length}건 대기 중` : "신청 관리 · 자동승인", action: () => setScreen("admin-signups") },
       { icon: "📊", label: "통계/랭킹", desc: "진행 현황 확인", disabled: true },
     ];
@@ -2476,118 +2649,138 @@ export default function App() {
     );
   }
 
-  // --- Admin Student Management ---
+  // --- Admin Member Management ---
   if (screen === "admin-students") {
-    const [editingIdx, setEditingIdx] = useState(null);
-    const [newStudent, setNewStudent] = useState({ id: "", name: "", pw: "1234" });
+    const [editingId, setEditingId] = useState(null);
+    const [newMem, setNewMem] = useState({ id: "", name: "", pw: "1234", role: "student" });
+    const [filterRole, setFilterRole] = useState("all");
 
-    const addStudent = () => {
-      if (!newStudent.id || !newStudent.name) return;
-      if (students.find(s => s.id === newStudent.id)) {
-        showMsg("이미 존재하는 아이디입니다!", 2000); return;
-      }
-      setStudents(prev => [...prev, { ...newStudent, nickname: "" }]);
-      setNewStudent({ id: "", name: "", pw: "1234" });
+    const roleColors = { admin: PASTEL.coral, assistant: PASTEL.lavender, student: PASTEL.sky, external: PASTEL.sage };
+    const inputStyle = { flex: "1 1 70px", padding: "9px", borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 12, fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" };
+
+    const addMember = () => {
+      if (!newMem.id || !newMem.name) return;
+      if (members.find(m => m.id === newMem.id)) { showMsg("이미 존재하는 아이디!", 2000); return; }
+      setMembers(prev => [...prev, { ...newMem, nickname: "" }]);
+      setNewMem({ id: "", name: "", pw: "1234", role: "student" });
       playSfx("success");
     };
 
-    const deleteStudent = (idx) => {
-      setStudents(prev => prev.filter((_, i) => i !== idx));
-      playSfx("pop");
-    };
-
-    const updateStudent = (idx, field, value) => {
-      setStudents(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
-    };
+    const filtered = filterRole === "all" ? members : members.filter(m => m.role === filterRole);
+    const isSelf = (m) => m.id === user?.id;
 
     return (
-      <ScreenWrap title="학생 관리" back="관리자" backTo="admin">
+      <ScreenWrap title="회원 관리" back="관리자" backTo="admin">
         <div style={{ flex:1, overflowY:"auto", padding:"16px", WebkitOverflowScrolling:"touch" }}>
-          {/* Add new student */}
-          <div style={{
-            background: theme.card, borderRadius: 16, border: `1.5px solid ${PASTEL.mint}`,
-            padding: 16, marginBottom: 20, animation: "fadeIn 0.4s ease",
-          }}>
-            <label style={{ fontSize: 13, fontWeight: 700, color: PASTEL.mint, display: "block", marginBottom: 12 }}>
-              + 학생 추가
-            </label>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <input placeholder="이름" value={newStudent.name}
-                onChange={e => setNewStudent(p => ({ ...p, name: e.target.value }))}
-                style={{ flex: "1 1 80px", padding: "10px", borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif" }} />
-              <input placeholder="아이디" value={newStudent.id}
-                onChange={e => setNewStudent(p => ({ ...p, id: e.target.value }))}
-                style={{ flex: "1 1 80px", padding: "10px", borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif" }} />
-              <input placeholder="비밀번호" value={newStudent.pw}
-                onChange={e => setNewStudent(p => ({ ...p, pw: e.target.value }))}
-                style={{ flex: "1 1 80px", padding: "10px", borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif" }} />
-              <button onClick={addStudent} style={{
-                padding: "10px 20px", borderRadius: 10, border: "none",
-                background: PASTEL.mint, color: "white", fontSize: 13, cursor: "pointer",
-                fontWeight: 700, fontFamily: "'Noto Serif KR', serif",
-              }}>추가</button>
+          {/* Add new member */}
+          {userRole === "admin" && (
+            <div style={{ background: theme.card, borderRadius: 16, border: `1.5px solid ${PASTEL.mint}`, padding: 14, marginBottom: 16, animation: "fadeIn 0.3s ease" }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: PASTEL.mint, display: "block", marginBottom: 10 }}>+ 회원 추가</label>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <input placeholder="이름" value={newMem.name} onChange={e => setNewMem(p => ({ ...p, name: e.target.value }))} style={inputStyle} />
+                <input placeholder="아이디" value={newMem.id} onChange={e => setNewMem(p => ({ ...p, id: e.target.value }))} style={inputStyle} />
+                <input placeholder="비밀번호" value={newMem.pw} onChange={e => setNewMem(p => ({ ...p, pw: e.target.value }))} style={inputStyle} />
+                <select value={newMem.role} onChange={e => setNewMem(p => ({ ...p, role: e.target.value }))}
+                  style={{ ...inputStyle, flex: "0 0 80px" }}>
+                  <option value="student">수강생</option>
+                  <option value="external">외부생</option>
+                  <option value="assistant">조교</option>
+                </select>
+                <button onClick={addMember} style={{ padding: "9px 16px", borderRadius: 10, border: "none", background: PASTEL.mint, color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>추가</button>
+              </div>
             </div>
+          )}
+
+          {/* Role filter tabs */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+            {[["all", "전체", null], ["admin", "관리자", PASTEL.coral], ["assistant", "조교", PASTEL.lavender], ["student", "수강생", PASTEL.sky], ["external", "외부생", PASTEL.sage]].map(([key, label, color]) => (
+              <button key={key} onClick={() => setFilterRole(key)} style={{
+                padding: "6px 12px", borderRadius: 8, fontSize: 11,
+                border: `1.5px solid ${filterRole === key ? (color || theme.text) : theme.border}`,
+                background: filterRole === key ? `${color || theme.text}15` : theme.card,
+                color: filterRole === key ? (color || theme.text) : theme.textSec,
+                cursor: "pointer", fontFamily: "'Noto Serif KR', serif",
+                fontWeight: filterRole === key ? 700 : 400,
+              }}>
+                {label} ({key === "all" ? members.length : members.filter(m => m.role === key).length})
+              </button>
+            ))}
           </div>
 
-          {/* Student list */}
-          <label style={{ fontSize: 12, color: theme.textSec, marginBottom: 8, display: "block" }}>
-            등록된 학생 ({students.length}명)
-          </label>
-          {students.map((s, i) => (
-            <div key={i} style={{
-              background: theme.card, borderRadius: 14, border: `1px solid ${theme.border}`,
-              padding: 14, marginBottom: 10, animation: `fadeIn ${0.3 + i * 0.05}s ease`,
-            }}>
-              {editingIdx === i ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: 10, color: theme.textSec }}>이름</label>
-                      <input value={s.name} onChange={e => updateStudent(i, "name", e.target.value)}
-                        style={{ width: "100%", padding: "8px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" }} />
+          {/* Member list */}
+          {filtered.map((m) => {
+            const isEditing = editingId === m.id;
+            const editable = isSelf(m) || canEditMember(m.role);
+            const rc = roleColors[m.role] || theme.textSec;
+            return (
+              <div key={m.id} style={{
+                background: theme.card, borderRadius: 14, border: `1px solid ${isEditing ? rc : theme.border}`,
+                padding: 12, marginBottom: 8, transition: "border-color 0.2s",
+              }}>
+                {isEditing ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: 10, color: theme.textSec }}>이름</label>
+                        <input value={m.name} onChange={e => updateMember(m.id, { name: e.target.value })} style={{ ...inputStyle, width: "100%" }} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: 10, color: theme.textSec }}>아이디</label>
+                        <input value={m.id} disabled style={{ ...inputStyle, width: "100%", opacity: 0.5 }} />
+                      </div>
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: 10, color: theme.textSec }}>아이디</label>
-                      <input value={s.id} onChange={e => updateStudent(i, "id", e.target.value)}
-                        style={{ width: "100%", padding: "8px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" }} />
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: 10, color: theme.textSec }}>닉네임</label>
+                        <input value={m.nickname || ""} onChange={e => updateMember(m.id, { nickname: e.target.value })} style={{ ...inputStyle, width: "100%" }} placeholder="미설정" />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: 10, color: theme.textSec }}>비밀번호</label>
+                        <input value={m.pw} onChange={e => updateMember(m.id, { pw: e.target.value })} style={{ ...inputStyle, width: "100%" }} />
+                      </div>
                     </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: 10, color: theme.textSec }}>비밀번호</label>
-                      <input value={s.pw} onChange={e => updateStudent(i, "pw", e.target.value)}
-                        style={{ width: "100%", padding: "8px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" }} />
-                    </div>
-                    <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
-                      <button onClick={() => setEditingIdx(null)} style={{
-                        padding: "8px 14px", borderRadius: 8, border: "none",
-                        background: PASTEL.coral, color: "white", fontSize: 12, cursor: "pointer",
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      {/* Role change — only admin can change roles, not self-demote */}
+                      {userRole === "admin" && !isSelf(m) && (
+                        <select value={m.role} onChange={e => updateMember(m.id, { role: e.target.value })}
+                          style={{ ...inputStyle, flex: "0 0 90px" }}>
+                          <option value="admin">관리자</option>
+                          <option value="assistant">조교</option>
+                          <option value="student">수강생</option>
+                          <option value="external">외부생</option>
+                        </select>
+                      )}
+                      {isSelf(m) && <span style={{ fontSize: 10, color: PASTEL.coral }}>내 계정</span>}
+                      <div style={{ flex: 1 }} />
+                      <button onClick={() => setEditingId(null)} style={{
+                        padding: "7px 14px", borderRadius: 8, border: "none", background: rc, color: "white", fontSize: 11, cursor: "pointer",
                       }}>저장</button>
-                      <button onClick={() => deleteStudent(i)} style={{
-                        padding: "8px 14px", borderRadius: 8, border: `1px solid ${PASTEL.coral}`,
-                        background: "transparent", color: PASTEL.coral, fontSize: 12, cursor: "pointer",
-                      }}>삭제</button>
+                      {!isSelf(m) && userRole === "admin" && (
+                        <button onClick={() => { deleteMember(m.id); setEditingId(null); }} style={{
+                          padding: "7px 14px", borderRadius: 8, border: `1px solid ${PASTEL.coral}`, background: "transparent", color: PASTEL.coral, fontSize: 11, cursor: "pointer",
+                        }}>삭제</button>
+                      )}
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
-                  onClick={() => setEditingIdx(i)}>
-                  <div>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>{s.name}</span>
-                    <span style={{ fontSize: 12, color: theme.textSec, marginLeft: 8 }}>@{s.id}</span>
-                    {s.nickname && <span style={{ fontSize: 11, color: PASTEL.lavender, marginLeft: 6 }}>"{s.nickname}"</span>}
+                ) : (
+                  <div onClick={() => editable && setEditingId(m.id)}
+                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: editable ? "pointer" : "default" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: `${rc}20`, color: rc, fontWeight: 700 }}>
+                        {ROLES[m.role]}
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{m.name}</span>
+                      <span style={{ fontSize: 11, color: theme.textSec }}>@{m.id}</span>
+                      {m.nickname && <span style={{ fontSize: 10, color: PASTEL.lavender }}>"{m.nickname}"</span>}
+                      {isSelf(m) && <span style={{ fontSize: 9, color: PASTEL.coral, fontWeight: 700 }}>ME</span>}
+                    </div>
+                    {editable && <span style={{ fontSize: 11, color: theme.textSec }}>편집 ›</span>}
                   </div>
-                  <span style={{ fontSize: 11, color: theme.textSec, cursor: "pointer" }}>편집 ›</span>
-                </div>
-              )}
-            </div>
-          ))}
-          {students.length === 0 && (
-            <p style={{ textAlign: "center", color: theme.textSec, fontSize: 13, marginTop: 40 }}>
-              등록된 학생이 없어요. 위에서 추가해주세요!
-            </p>
-          )}
+                )}
+              </div>
+            );
+          })}
+          {filtered.length === 0 && <p style={{ textAlign: "center", color: theme.textSec, fontSize: 13, marginTop: 40 }}>해당 회원이 없어요.</p>}
           <div style={{ height: 60 }} />
         </div>
       </ScreenWrap>
@@ -2862,14 +3055,13 @@ export default function App() {
               </div>
             </div>
 
-            {/* Admin toggle (hidden) */}
-            <div style={{ textAlign:"center", marginBottom:60 }}>
-              <button onClick={() => setIsAdmin(!isAdmin)} style={{
-                background:"none", border:"none", color:theme.textSec, fontSize:11,
-                cursor:"pointer", fontFamily:"'Noto Serif KR', serif", opacity:0.4,
-              }}>
-                {isAdmin ? "🔧 관리자 모드 해제" : "관리자 모드 활성화"}
-              </button>
+            {/* Account info */}
+            <div style={{ textAlign:"center", marginBottom:60, padding: 16, borderRadius: 14, background: theme.bg, border: `1px solid ${theme.border}` }}>
+              <p style={{ fontSize: 11, color: theme.textSec, marginBottom: 4 }}>내 계정</p>
+              <p style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>{user?.name || "게스트"}</p>
+              <span style={{ fontSize: 10, padding: "2px 10px", borderRadius: 8, background: `${PASTEL.coral}15`, color: PASTEL.coral, fontWeight: 700 }}>
+                {ROLES[userRole] || userRole}
+              </span>
             </div>
           </div>
         </div>
@@ -3295,14 +3487,26 @@ export default function App() {
         </div>{/* end left section */}
 
         {/* Right section: panels (PC = sidebar, Mobile = bottom) */}
-        {/* On mobile, hide right section when properties scroll is open */}
         <div style={{
           ...(isPC ? {
-            width: 320, flexShrink: 0, borderLeft: `1px solid ${theme.border}`,
+            width: 340, flexShrink: 0, borderLeft: `1px solid ${theme.border}`,
             overflowY: "auto", background: theme.card,
+            display: "flex", flexDirection: "column",
           } : {}),
           display: (!isPC && showProperties && !showArchiveSave) ? "none" : undefined,
         }}>
+
+        {/* PC sidebar header */}
+        {isPC && (
+          <div style={{ padding: "14px 16px", borderBottom: `1px solid ${theme.border}`, background: theme.bg }}>
+            <div style={{ fontSize: 11, color: theme.textSec, fontFamily: "'Playfair Display', serif", letterSpacing: 2 }}>
+              {buildPhase === "input" ? "입력 패널" :
+               buildPhase === "modeSelect" ? "모드 선택" :
+               buildPhase === "jedo" ? "제도 모드" :
+               buildPhase === "jakdo" ? "작도 도구" : "도구"}
+            </div>
+          </div>
+        )}
 
         {/* Input Panel */}
         {/* Idle dialogue when no active input needed */}
@@ -3437,10 +3641,10 @@ export default function App() {
         {/* Input Panel (original for non-PC or when PC properties not shown) */}
         {buildPhase === "input" && !triangle && triMode === "sss" && (
           <div style={{
-            padding: "20px", borderTop: `1px solid ${theme.border}`,
+            padding: isPC ? "16px" : "20px", borderTop: isPC ? "none" : `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.4s ease",
           }}>
-            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+            <div style={{ display: "flex", flexDirection: isPC ? "column" : "row", gap: 10, marginBottom: 14 }}>
               {[["a", "변 a"], ["b", "변 b"], ["c", "변 c"]].map(([key, label]) => (
                 <div key={key} style={{ flex: 1 }}>
                   <label style={{ fontSize: 11, color: theme.textSec, marginBottom: 4, display: "block" }}>{label}</label>
@@ -3451,7 +3655,6 @@ export default function App() {
                       border: `1.5px solid ${theme.border}`, background: theme.bg,
                       color: theme.text, fontSize: 15, textAlign: "center",
                       fontFamily: "'Playfair Display', serif", boxSizing: "border-box",
-                      transition: "all 0.3s ease",
                     }}
                     placeholder="0"
                   />
@@ -3472,10 +3675,10 @@ export default function App() {
 
         {buildPhase === "input" && !triangle && triMode === "sas" && (
           <div style={{
-            padding: "20px", borderTop: `1px solid ${theme.border}`,
+            padding: isPC ? "16px" : "20px", borderTop: isPC ? "none" : `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.4s ease",
           }}>
-            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+            <div style={{ display: "flex", flexDirection: isPC ? "column" : "row", gap: 10, marginBottom: 14 }}>
               {[["b", "변 b"], ["angle", "끼인각 (°)"], ["c", "변 c"]].map(([key, label]) => (
                 <div key={key} style={{ flex: 1 }}>
                   <label style={{ fontSize: 11, color: theme.textSec, marginBottom: 4, display: "block" }}>{label}</label>
@@ -3518,10 +3721,10 @@ export default function App() {
 
         {buildPhase === "input" && !triangle && triMode === "asa" && (
           <div style={{
-            padding: "20px", borderTop: `1px solid ${theme.border}`,
+            padding: isPC ? "16px" : "20px", borderTop: isPC ? "none" : `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.4s ease",
           }}>
-            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+            <div style={{ display: "flex", flexDirection: isPC ? "column" : "row", gap: 10, marginBottom: 14 }}>
               {[["angB", "∠B (°)"], ["a", "변 a"], ["angC", "∠C (°)"]].map(([key, label]) => (
                 <div key={key} style={{ flex: 1 }}>
                   <label style={{ fontSize: 11, color: theme.textSec, marginBottom: 4, display: "block" }}>{label}</label>
