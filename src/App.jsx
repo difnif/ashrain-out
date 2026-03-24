@@ -394,12 +394,17 @@ export default function App() {
     return { x: 0, y: 0, w: svgSize.w, h: svgSize.h };
   }, [manualView, viewBox, svgSize]);
 
-  // Zoom scale: multiply visual sizes by this to keep constant screen size
+  // Zoom scale for counter-scaling decorations
   const zs = useMemo(() => {
     const vb = manualView || viewBox;
     if (!vb) return 1;
     return vb.w / svgSize.w;
   }, [manualView, viewBox, svgSize]);
+
+  // Helper: wraps children in a group that counter-scales around (x,y) to keep fixed screen size
+  const FixedG = useCallback(({ x, y, children }) => (
+    <g transform={`translate(${x}, ${y}) scale(${zs}) translate(${-x}, ${-y})`}>{children}</g>
+  ), [zs]);
 
   // Touch pinch-zoom and pan handlers
   const handleTouchStart = useCallback((e) => {
@@ -1168,7 +1173,7 @@ export default function App() {
         const r = jedoCircle.r;
         return (
           <g>
-            <line x1={O.x} y1={O.y} x2={A.x} y2={A.y} stroke={hc} strokeWidth={2.5 * zs} />
+            <line x1={O.x} y1={O.y} x2={A.x} y2={A.y} stroke={hc} strokeWidth={2.5} />
             <text x={(O.x+A.x)/2+10} y={(O.y+A.y)/2-8} fill={hc} fontSize={11}
               fontWeight={700} fontFamily="'Noto Serif KR', serif">
               R = {(r / (triangle.scale || 1)).toFixed(1)}
@@ -1181,7 +1186,7 @@ export default function App() {
           <g>
             {[A, B, C].map((p, i) => (
               <line key={i} x1={O.x} y1={O.y} x2={p.x} y2={p.y}
-                stroke={hc} strokeWidth={2.5 * zs} strokeDasharray="6 3" />
+                stroke={hc} strokeWidth={2.5} strokeDasharray="6 3" />
             ))}
             {[A, B, C].map((p, i) => (
               <circle key={`dot${i}`} cx={p.x} cy={p.y} r={6} fill={hc} opacity={0.7} />
@@ -1273,7 +1278,7 @@ export default function App() {
         const cp = closestPointOnLine(O, A, B);
         return (
           <g>
-            <line x1={O.x} y1={O.y} x2={cp.x} y2={cp.y} stroke={hc} strokeWidth={2.5 * zs} />
+            <line x1={O.x} y1={O.y} x2={cp.x} y2={cp.y} stroke={hc} strokeWidth={2.5} />
             <circle cx={cp.x} cy={cp.y} r={4} fill={hc} />
             <text x={(O.x+cp.x)/2+10} y={(O.y+cp.y)/2-8} fill={hc} fontSize={11}
               fontWeight={700} fontFamily="'Noto Serif KR', serif">
@@ -1335,7 +1340,7 @@ export default function App() {
         const dAB = dist(A, B), dAC = dist(A, C);
         return (
           <g>
-            <line x1={A.x} y1={A.y} x2={foot.x} y2={foot.y} stroke={hc} strokeWidth={2.5 * zs} />
+            <line x1={A.x} y1={A.y} x2={foot.x} y2={foot.y} stroke={hc} strokeWidth={2.5} />
             <circle cx={foot.x} cy={foot.y} r={5} fill={hc} />
             <text x={(B.x+foot.x)/2} y={(B.y+foot.y)/2 - 12} textAnchor="middle"
               fill="#FF8A65" fontSize={10} fontWeight={700} fontFamily="'Noto Serif KR', serif">
@@ -1346,7 +1351,7 @@ export default function App() {
               {(dFC / (triangle.scale||1)).toFixed(1)}
             </text>
             <text x={foot.x} y={foot.y + 18} textAnchor="middle"
-              fill={hc} fontSize={9 * zs} fontFamily="'Noto Serif KR', serif">
+              fill={hc} fontSize={9} fontFamily="'Noto Serif KR', serif">
               AB:AC = {(dAB/(triangle.scale||1)).toFixed(1)}:{(dAC/(triangle.scale||1)).toFixed(1)}
             </text>
           </g>
@@ -1357,7 +1362,7 @@ export default function App() {
         return (
           <g>
             <polygon points={`${O.x},${O.y} ${A.x},${A.y} ${B.x},${B.y}`}
-              fill={`${hc}30`} stroke={hc} strokeWidth={2.5 * zs} />
+              fill={`${hc}30`} stroke={hc} strokeWidth={2.5} />
             <line x1={O.x} y1={O.y} x2={A.x} y2={A.y} stroke={hc} strokeWidth={2} />
             <line x1={O.x} y1={O.y} x2={B.x} y2={B.y} stroke={hc} strokeWidth={2} />
             {/* Equal marks on OA and OB */}
@@ -1382,7 +1387,7 @@ export default function App() {
         return (
           <g>
             <polygon points={`${O.x},${O.y} ${B.x},${B.y} ${C.x},${C.y}`}
-              fill={`${hc}30`} stroke={hc} strokeWidth={2.5 * zs} />
+              fill={`${hc}30`} stroke={hc} strokeWidth={2.5} />
             <line x1={O.x} y1={O.y} x2={B.x} y2={B.y} stroke={hc} strokeWidth={2} />
             <line x1={O.x} y1={O.y} x2={C.x} y2={C.y} stroke={hc} strokeWidth={2} />
             {[B, C].map((p, i) => {
@@ -1406,7 +1411,7 @@ export default function App() {
         return (
           <g>
             <polygon points={`${O.x},${O.y} ${C.x},${C.y} ${A.x},${A.y}`}
-              fill={`${hc}30`} stroke={hc} strokeWidth={2.5 * zs} />
+              fill={`${hc}30`} stroke={hc} strokeWidth={2.5} />
             <line x1={O.x} y1={O.y} x2={C.x} y2={C.y} stroke={hc} strokeWidth={2} />
             <line x1={O.x} y1={O.y} x2={A.x} y2={A.y} stroke={hc} strokeWidth={2} />
             {[C, A].map((p, i) => {
@@ -1451,9 +1456,9 @@ export default function App() {
             })}
             <circle cx={F.x} cy={F.y} r={4} fill={hc} />
             <circle cx={E.x} cy={E.y} r={4} fill={hc} />
-            <text x={F.x - 12} y={F.y - 8} fill={hc} fontSize={9 * zs} fontFamily="'Noto Serif KR', serif" fontWeight={700}>F</text>
-            <text x={E.x + 8} y={E.y - 8} fill={hc} fontSize={9 * zs} fontFamily="'Noto Serif KR', serif" fontWeight={700}>E</text>
-            <text x={(A.x+O.x)/2 + 14} y={(A.y+O.y)/2} fill={hc} fontSize={9 * zs} fontFamily="'Noto Serif KR', serif">
+            <text x={F.x - 12} y={F.y - 8} fill={hc} fontSize={9} fontFamily="'Noto Serif KR', serif" fontWeight={700}>F</text>
+            <text x={E.x + 8} y={E.y - 8} fill={hc} fontSize={9} fontFamily="'Noto Serif KR', serif" fontWeight={700}>E</text>
+            <text x={(A.x+O.x)/2 + 14} y={(A.y+O.y)/2} fill={hc} fontSize={9} fontFamily="'Noto Serif KR', serif">
               RHS 합동
             </text>
           </g>
@@ -1483,9 +1488,9 @@ export default function App() {
             })}
             <circle cx={D.x} cy={D.y} r={4} fill={hc} />
             <circle cx={F.x} cy={F.y} r={4} fill={hc} />
-            <text x={D.x + 8} y={D.y + 14} fill={hc} fontSize={9 * zs} fontFamily="'Noto Serif KR', serif" fontWeight={700}>D</text>
-            <text x={F.x - 12} y={F.y - 8} fill={hc} fontSize={9 * zs} fontFamily="'Noto Serif KR', serif" fontWeight={700}>F</text>
-            <text x={(B.x+O.x)/2 + 14} y={(B.y+O.y)/2} fill={hc} fontSize={9 * zs} fontFamily="'Noto Serif KR', serif">
+            <text x={D.x + 8} y={D.y + 14} fill={hc} fontSize={9} fontFamily="'Noto Serif KR', serif" fontWeight={700}>D</text>
+            <text x={F.x - 12} y={F.y - 8} fill={hc} fontSize={9} fontFamily="'Noto Serif KR', serif" fontWeight={700}>F</text>
+            <text x={(B.x+O.x)/2 + 14} y={(B.y+O.y)/2} fill={hc} fontSize={9} fontFamily="'Noto Serif KR', serif">
               RHS 합동
             </text>
           </g>
@@ -1515,9 +1520,9 @@ export default function App() {
             })}
             <circle cx={D.x} cy={D.y} r={4} fill={hc} />
             <circle cx={E.x} cy={E.y} r={4} fill={hc} />
-            <text x={D.x + 8} y={D.y + 14} fill={hc} fontSize={9 * zs} fontFamily="'Noto Serif KR', serif" fontWeight={700}>D</text>
-            <text x={E.x + 8} y={E.y - 8} fill={hc} fontSize={9 * zs} fontFamily="'Noto Serif KR', serif" fontWeight={700}>E</text>
-            <text x={(C.x+O.x)/2 + 14} y={(C.y+O.y)/2} fill={hc} fontSize={9 * zs} fontFamily="'Noto Serif KR', serif">
+            <text x={D.x + 8} y={D.y + 14} fill={hc} fontSize={9} fontFamily="'Noto Serif KR', serif" fontWeight={700}>D</text>
+            <text x={E.x + 8} y={E.y - 8} fill={hc} fontSize={9} fontFamily="'Noto Serif KR', serif" fontWeight={700}>E</text>
+            <text x={(C.x+O.x)/2 + 14} y={(C.y+O.y)/2} fill={hc} fontSize={9} fontFamily="'Noto Serif KR', serif">
               RHS 합동
             </text>
           </g>
@@ -1669,8 +1674,8 @@ export default function App() {
           return (
             <g opacity={alpha}>
               <line x1={B.x} y1={B.y} x2={C.x} y2={C.y} stroke={PASTEL.coral} strokeWidth={3} />
-              <circle cx={B.x} cy={B.y} r={4 * zs} fill={PASTEL.coral} />
-              <circle cx={C.x} cy={C.y} r={4 * zs} fill={PASTEL.coral} />
+              <circle cx={B.x} cy={B.y} r={4} fill={PASTEL.coral} />
+              <circle cx={C.x} cy={C.y} r={4} fill={PASTEL.coral} />
             </g>
           );
         }
@@ -1721,32 +1726,31 @@ export default function App() {
           points={`${A.x},${A.y} ${B.x},${B.y} ${C.x},${C.y}`}
           fill={themeKey === "dark" ? "rgba(232,165,152,0.08)" : "rgba(232,165,152,0.12)"}
           stroke={theme.line}
-          strokeWidth={2.5 * zs}
+          strokeWidth={2.5}
         />
-        {/* Vertices */}
+        {/* Vertices — fixed screen size via FixedG */}
         {[A, B, C].map((p, i) => {
-          // Smart label position: away from centroid
           const centroid = { x: (A.x+B.x+C.x)/3, y: (A.y+B.y+C.y)/3 };
           const dx = p.x - centroid.x, dy = p.y - centroid.y;
           const d = Math.sqrt(dx*dx + dy*dy) || 1;
-          const labelDist = 18 * zs;
+          const labelDist = 18;
           const lx = p.x + (dx/d) * labelDist;
           const ly = p.y + (dy/d) * labelDist;
           return (
-          <g key={i}>
-            <circle cx={p.x} cy={p.y} r={(buildPhase === "jedo" ? 14 : 6) * zs}
-              fill={buildPhase === "jedo" ? "transparent" : PASTEL.coral}
-              stroke={buildPhase === "jedo" ? PASTEL.lavender : "none"}
-              strokeWidth={(buildPhase === "jedo" ? 2 : 0) * zs}
-              strokeDasharray={buildPhase === "jedo" ? "4 2" : "none"}
-              style={{ cursor: buildPhase === "jedo" ? "pointer" : "default" }}
+          <FixedG key={i} x={p.x} y={p.y}>
+            <circle cx={p.x} cy={p.y} r={(buildPhase === "jedo" && jedoType !== "circum") ? 14 : 6}
+              fill={(buildPhase === "jedo" && jedoType !== "circum") ? "transparent" : PASTEL.coral}
+              stroke={(buildPhase === "jedo" && jedoType !== "circum") ? PASTEL.lavender : "none"}
+              strokeWidth={(buildPhase === "jedo" && jedoType !== "circum") ? 2 : 0}
+              strokeDasharray={(buildPhase === "jedo" && jedoType !== "circum") ? "4 2" : "none"}
+              style={{ cursor: (buildPhase === "jedo" && jedoType !== "circum") ? "pointer" : "default" }}
             />
-            <circle cx={p.x} cy={p.y} r={4 * zs} fill={PASTEL.coral} />
+            <circle cx={p.x} cy={p.y} r={4} fill={PASTEL.coral} />
             <text x={lx} y={ly} textAnchor="middle" dominantBaseline="central" fill={theme.text}
-              fontSize={13 * zs} fontFamily="'Playfair Display', serif" fontWeight={700}>
+              fontSize={13} fontFamily="'Playfair Display', serif" fontWeight={700}>
               {["A", "B", "C"][i]}
             </text>
-          </g>
+          </FixedG>
           );
         })}
         {/* Edge labels + Angle arcs — visible only in modeSelect */}
@@ -1761,15 +1765,17 @@ export default function App() {
               const centroid = { x: (A.x+B.x+C.x)/3, y: (A.y+B.y+C.y)/3 };
               const midToCx = mid.x - centroid.x, midToCy = mid.y - centroid.y;
               const midToCD = Math.sqrt(midToCx*midToCx + midToCy*midToCy) || 1;
-              const offset = 18 * zs;
+              const offset = 18;
               const lx = mid.x + (midToCx/midToCD) * offset;
               const ly = mid.y + (midToCy/midToCD) * offset;
               const val = dist(p1, p2) / (triangle.scale || 1);
               return (
-                <text key={`edge${i}`} x={lx} y={ly} textAnchor="middle" dominantBaseline="central"
-                  fill={theme.textSec} fontSize={11 * zs} fontFamily="'Noto Serif KR', serif">
-                  {label}={val.toFixed(1)}
-                </text>
+                <FixedG key={`edge${i}`} x={lx} y={ly}>
+                  <text x={lx} y={ly} textAnchor="middle" dominantBaseline="central"
+                    fill={theme.textSec} fontSize={11} fontFamily="'Noto Serif KR', serif">
+                    {label}={val.toFixed(1)}
+                  </text>
+                </FixedG>
               );
             })}
             {/* Angle arcs + labels + right angle markers + callout for tight angles */}
@@ -1778,7 +1784,7 @@ export default function App() {
               const angDeg = ang * 180 / Math.PI;
               const isRightAngle = Math.abs(angDeg - 90) < 1.5;
               const isTight = angDeg < 35;
-              const arcR = (isTight ? 16 : 24) * zs;
+              const arcR = (isTight ? 16 : 24);
               const a1 = Math.atan2(p1.y - vertex.y, p1.x - vertex.x);
               const a2 = Math.atan2(p2.y - vertex.y, p2.x - vertex.x);
               let startAngle = a1, endAngle = a2;
@@ -1790,25 +1796,25 @@ export default function App() {
               const arcColor = [PASTEL.coral, PASTEL.sky, PASTEL.mint][i];
 
               if (isRightAngle) {
-                const sqSize = 14 * zs;
+                const sqSize = 14;
                 const u1 = { x: Math.cos(a1), y: Math.sin(a1) };
                 const u2 = { x: Math.cos(a2), y: Math.sin(a2) };
                 const corner1 = { x: vertex.x + u1.x*sqSize, y: vertex.y + u1.y*sqSize };
                 const corner2 = { x: vertex.x + u1.x*sqSize + u2.x*sqSize, y: vertex.y + u1.y*sqSize + u2.y*sqSize };
                 const corner3 = { x: vertex.x + u2.x*sqSize, y: vertex.y + u2.y*sqSize };
                 // Label along the bisector direction, close to vertex
-                const lblR = 38 * zs;
+                const lblR = 38;
                 const lblPos = { x: vertex.x + lblR*Math.cos(midAngle), y: vertex.y + lblR*Math.sin(midAngle) };
                 return (
-                  <g key={`ang${i}`}>
+                  <FixedG key={`ang${i}`} x={vertex.x} y={vertex.y}>
                     <path d={`M ${corner1.x} ${corner1.y} L ${corner2.x} ${corner2.y} L ${corner3.x} ${corner3.y}`}
-                      fill="none" stroke={arcColor} strokeWidth={1.8 * zs} opacity={0.9} />
+                      fill="none" stroke={arcColor} strokeWidth={1.8} opacity={0.9} />
                     <text x={lblPos.x} y={lblPos.y} textAnchor="middle"
                       dominantBaseline="central" fill={arcColor}
-                      fontSize={10 * zs} fontFamily="'Noto Serif KR', serif" fontWeight={700}>
+                      fontSize={10} fontFamily="'Noto Serif KR', serif" fontWeight={700}>
                       90°
                     </text>
-                  </g>
+                  </FixedG>
                 );
               }
 
@@ -1818,61 +1824,63 @@ export default function App() {
               if (isTight) {
                 // Callout: short line from arc outward along bisector, staying near vertex
                 const arcMid = { x: vertex.x + arcR*Math.cos(midAngle), y: vertex.y + arcR*Math.sin(midAngle) };
-                const calloutR = arcR + 28 * zs; // only 28px beyond arc — stays close
+                const calloutR = arcR + 28; // only 28px beyond arc — stays close
                 const calloutEnd = { x: vertex.x + calloutR*Math.cos(midAngle), y: vertex.y + calloutR*Math.sin(midAngle) };
                 return (
-                  <g key={`ang${i}`}>
+                  <FixedG key={`ang${i}`} x={vertex.x} y={vertex.y}>
                     <path d={`M ${arcStart.x} ${arcStart.y} A ${arcR} ${arcR} 0 0 ${sweepFlag} ${arcEnd.x} ${arcEnd.y}`}
-                      fill="none" stroke={arcColor} strokeWidth={2 * zs} opacity={0.8} />
+                      fill="none" stroke={arcColor} strokeWidth={2} opacity={0.8} />
                     <line x1={arcMid.x} y1={arcMid.y} x2={calloutEnd.x} y2={calloutEnd.y}
                       stroke={arcColor} strokeWidth={1} opacity={0.5} />
-                    <circle cx={arcMid.x} cy={arcMid.y} r={1.5 * zs} fill={arcColor} opacity={0.6} />
+                    <circle cx={arcMid.x} cy={arcMid.y} r={1.5} fill={arcColor} opacity={0.6} />
                     <text x={calloutEnd.x} y={calloutEnd.y - 6} textAnchor="middle"
                       dominantBaseline="central" fill={arcColor}
-                      fontSize={9 * zs} fontFamily="'Noto Serif KR', serif" fontWeight={700}>
+                      fontSize={9} fontFamily="'Noto Serif KR', serif" fontWeight={700}>
                       {angDeg.toFixed(1)}°
                     </text>
-                  </g>
+                  </FixedG>
                 );
               }
 
               // Normal: label inside arc
-              const labelR = arcR + 14 * zs;
+              const labelR = arcR + 14;
               const labelPos = { x: vertex.x + labelR*Math.cos(midAngle), y: vertex.y + labelR*Math.sin(midAngle) };
               return (
-                <g key={`ang${i}`}>
+                <FixedG key={`ang${i}`} x={vertex.x} y={vertex.y}>
                   <path d={`M ${arcStart.x} ${arcStart.y} A ${arcR} ${arcR} 0 0 ${sweepFlag} ${arcEnd.x} ${arcEnd.y}`}
-                    fill="none" stroke={arcColor} strokeWidth={2 * zs} opacity={0.8} />
+                    fill="none" stroke={arcColor} strokeWidth={2} opacity={0.8} />
                   <text x={labelPos.x} y={labelPos.y} textAnchor="middle"
                     dominantBaseline="central" fill={arcColor}
-                    fontSize={10 * zs} fontFamily="'Noto Serif KR', serif" fontWeight={700}>
+                    fontSize={10} fontFamily="'Noto Serif KR', serif" fontWeight={700}>
                     {angDeg.toFixed(1)}°
                   </text>
-                </g>
+                </FixedG>
               );
             })}
           </g>
         )}
-        {/* Edge click highlights for jedo mode */}
-        {buildPhase === "jedo" && [[A, B, "AB"], [B, C, "BC"], [A, C, "AC"]].map(([p1, p2, key], i) => {
+        {/* Edge click highlights for jedo mode — hide when doing angle bisectors */}
+        {buildPhase === "jedo" && jedoType !== "in" && [[A, B, "AB"], [B, C, "BC"], [A, C, "AC"]].map(([p1, p2, key], i) => {
           const mid = midpoint(p1, p2);
           const done = jedoLines.find(l => l.key === `perp_${key}`);
           return (
             <g key={`edge-hit-${i}`}>
-              {/* Thick invisible hit area */}
               <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                stroke="transparent" strokeWidth={30 * zs}
-                style={{ cursor: "pointer" }} />
-              {/* Visible highlight on edge midpoint */}
+                stroke="transparent" strokeWidth={30}
+                style={{ cursor: "pointer", vectorEffect: "none" }} />
               {!done && (
-                <circle cx={mid.x} cy={mid.y} r={8 * zs}
-                  fill="transparent" stroke={PASTEL.sky} strokeWidth={1.5}
-                  strokeDasharray="3 2" opacity={0.7}>
-                  <animate attributeName="opacity" values="0.4;0.9;0.4" dur="2s" repeatCount="indefinite" />
-                </circle>
+                <FixedG x={mid.x} y={mid.y}>
+                  <circle cx={mid.x} cy={mid.y} r={8}
+                    fill="transparent" stroke={PASTEL.sky} strokeWidth={1.5}
+                    strokeDasharray="3 2" opacity={0.7}>
+                    <animate attributeName="opacity" values="0.4;0.9;0.4" dur="2s" repeatCount="indefinite" />
+                  </circle>
+                </FixedG>
               )}
               {done && (
-                <circle cx={mid.x} cy={mid.y} r={4 * zs} fill={PASTEL.sky} opacity={0.5} />
+                <FixedG x={mid.x} y={mid.y}>
+                  <circle cx={mid.x} cy={mid.y} r={4} fill={PASTEL.sky} opacity={0.5} />
+                </FixedG>
               )}
             </g>
           );
@@ -1880,7 +1888,7 @@ export default function App() {
         {/* Jedo lines — extending beyond triangle */}
         {jedoLines.map((line, i) => (
           <line key={i} x1={line.start.x} y1={line.start.y} x2={line.end.x} y2={line.end.y}
-            stroke={line.color} strokeWidth={1.5 * zs} strokeDasharray={`${6*zs} ${3*zs}`} opacity={0.7}
+            stroke={line.color} strokeWidth={1.5} strokeDasharray={"6 3"} opacity={0.7}
           />
         ))}
         {/* Center point */}
@@ -1900,27 +1908,29 @@ export default function App() {
           }
           return (
           <g style={{ cursor: "pointer" }}>
-            <circle cx={jedoCenter.x} cy={jedoCenter.y} r={12 * zs}
-              fill="transparent" stroke={PASTEL.coral} strokeWidth={2}>
-              {jedoLines.length >= 3 && (
-                <animate attributeName="r" values="10;14;10" dur="1.5s" repeatCount="indefinite" />
-              )}
-            </circle>
-            <circle cx={jedoCenter.x} cy={jedoCenter.y} r={4 * zs} fill={PASTEL.coral} />
-            <text x={lx} y={ly} fill={theme.text}
-              fontSize={12 * zs} fontFamily="'Noto Serif KR', serif" fontWeight={700}>
-              {jedoType === "circum" ? "외심" : "내심"}
-            </text>
+            <FixedG x={jedoCenter.x} y={jedoCenter.y}>
+              <circle cx={jedoCenter.x} cy={jedoCenter.y} r={12}
+                fill="transparent" stroke={PASTEL.coral} strokeWidth={2}>
+                {jedoLines.length >= 3 && (
+                  <animate attributeName="r" values="10;14;10" dur="1.5s" repeatCount="indefinite" />
+                )}
+              </circle>
+              <circle cx={jedoCenter.x} cy={jedoCenter.y} r={4} fill={PASTEL.coral} />
+              <text x={lx} y={ly} fill={theme.text}
+                fontSize={12} fontFamily="'Noto Serif KR', serif" fontWeight={700}>
+                {jedoType === "circum" ? "외심" : "내심"}
+              </text>
+            </FixedG>
             {/* Guide lines */}
             {jedoType === "circum" && jedoLines.length >= 3 && !jedoCircle && [A, B, C].map((p, i) => (
               <line key={`lead${i}`} x1={jedoCenter.x} y1={jedoCenter.y} x2={p.x} y2={p.y}
-                stroke={theme.lineLight} strokeWidth={1} strokeDasharray={`${4*zs} ${4*zs}`} opacity={0.5} />
+                stroke={theme.lineLight} strokeWidth={1} strokeDasharray={"4 4"} opacity={0.5} />
             ))}
             {jedoType === "in" && jedoLines.length >= 3 && !jedoCircle && [[A, B], [B, C], [A, C]].map(([p1, p2], i) => {
               const cp = closestPointOnLine(jedoCenter, p1, p2);
               return (
                 <line key={`lead${i}`} x1={jedoCenter.x} y1={jedoCenter.y} x2={cp.x} y2={cp.y}
-                  stroke={theme.lineLight} strokeWidth={1} strokeDasharray={`${4*zs} ${4*zs}`} opacity={0.5} />
+                  stroke={theme.lineLight} strokeWidth={1} strokeDasharray={"4 4"} opacity={0.5} />
               );
             })}
           </g>
@@ -1930,7 +1940,7 @@ export default function App() {
         {jedoCircle && (
           <circle cx={jedoCircle.cx} cy={jedoCircle.cy} r={jedoCircle.r}
             fill="none" stroke={jedoType === "circum" ? PASTEL.sky : PASTEL.lavender}
-            strokeWidth={2 * zs} opacity={0.8}>
+            strokeWidth={2} opacity={0.8}>
             <animate attributeName="r" from="0" to={jedoCircle.r} dur="0.8s" fill="freeze" />
           </circle>
         )}
@@ -2600,10 +2610,16 @@ export default function App() {
             onTouchMove={(e) => { handleTouchMove(e); if(buildPhase==="jakdo") handleJakdoMove(e); }}
             onTouchEnd={(e) => { handleTouchEnd(e); if(buildPhase==="jakdo") handleJakdoUp(e); }}
           >
+            {/* Global SVG styles — keep stroke width constant on zoom */}
+            <defs>
+              <style>{`
+                line, path, polyline, polygon, circle { vector-effect: non-scaling-stroke; }
+              `}</style>
+            </defs>
             {/* Grid dots */}
             {[...Array(Math.floor(svgSize.w / 30))].map((_, i) =>
               [...Array(Math.floor(svgSize.h / 30))].map((_, j) => (
-                <circle key={`${i}-${j}`} cx={15 + i * 30} cy={15 + j * 30} r={0.8 * zs}
+                <circle key={`${i}-${j}`} cx={15 + i * 30} cy={15 + j * 30} r={0.8}
                   fill={theme.lineLight} opacity={0.3} />
               ))
             )}
@@ -2627,14 +2643,16 @@ export default function App() {
               return (
                 <g key={`arc${i}`}>
                   <path d={`M ${sx} ${sy} A ${arc.radius} ${arc.radius} 0 ${largeArc} ${sweep} ${ex} ${ey}`}
-                    fill="none" stroke={PASTEL.lavender} strokeWidth={2 * zs} opacity={0.8} />
-                  {/* Intersection points (clickable for next compass) */}
-                  {arc.intersections?.map((ip, j) => (
-                    <circle key={j} cx={ip.x} cy={ip.y} r={5 * zs}
-                      fill={PASTEL.coral} stroke="white" strokeWidth={1.5} opacity={0.9}
-                      style={{ cursor: "pointer" }}>
-                      <animate attributeName="r" values="4;6;4" dur="1.5s" repeatCount="indefinite" />
-                    </circle>
+                    fill="none" stroke={PASTEL.lavender} strokeWidth={2} opacity={0.8} />
+                  {/* Intersection points — only show in jakdo mode, hide during jedo */}
+                  {buildPhase === "jakdo" && arc.intersections?.map((ip, j) => (
+                    <FixedG key={j} x={ip.x} y={ip.y}>
+                      <circle cx={ip.x} cy={ip.y} r={5}
+                        fill={PASTEL.coral} stroke="white" strokeWidth={1.5} opacity={0.9}
+                        style={{ cursor: "pointer" }}>
+                        <animate attributeName="r" values="4;6;4" dur="1.5s" repeatCount="indefinite" />
+                      </circle>
+                    </FixedG>
                   ))}
                 </g>
               );
@@ -2642,19 +2660,21 @@ export default function App() {
             {/* Jakdo ruler lines */}
             {jakdoRulerLines.map((line, i) => (
               <line key={`rl${i}`} x1={line.start.x} y1={line.start.y} x2={line.end.x} y2={line.end.y}
-                stroke={PASTEL.sky} strokeWidth={2 * zs} opacity={0.8} />
+                stroke={PASTEL.sky} strokeWidth={2} opacity={0.8} />
             ))}
             {/* Compass Phase 2: radius preview (dotted line) */}
             {compassPhase === "radiusSet" && compassCenter && compassDragPt && (
               <g>
                 <line x1={compassCenter.x} y1={compassCenter.y} x2={compassDragPt.x} y2={compassDragPt.y}
-                  stroke={PASTEL.coral} strokeWidth={1.5 * zs} strokeDasharray={`${5*zs} ${3*zs}`} opacity={0.7} />
+                  stroke={PASTEL.coral} strokeWidth={1.5} strokeDasharray={"5 3"} opacity={0.7} />
                 <circle cx={compassCenter.x} cy={compassCenter.y} r={compassRadius}
                   fill="none" stroke={PASTEL.coral} strokeWidth={1} strokeDasharray="3 5" opacity={0.3} />
-                <text x={compassCenter.x + 10} y={compassCenter.y - 10} fill={PASTEL.coral}
-                  fontSize={11 * zs} fontFamily="'Noto Serif KR', serif">
-                  r={compassRadius > 0 ? (compassRadius / (triangle?.scale || 1)).toFixed(1) : "..."}
-                </text>
+                <FixedG x={compassCenter.x + 10} y={compassCenter.y - 10}>
+                  <text x={compassCenter.x + 10} y={compassCenter.y - 10} fill={PASTEL.coral}
+                    fontSize={11} fontFamily="'Noto Serif KR', serif">
+                    r={compassRadius > 0 ? (compassRadius / (triangle?.scale || 1)).toFixed(1) : "..."}
+                  </text>
+                </FixedG>
               </g>
             )}
             {/* Compass Phase 3: freehand arc preview */}
@@ -2662,36 +2682,44 @@ export default function App() {
               <g>
                 <circle cx={compassCenter.x} cy={compassCenter.y} r={compassRadius}
                   fill="none" stroke={PASTEL.lavender} strokeWidth={1} strokeDasharray="3 5" opacity={0.2} />
-                <circle cx={compassCenter.x} cy={compassCenter.y} r={3 * zs} fill={PASTEL.coral} />
+                <FixedG x={compassCenter.x} y={compassCenter.y}>
+                  <circle cx={compassCenter.x} cy={compassCenter.y} r={3} fill={PASTEL.coral} />
+                </FixedG>
                 {arcDrawPoints.length > 1 && (
                   <polyline
                     points={arcDrawPoints.map(p => {
                       const a = Math.atan2(p.y - compassCenter.y, p.x - compassCenter.x);
                       return `${compassCenter.x + compassRadius*Math.cos(a)},${compassCenter.y + compassRadius*Math.sin(a)}`;
                     }).join(" ")}
-                    fill="none" stroke={PASTEL.coral} strokeWidth={2.5 * zs} opacity={0.8} />
+                    fill="none" stroke={PASTEL.coral} strokeWidth={2.5} opacity={0.8} />
                 )}
               </g>
             )}
             {/* Ruler start point preview */}
             {rulerStart && buildPhase === "jakdo" && jakdoTool === "ruler" && (
-              <circle cx={rulerStart.x} cy={rulerStart.y} r={5 * zs} fill={PASTEL.sky} opacity={0.8}>
-                <animate attributeName="r" values="4;7;4" dur="1s" repeatCount="indefinite" />
-              </circle>
+              <FixedG x={rulerStart.x} y={rulerStart.y}>
+                <circle cx={rulerStart.x} cy={rulerStart.y} r={5} fill={PASTEL.sky} opacity={0.8}>
+                  <animate attributeName="r" values="4;7;4" dur="1s" repeatCount="indefinite" />
+                </circle>
+              </FixedG>
             )}
             {/* Snap points glow in jakdo mode */}
             {buildPhase === "jakdo" && compassPhase === "idle" && jakdoSnaps.map((sp, i) => (
-              <circle key={`snap${i}`} cx={sp.x} cy={sp.y} r={8 * zs}
-                fill="transparent" stroke={PASTEL.coral} strokeWidth={1} strokeDasharray="2 2" opacity={0.4} />
+              <FixedG key={`snap${i}`} x={sp.x} y={sp.y}>
+                <circle cx={sp.x} cy={sp.y} r={8}
+                  fill="transparent" stroke={PASTEL.coral} strokeWidth={1} strokeDasharray="2 2" opacity={0.4} />
+              </FixedG>
             ))}
 
             {/* Fail animation */}
             {failAnim && (
-              <text x={svgSize.w / 2} y={svgSize.h / 2} textAnchor="middle"
-                fill={PASTEL.coral} fontSize={14} fontFamily="'Noto Serif KR', serif"
-                opacity={0.8}>
-                ✕ 삼각형 불가
-              </text>
+              <FixedG x={svgSize.w / 2} y={svgSize.h / 2}>
+                <text x={svgSize.w / 2} y={svgSize.h / 2} textAnchor="middle"
+                  fill={PASTEL.coral} fontSize={14} fontFamily="'Noto Serif KR', serif"
+                  opacity={0.8}>
+                  ✕ 삼각형 불가
+                </text>
+              </FixedG>
             )}
           </svg>
 
