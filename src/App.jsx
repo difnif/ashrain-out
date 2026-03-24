@@ -333,6 +333,22 @@ export default function App() {
   const [manualView, setManualView] = useState(null); // user pinch/pan override
   const touchRef = useRef({ startDist: 0, startVB: null, startMid: null, panning: false });
 
+  // Screen-specific state (must be top-level for hooks rules)
+  const [signupName, setSignupName] = useState("");
+  const [signupId, setSignupId] = useState("");
+  const [signupPw, setSignupPw] = useState("");
+  const [signupPwConfirm, setSignupPwConfirm] = useState("");
+  const [signupMsg, setSignupMsg] = useState("");
+  const [signupDone, setSignupDone] = useState(false);
+  const [showLoadDialog, setShowLoadDialog] = useState(false);
+  const [chatMsg, setChatMsg] = useState("");
+  const [chatNotif, setChatNotif] = useState(true);
+  const chatEndRef = useRef(null);
+  const [editingMemberId, setEditingMemberId] = useState(null);
+  const [newMemberForm, setNewMemberForm] = useState({ id: "", name: "", pw: "1234", role: "student" });
+  const [memberFilter, setMemberFilter] = useState("all");
+  const [editToneKey, setEditToneKey] = useState("default");
+
   // SVG sizing
   const svgRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -2266,24 +2282,18 @@ export default function App() {
 
   // --- Signup Screen ---
   if (screen === "signup") {
-    const [sName, setSName] = useState("");
-    const [sId, setSId] = useState("");
-    const [sPw, setSPw] = useState("");
-    const [sPwConfirm, setSPwConfirm] = useState("");
-    const [sMsg, setSMsg] = useState("");
-    const [sDone, setSDone] = useState(false);
 
     const doSignup = () => {
-      if (sPw !== sPwConfirm) { setSMsg("비밀번호가 일치하지 않아요."); return; }
-      if (sPw.length < 4) { setSMsg("비밀번호는 4자 이상으로 해주세요."); return; }
-      if (sId.length < 3) { setSMsg("아이디는 3자 이상으로 해주세요."); return; }
-      const result = handleSignupRequest(sName, sId, sPw);
+      if (signupPw !== signupPwConfirm) { setSignupMsg("비밀번호가 일치하지 않아요."); return; }
+      if (signupPw.length < 4) { setSignupMsg("비밀번호는 4자 이상으로 해주세요."); return; }
+      if (signupId.length < 3) { setSignupMsg("아이디는 3자 이상으로 해주세요."); return; }
+      const result = handleSignupRequest(signupName, signupId, signupPw);
       if (result === "auto") {
-        setSMsg(""); setSDone(true);
+        setSignupMsg(""); setSignupDone(true);
       } else if (result === "pending") {
-        setSMsg(""); setSDone(true);
+        setSignupMsg(""); setSignupDone(true);
       } else {
-        setSMsg(result);
+        setSignupMsg(result);
       }
     };
 
@@ -2311,7 +2321,7 @@ export default function App() {
             ashrain.out에 오신 것을 환영해요
           </p>
 
-          {sDone ? (
+          {signupDone ? (
             <div style={{ animation: "fadeIn 0.4s ease" }}>
               <p style={{ fontSize: 48, marginBottom: 12 }}>{autoApprove ? "🎉" : "📨"}</p>
               <p style={{ fontSize: 15, color: "#4A3F35", fontWeight: 700, marginBottom: 8 }}>
@@ -2330,25 +2340,25 @@ export default function App() {
             </div>
           ) : (
             <>
-              <input placeholder="이름 (실명)" value={sName} onChange={e => setSName(e.target.value)}
+              <input placeholder="이름 (실명)" value={signupName} onChange={e => setSignupName(e.target.value)}
                 style={{ width: "100%", padding: "13px 16px", borderRadius: 14, border: `1.5px solid ${PASTEL.blush}`,
                   fontSize: 14, marginBottom: 10, background: "rgba(255,248,240,0.6)", color: "#4A3F35",
                   fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" }} />
-              <input placeholder="아이디 (3자 이상)" value={sId} onChange={e => setSId(e.target.value)}
+              <input placeholder="아이디 (3자 이상)" value={signupId} onChange={e => setSignupId(e.target.value)}
                 style={{ width: "100%", padding: "13px 16px", borderRadius: 14, border: `1.5px solid ${PASTEL.blush}`,
                   fontSize: 14, marginBottom: 10, background: "rgba(255,248,240,0.6)", color: "#4A3F35",
                   fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" }} />
-              <input type="password" placeholder="비밀번호 (4자 이상)" value={sPw} onChange={e => setSPw(e.target.value)}
+              <input type="password" placeholder="비밀번호 (4자 이상)" value={signupPw} onChange={e => setSignupPw(e.target.value)}
                 style={{ width: "100%", padding: "13px 16px", borderRadius: 14, border: `1.5px solid ${PASTEL.blush}`,
                   fontSize: 14, marginBottom: 10, background: "rgba(255,248,240,0.6)", color: "#4A3F35",
                   fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" }} />
-              <input type="password" placeholder="비밀번호 확인" value={sPwConfirm} onChange={e => setSPwConfirm(e.target.value)}
+              <input type="password" placeholder="비밀번호 확인" value={signupPwConfirm} onChange={e => setSignupPwConfirm(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && doSignup()}
                 style={{ width: "100%", padding: "13px 16px", borderRadius: 14, border: `1.5px solid ${PASTEL.blush}`,
-                  fontSize: 14, marginBottom: sMsg ? 8 : 20, background: "rgba(255,248,240,0.6)", color: "#4A3F35",
+                  fontSize: 14, marginBottom: signupMsg ? 8 : 20, background: "rgba(255,248,240,0.6)", color: "#4A3F35",
                   fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" }} />
 
-              {sMsg && <p style={{ fontSize: 12, color: PASTEL.coral, marginBottom: 12 }}>{sMsg}</p>}
+              {signupMsg && <p style={{ fontSize: 12, color: PASTEL.coral, marginBottom: 12 }}>{signupMsg}</p>}
 
               <button onClick={doSignup} style={{
                 width: "100%", padding: "14px", borderRadius: 14, border: "none",
@@ -2466,12 +2476,6 @@ export default function App() {
 
   // --- Plaza (광장) Screen ---
   if (screen === "plaza") {
-    const [chatMsg, setChatMsg] = useState("");
-    const [chatLog, setChatLog] = useState(() => {
-      try { return JSON.parse(localStorage.getItem("ar_chat")) || []; } catch { return []; }
-    });
-    const [chatNotif, setChatNotif] = useState(true);
-    const chatEndRef = useRef(null);
 
     const sendChat = () => {
       if (!chatMsg.trim()) return;
@@ -2574,7 +2578,6 @@ export default function App() {
       }
     };
 
-    const [showLoadDialog, setShowLoadDialog] = useState(false);
 
     const topics = [
       { icon: "△", label: "삼각형 작도", desc: hasSavedWork ? "이전 작업 있음 ✦" : "SSS · SAS · ASA", compact: true,
@@ -2651,22 +2654,19 @@ export default function App() {
 
   // --- Admin Member Management ---
   if (screen === "admin-students") {
-    const [editingId, setEditingId] = useState(null);
-    const [newMem, setNewMem] = useState({ id: "", name: "", pw: "1234", role: "student" });
-    const [filterRole, setFilterRole] = useState("all");
 
     const roleColors = { admin: PASTEL.coral, assistant: PASTEL.lavender, student: PASTEL.sky, external: PASTEL.sage };
     const inputStyle = { flex: "1 1 70px", padding: "9px", borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 12, fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" };
 
     const addMember = () => {
-      if (!newMem.id || !newMem.name) return;
-      if (members.find(m => m.id === newMem.id)) { showMsg("이미 존재하는 아이디!", 2000); return; }
-      setMembers(prev => [...prev, { ...newMem, nickname: "" }]);
-      setNewMem({ id: "", name: "", pw: "1234", role: "student" });
+      if (!newMemberForm.id || !newMemberForm.name) return;
+      if (members.find(m => m.id === newMemberForm.id)) { showMsg("이미 존재하는 아이디!", 2000); return; }
+      setMembers(prev => [...prev, { ...newMemberForm, nickname: "" }]);
+      setNewMemberForm({ id: "", name: "", pw: "1234", role: "student" });
       playSfx("success");
     };
 
-    const filtered = filterRole === "all" ? members : members.filter(m => m.role === filterRole);
+    const filtered = memberFilter === "all" ? members : members.filter(m => m.role === memberFilter);
     const isSelf = (m) => m.id === user?.id;
 
     return (
@@ -2677,10 +2677,10 @@ export default function App() {
             <div style={{ background: theme.card, borderRadius: 16, border: `1.5px solid ${PASTEL.mint}`, padding: 14, marginBottom: 16, animation: "fadeIn 0.3s ease" }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: PASTEL.mint, display: "block", marginBottom: 10 }}>+ 회원 추가</label>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <input placeholder="이름" value={newMem.name} onChange={e => setNewMem(p => ({ ...p, name: e.target.value }))} style={inputStyle} />
-                <input placeholder="아이디" value={newMem.id} onChange={e => setNewMem(p => ({ ...p, id: e.target.value }))} style={inputStyle} />
-                <input placeholder="비밀번호" value={newMem.pw} onChange={e => setNewMem(p => ({ ...p, pw: e.target.value }))} style={inputStyle} />
-                <select value={newMem.role} onChange={e => setNewMem(p => ({ ...p, role: e.target.value }))}
+                <input placeholder="이름" value={newMemberForm.name} onChange={e => setNewMemberForm(p => ({ ...p, name: e.target.value }))} style={inputStyle} />
+                <input placeholder="아이디" value={newMemberForm.id} onChange={e => setNewMemberForm(p => ({ ...p, id: e.target.value }))} style={inputStyle} />
+                <input placeholder="비밀번호" value={newMemberForm.pw} onChange={e => setNewMemberForm(p => ({ ...p, pw: e.target.value }))} style={inputStyle} />
+                <select value={newMemberForm.role} onChange={e => setNewMemberForm(p => ({ ...p, role: e.target.value }))}
                   style={{ ...inputStyle, flex: "0 0 80px" }}>
                   <option value="student">수강생</option>
                   <option value="external">외부생</option>
@@ -2694,13 +2694,13 @@ export default function App() {
           {/* Role filter tabs */}
           <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
             {[["all", "전체", null], ["admin", "관리자", PASTEL.coral], ["assistant", "조교", PASTEL.lavender], ["student", "수강생", PASTEL.sky], ["external", "외부생", PASTEL.sage]].map(([key, label, color]) => (
-              <button key={key} onClick={() => setFilterRole(key)} style={{
+              <button key={key} onClick={() => setMemberFilter(key)} style={{
                 padding: "6px 12px", borderRadius: 8, fontSize: 11,
-                border: `1.5px solid ${filterRole === key ? (color || theme.text) : theme.border}`,
-                background: filterRole === key ? `${color || theme.text}15` : theme.card,
-                color: filterRole === key ? (color || theme.text) : theme.textSec,
+                border: `1.5px solid ${memberFilter === key ? (color || theme.text) : theme.border}`,
+                background: memberFilter === key ? `${color || theme.text}15` : theme.card,
+                color: memberFilter === key ? (color || theme.text) : theme.textSec,
                 cursor: "pointer", fontFamily: "'Noto Serif KR', serif",
-                fontWeight: filterRole === key ? 700 : 400,
+                fontWeight: memberFilter === key ? 700 : 400,
               }}>
                 {label} ({key === "all" ? members.length : members.filter(m => m.role === key).length})
               </button>
@@ -2709,7 +2709,7 @@ export default function App() {
 
           {/* Member list */}
           {filtered.map((m) => {
-            const isEditing = editingId === m.id;
+            const isEditing = editingMemberId === m.id;
             const editable = isSelf(m) || canEditMember(m.role);
             const rc = roleColors[m.role] || theme.textSec;
             return (
@@ -2752,18 +2752,18 @@ export default function App() {
                       )}
                       {isSelf(m) && <span style={{ fontSize: 10, color: PASTEL.coral }}>내 계정</span>}
                       <div style={{ flex: 1 }} />
-                      <button onClick={() => setEditingId(null)} style={{
+                      <button onClick={() => setEditingMemberId(null)} style={{
                         padding: "7px 14px", borderRadius: 8, border: "none", background: rc, color: "white", fontSize: 11, cursor: "pointer",
                       }}>저장</button>
                       {!isSelf(m) && userRole === "admin" && (
-                        <button onClick={() => { deleteMember(m.id); setEditingId(null); }} style={{
+                        <button onClick={() => { deleteMember(m.id); setEditingMemberId(null); }} style={{
                           padding: "7px 14px", borderRadius: 8, border: `1px solid ${PASTEL.coral}`, background: "transparent", color: PASTEL.coral, fontSize: 11, cursor: "pointer",
                         }}>삭제</button>
                       )}
                     </div>
                   </div>
                 ) : (
-                  <div onClick={() => editable && setEditingId(m.id)}
+                  <div onClick={() => editable && setEditingMemberId(m.id)}
                     style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: editable ? "pointer" : "default" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: `${rc}20`, color: rc, fontWeight: 700 }}>
@@ -2878,8 +2878,7 @@ export default function App() {
 
   // --- Admin Script Editor ---
   if (screen === "admin-scripts") {
-    const [editTone, setEditTone] = useState(toneKey);
-    const currentScript = customScripts[editTone]?.guide || {};
+    const currentScript = customScripts[editToneKey]?.guide || {};
     const scriptKeys = Object.keys(TONES.default.guide);
     const scriptLabels = {
       compassStart: "컴퍼스 선택 시",
@@ -2898,9 +2897,9 @@ export default function App() {
     const updateScript = (key, value) => {
       setCustomScripts(prev => ({
         ...prev,
-        [editTone]: {
-          ...prev[editTone],
-          guide: { ...prev[editTone].guide, [key]: value }
+        [editToneKey]: {
+          ...prev[editToneKey],
+          guide: { ...prev[editToneKey].guide, [key]: value }
         }
       }));
     };
@@ -2908,7 +2907,7 @@ export default function App() {
     const resetToDefault = () => {
       setCustomScripts(prev => ({
         ...prev,
-        [editTone]: JSON.parse(JSON.stringify(TONES[editTone]))
+        [editToneKey]: JSON.parse(JSON.stringify(TONES[editToneKey]))
       }));
     };
 
@@ -2918,11 +2917,11 @@ export default function App() {
           {/* Tone selector tabs */}
           <div style={{ display:"flex", gap:8, marginBottom:20 }}>
             {[["default","기본"],["nagging","잔소리"],["cute","더러운"]].map(([k,label]) => (
-              <button key={k} onClick={() => setEditTone(k)} style={{
+              <button key={k} onClick={() => setEditToneKey(k)} style={{
                 flex:1, padding:"10px", borderRadius:12,
-                border:`2px solid ${editTone===k?PASTEL.coral:theme.border}`,
-                background:editTone===k?theme.accentSoft:theme.card,
-                color:theme.text, fontSize:13, fontWeight:editTone===k?700:400,
+                border:`2px solid ${editToneKey===k?PASTEL.coral:theme.border}`,
+                background:editToneKey===k?theme.accentSoft:theme.card,
+                color:theme.text, fontSize:13, fontWeight:editToneKey===k?700:400,
                 cursor:"pointer", fontFamily:"'Noto Serif KR', serif",
               }}>{label}</button>
             ))}
