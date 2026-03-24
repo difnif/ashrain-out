@@ -946,30 +946,28 @@ function AppInner() {
 
     if (jakdoTool === "compass") {
       if (compassPhase === "radiusSet" && compassCenter && compassRadius > 8) {
-        // Lock radius, switch to arc drawing phase
-        setCompassPhase("drawingArc");
-        setArcDrawPoints([]);
-        showMsg("반지름 고정! 이제 호를 그려주세요.", 2000);
+        // Radius drag released — just lock radius, DON'T auto-transition
+        // User must press "호 돌리기" button to enter arc drawing
+        setCompassDragPt(null);
+        showMsg("반지름 고정! '호 돌리기' 버튼을 눌러주세요.", 2000);
         playSfx("pop");
       } else if (compassPhase === "radiusSet") {
-        // Too short
+        // Too short — reset
         setCompassPhase("idle"); setCompassCenter(null); setCompassRadius(0);
+        setCompassDragPt(null);
       } else if (compassPhase === "drawingArc" && arcDrawPoints.length > 3) {
-        // Convert freehand to arc: calculate start/end angles
+        // Arc drawn — create arc, pushUndo first
         const firstPt = arcDrawPoints[0], lastPt = arcDrawPoints[arcDrawPoints.length - 1];
         const startAngle = Math.atan2(firstPt.y - compassCenter.y, firstPt.x - compassCenter.x);
         const endAngle = Math.atan2(lastPt.y - compassCenter.y, lastPt.x - compassCenter.x);
 
-        // Find intersections with triangle edges
         const { A, B, C } = triangle;
         const intersections = [];
         for (const [e1, e2] of [[A,B],[B,C],[A,C]]) {
           const ips = circleSegIntersect(compassCenter.x, compassCenter.y, compassRadius, e1, e2);
           intersections.push(...ips);
         }
-        // Also find intersections with existing arcs
         jakdoArcs.forEach(prevArc => {
-          // Circle-circle intersection
           const d = dist(compassCenter, prevArc.center);
           if (d < compassRadius + prevArc.radius && d > Math.abs(compassRadius - prevArc.radius)) {
             const a2 = (compassRadius**2 - prevArc.radius**2 + d**2) / (2*d);
@@ -986,13 +984,14 @@ function AppInner() {
         setJakdoArcs(prev => [...prev, newArc]);
         playSfx("draw");
 
-        // Show edge crossing feedback
-        if (crossedEdges === 1) showMsg(activeTone.guide.oneEdge, 2000);
-        else if (crossedEdges >= 2) showMsg(activeTone.guide.twoEdge, 2000);
-
-        // Reset compass
+        // Reset compass fully after arc creation
         setCompassPhase("idle"); setCompassCenter(null); setCompassRadius(0);
-        setArcDrawPoints([]); setCrossedEdges(0);
+        setArcDrawPoints([]); setCrossedEdges(0); setCompassDragPt(null);
+      } else if (compassPhase === "drawingArc") {
+        // Too short arc — reset to try again
+        setArcDrawPoints([]);
+        setCompassPhase("idle"); setCompassCenter(null); setCompassRadius(0);
+        setCompassDragPt(null);
       }
     } else if (jakdoTool === "ruler" && rulerStart) {
       const p = svgCoords(e.changedTouches ? e.changedTouches[0] : e);
@@ -3938,34 +3937,59 @@ function AppInner() {
               </button>
             </div>
 
-            {/* Compass sub-steps */}
+            {/* Compass sub-steps — clickable for phase control */}
             {jakdoTool === "compass" && (
               <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                {[
-                  { label: "중심점 찍기", icon: "📍", step: 0, anim: "compassPoke 1s ease infinite" },
-                  { label: "거리 벌리기", icon: "↔️", step: 1, anim: "compassStretch 1.2s ease infinite" },
-                  { label: "호 돌리기", icon: "🌀", step: 2, anim: "compassSpin 2s linear infinite" },
-                ].map(({ label, icon, step, anim }) => (
-                  <div key={step} style={{
-                    flex: 1, textAlign: "center", padding: "8px 4px", borderRadius: 10,
-                    background: compassStep === step ? `${PASTEL.coral}20` : theme.bg,
-                    border: `1.5px solid ${compassStep === step ? PASTEL.coral : compassStep > step ? PASTEL.mint : theme.border}`,
-                    opacity: compassStep >= step ? 1 : 0.4,
-                    transition: "all 0.3s ease",
-                  }}>
-                    <div style={{
-                      fontSize: 18, marginBottom: 2,
-                      display: "inline-block",
-                      animation: compassStep === step ? anim : "none",
-                    }}>{icon}</div>
-                    <div style={{
-                      fontSize: 10, color: compassStep === step ? PASTEL.coral : compassStep > step ? PASTEL.mint : theme.textSec,
-                      fontWeight: compassStep === step ? 700 : 400,
-                      fontFamily: "'Noto Serif KR', serif",
-                    }}>{label}</div>
-                    {compassStep > step && <div style={{ fontSize: 9, color: PASTEL.mint }}>✓</div>}
-                  </div>
-                ))}
+                {/* Step 0: Center */}
+                <div onClick={() => {
+                  setCompassPhase("idle"); setCompassCenter(null); setCompassRadius(0);
+                  setCompassDragPt(null); setArcDrawPoints([]);
+                }} style={{
+                  flex: 1, textAlign: "center", padding: "8px 4px", borderRadius: 10, cursor: "pointer",
+                  background: compassStep === 0 ? `${PASTEL.coral}20` : theme.bg,
+                  border: `1.5px solid ${compassStep === 0 ? PASTEL.coral : compassStep > 0 ? PASTEL.mint : theme.border}`,
+                  transition: "all 0.3s ease",
+                }}>
+                  <div style={{ fontSize: 18, marginBottom: 2, display: "inline-block",
+                    animation: compassStep === 0 ? "compassPoke 1s ease infinite" : "none" }}>📍</div>
+                  <div style={{ fontSize: 10, color: compassStep === 0 ? PASTEL.coral : compassStep > 0 ? PASTEL.mint : theme.textSec,
+                    fontWeight: compassStep === 0 ? 700 : 400, fontFamily: "'Noto Serif KR', serif" }}>중심점 찍기</div>
+                  {compassStep > 0 && <div style={{ fontSize: 9, color: PASTEL.mint }}>✓</div>}
+                </div>
+                {/* Step 1: Radius */}
+                <div style={{
+                  flex: 1, textAlign: "center", padding: "8px 4px", borderRadius: 10,
+                  background: compassStep === 1 ? `${PASTEL.coral}20` : theme.bg,
+                  border: `1.5px solid ${compassStep === 1 ? PASTEL.coral : compassStep > 1 ? PASTEL.mint : theme.border}`,
+                  opacity: compassStep >= 1 ? 1 : 0.4, transition: "all 0.3s ease",
+                }}>
+                  <div style={{ fontSize: 18, marginBottom: 2, display: "inline-block",
+                    animation: compassStep === 1 ? "compassStretch 1.2s ease infinite" : "none" }}>↔️</div>
+                  <div style={{ fontSize: 10, color: compassStep === 1 ? PASTEL.coral : compassStep > 1 ? PASTEL.mint : theme.textSec,
+                    fontWeight: compassStep === 1 ? 700 : 400, fontFamily: "'Noto Serif KR', serif" }}>거리 벌리기</div>
+                  {compassRadius > 0 && compassStep >= 1 && <div style={{ fontSize: 9, color: PASTEL.mint }}>✓ r={( compassRadius / (triangle?.scale || 1)).toFixed(1)}</div>}
+                </div>
+                {/* Step 2: Draw Arc — clickable to enter arc mode */}
+                <div onClick={() => {
+                  if (compassPhase === "radiusSet" && compassRadius > 8) {
+                    setCompassPhase("drawingArc");
+                    setArcDrawPoints([]);
+                    showMsg("호를 그려주세요!", 1500);
+                    playSfx("click");
+                  }
+                }} style={{
+                  flex: 1, textAlign: "center", padding: "8px 4px", borderRadius: 10,
+                  cursor: compassPhase === "radiusSet" && compassRadius > 8 ? "pointer" : "default",
+                  background: compassStep === 2 ? `${PASTEL.coral}20` : theme.bg,
+                  border: `1.5px solid ${compassStep === 2 ? PASTEL.coral : theme.border}`,
+                  opacity: (compassPhase === "radiusSet" && compassRadius > 8) || compassStep === 2 ? 1 : 0.4,
+                  transition: "all 0.3s ease",
+                }}>
+                  <div style={{ fontSize: 18, marginBottom: 2, display: "inline-block",
+                    animation: compassStep === 2 ? "compassSpin 2s linear infinite" : "none" }}>🌀</div>
+                  <div style={{ fontSize: 10, color: compassStep === 2 ? PASTEL.coral : theme.textSec,
+                    fontWeight: compassStep === 2 ? 700 : 400, fontFamily: "'Noto Serif KR', serif" }}>호 돌리기</div>
+                </div>
               </div>
             )}
 
@@ -4009,7 +4033,7 @@ function AppInner() {
 
             {/* Work history (deletable) */}
             {(jakdoArcs.length > 0 || jakdoRulerLines.length > 0) && (
-              <div style={{ maxHeight: 80, overflowY: "auto", marginBottom: 8, borderRadius: 8, background: theme.bg, padding: "6px" }}>
+              <div style={{ maxHeight: 120, overflowY: "auto", marginBottom: 8, borderRadius: 8, background: theme.bg, padding: "6px", WebkitOverflowScrolling: "touch" }}>
                 {jakdoArcs.map((arc, i) => (
                   <div key={`a${i}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 6px", fontSize: 10, color: PASTEL.lavender }}>
                     <span>⭕ 호 #{i+1}</span>
@@ -4032,7 +4056,9 @@ function AppInner() {
             {/* Guide text */}
             <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center", margin: 0 }}>
               {jakdoTool === "compass" && compassStep === 0 && "꼭지점이나 교점을 터치하세요"}
-              {jakdoTool === "compass" && compassStep === 1 && "드래그해서 반지름을 정해주세요"}
+              {jakdoTool === "compass" && compassStep === 1 && compassDragPt && "드래그해서 반지름을 정해주세요"}
+              {jakdoTool === "compass" && compassStep === 1 && !compassDragPt && compassRadius > 0 && "'호 돌리기' 버튼을 눌러주세요"}
+              {jakdoTool === "compass" && compassStep === 1 && !compassDragPt && compassRadius === 0 && "드래그해서 반지름을 정해주세요"}
               {jakdoTool === "compass" && compassStep === 2 && "손가락으로 호를 그려주세요"}
               {jakdoTool === "ruler" && !rulerStart && "시작점을 터치하세요"}
               {jakdoTool === "ruler" && rulerStart && "끝점을 터치하세요"}
