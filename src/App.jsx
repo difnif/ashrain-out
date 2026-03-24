@@ -551,6 +551,56 @@ export default function App() {
   const [arcDrawPoints, setArcDrawPoints] = useState([]); // freehand points while drawing arc
   const [rulerStart, setRulerStart] = useState(null);
   const [crossedEdges, setCrossedEdges] = useState(0);
+  const [rulerPhase, setRulerPhase] = useState("idle"); // "idle"|"drawing"
+
+  // Compass sub-step (for 3-button UI)
+  const compassStep = compassPhase === "idle" ? 0 : compassPhase === "radiusSet" ? 1 : 2;
+
+  // Undo history
+  const [undoStack, setUndoStack] = useState([]);
+  const pushUndo = useCallback(() => {
+    setUndoStack(prev => [...prev.slice(-20), {
+      jedoLines: [...jedoLines], jedoCenter, jedoCircle, jedoType,
+      jakdoArcs: [...jakdoArcs], jakdoRulerLines: [...jakdoRulerLines],
+    }]);
+  }, [jedoLines, jedoCenter, jedoCircle, jedoType, jakdoArcs, jakdoRulerLines]);
+
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0) return;
+    const last = undoStack[undoStack.length - 1];
+    setUndoStack(prev => prev.slice(0, -1));
+    setJedoLines(last.jedoLines); setJedoCenter(last.jedoCenter);
+    setJedoCircle(last.jedoCircle); setJedoType(last.jedoType);
+    setJakdoArcs(last.jakdoArcs); setJakdoRulerLines(last.jakdoRulerLines);
+    playSfx("pop");
+  }, [undoStack, playSfx]);
+
+  // Auto-save work in progress
+  useEffect(() => {
+    if (!triangle || buildPhase === "input" || buildPhase === "animating") return;
+    try {
+      sessionStorage.setItem("ar_work", JSON.stringify({
+        triangle, buildPhase, triMode, jedoLines, jedoCenter, jedoCircle, jedoType,
+        jakdoArcs, jakdoRulerLines, jakdoTool, showProperties, selectedProp, sssInput,
+      }));
+    } catch(e) {}
+  }, [triangle, buildPhase, triMode, jedoLines, jedoCenter, jedoCircle, jedoType, jakdoArcs, jakdoRulerLines, jakdoTool, showProperties, selectedProp, sssInput]);
+
+  // Restore work on mount
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem("ar_work"));
+      if (saved?.triangle && !triangle) {
+        setTriangle(saved.triangle); setBuildPhase(saved.buildPhase || "modeSelect");
+        setTriMode(saved.triMode || "sss"); setJedoLines(saved.jedoLines || []);
+        setJedoCenter(saved.jedoCenter); setJedoCircle(saved.jedoCircle);
+        setJedoType(saved.jedoType); setJakdoArcs(saved.jakdoArcs || []);
+        setJakdoRulerLines(saved.jakdoRulerLines || []);
+        setJakdoTool(saved.jakdoTool); setShowProperties(saved.showProperties || false);
+        setSelectedProp(saved.selectedProp); if (saved.sssInput) setSssInput(saved.sssInput);
+      }
+    } catch(e) {}
+  }, []);
 
   // All snap points (vertices + arc-edge intersections + arc-arc intersections)
   const jakdoSnaps = useMemo(() => {
@@ -697,6 +747,7 @@ export default function App() {
         });
 
         const newArc = { center: {...compassCenter}, radius: compassRadius, startAngle, endAngle, intersections, id: Date.now() };
+        pushUndo();
         setJakdoArcs(prev => [...prev, newArc]);
         playSfx("draw");
 
@@ -717,12 +768,13 @@ export default function App() {
         if (d < minD) { minD = d; nearest = sp; }
       }
       if (dist(rulerStart, nearest) > 10) {
+        pushUndo();
         setJakdoRulerLines(prev => [...prev, { start: rulerStart, end: { x: nearest.x, y: nearest.y } }]);
         playSfx("draw");
       }
       setRulerStart(null);
     }
-  }, [triangle, buildPhase, jakdoTool, compassPhase, compassCenter, compassRadius, arcDrawPoints, crossedEdges, rulerStart, jakdoSnaps, jakdoArcs, svgCoords, playSfx, showMsg, activeTone, circleSegIntersect]);
+  }, [triangle, buildPhase, jakdoTool, compassPhase, compassCenter, compassRadius, arcDrawPoints, crossedEdges, rulerStart, jakdoSnaps, jakdoArcs, svgCoords, playSfx, pushUndo, showMsg, activeTone, circleSegIntersect]);
 
   // Random idle dialogue
   const [idleMsg, setIdleMsg] = useState("");
@@ -941,6 +993,7 @@ export default function App() {
         }
         const bis = angleBisector(v.p, v.other1, v.other2, A, B, C);
         if (!bis) return;
+        pushUndo();
         const newLine = { ...bis, key: `ang_${v.key}`, type: "angle", color: PASTEL.lavender };
         const newLines = [...jedoLines, newLine];
         setJedoLines(newLines);
@@ -965,6 +1018,7 @@ export default function App() {
           return;
         }
         const pb = perpBisector(edge.p1, edge.p2, A, B, C);
+        pushUndo();
         const newLine = { ...pb, key: `perp_${edge.key}`, type: "perp", color: PASTEL.sky };
         const newLines = [...jedoLines, newLine];
         setJedoLines(newLines);
@@ -1004,6 +1058,8 @@ export default function App() {
     setArcDrawPoints([]);
     setRulerStart(null);
     setCrossedEdges(0);
+    setRulerPhase("idle");
+    setUndoStack([]);
     setShowArchiveSave(false);
   };
 
@@ -2431,19 +2487,30 @@ export default function App() {
         {/* Header */}
         <div style={{
           display: "flex", justifyContent: "space-between", alignItems: "center",
-          padding: "16px 20px", borderBottom: `1px solid ${theme.border}`,
+          padding: "12px 16px", borderBottom: `1px solid ${theme.border}`,
         }}>
-          <button onClick={() => { resetAll(); setScreen("polygons"); }} style={{
+          <button onClick={() => { setScreen("polygons"); }} style={{
             background: "none", border: "none", color: theme.textSec, fontSize: 13,
             cursor: "pointer", fontFamily: "'Noto Serif KR', serif",
           }}>← 목록</button>
-          <span style={{ fontSize: 14, fontWeight: 700, color: theme.text, fontFamily: "'Playfair Display', serif" }}>
-            삼각형 그리기
-          </span>
-          <button onClick={resetAll} style={{
-            background: "none", border: "none", color: theme.textSec, fontSize: 12,
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {/* Undo button */}
+            {(buildPhase === "jedo" || buildPhase === "jakdo") && (
+              <button onClick={() => { handleUndo(); }} disabled={undoStack.length === 0} style={{
+                background: "none", border: `1px solid ${undoStack.length > 0 ? theme.border : "transparent"}`,
+                borderRadius: 8, padding: "4px 10px", fontSize: 12, cursor: undoStack.length > 0 ? "pointer" : "default",
+                color: undoStack.length > 0 ? theme.text : theme.lineLight,
+                fontFamily: "'Noto Serif KR', serif", transition: "all 0.2s",
+              }}>↩ 되돌리기</button>
+            )}
+            <span style={{ fontSize: 14, fontWeight: 700, color: theme.text, fontFamily: "'Playfair Display', serif" }}>
+              삼각형 그리기
+            </span>
+          </div>
+          <button onClick={() => { resetAll(); sessionStorage.removeItem("ar_work"); }} style={{
+            background: "none", border: "none", color: PASTEL.coral, fontSize: 12,
             cursor: "pointer", fontFamily: "'Noto Serif KR', serif",
-          }}>초기화</button>
+          }}>재시도 ↻</button>
         </div>
 
         {/* Content area: PC = row (SVG left, panels right), Mobile = column */}
@@ -3005,63 +3072,123 @@ export default function App() {
         {/* Jakdo placeholder */}
         {buildPhase === "jakdo" && (
           <div style={{
-            padding: "16px 20px", borderTop: `1px solid ${theme.border}`,
+            padding: "14px 16px", borderTop: `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.5s ease",
           }}>
-            <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+            <style>{`
+              @keyframes compassSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+              @keyframes compassPoke { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+              @keyframes compassStretch { 0%,100% { transform: scaleX(1); } 50% { transform: scaleX(1.15); } }
+              @keyframes rulerSlide { 0%,100% { transform: translateX(0); } 50% { transform: translateX(4px); } }
+              @keyframes rulerDraw { 0% { width: 0; } 100% { width: 100%; } }
+            `}</style>
+
+            {/* Tool selector row */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
               <button onClick={() => {
-                if (!jakdoTool) { setJakdoTool("compass"); setCompassPhase("idle"); showMsg(activeTone.guide.compassStart, 2000); playSfx("click"); }
-                else { setJakdoTool("compass"); setCompassPhase("idle"); }
+                if (jakdoTool !== "compass") {
+                  setJakdoTool("compass"); setCompassPhase("idle");
+                  if (!jakdoTool) showMsg(activeTone.guide.compassStart, 2000);
+                  playSfx("click");
+                }
               }} style={{
-                flex: 1, padding: "12px", borderRadius: 14,
+                flex: 1, padding: "10px 8px", borderRadius: 12,
                 border: `2px solid ${jakdoTool === "compass" ? PASTEL.coral : theme.border}`,
                 background: jakdoTool === "compass" ? theme.accentSoft : theme.card,
-                color: theme.text, fontSize: 14, cursor: "pointer",
+                color: theme.text, fontSize: 13, cursor: "pointer",
                 fontFamily: "'Noto Serif KR', serif", fontWeight: jakdoTool === "compass" ? 700 : 400,
               }}>
-                🔵 컴퍼스
+                <span style={{ display: "inline-block", animation: jakdoTool === "compass" ? "compassSpin 3s linear infinite" : "none" }}>⭕</span> 컴퍼스
               </button>
               <button onClick={() => {
-                if (!jakdoTool || jakdoArcs.length === 0) {
-                  showMsg(activeTone.guide.rulerFirst, 2000); playSfx("error"); return;
-                }
-                setJakdoTool("ruler"); playSfx("click");
+                if (jakdoArcs.length === 0) { showMsg(activeTone.guide.rulerFirst, 2000); playSfx("error"); return; }
+                setJakdoTool("ruler"); setRulerPhase("idle"); playSfx("click");
               }} style={{
-                flex: 1, padding: "12px", borderRadius: 14,
+                flex: 1, padding: "10px 8px", borderRadius: 12,
                 border: `2px solid ${jakdoTool === "ruler" ? PASTEL.sky : theme.border}`,
-                background: jakdoTool === "ruler" ? `${PASTEL.sky}20` : theme.card,
+                background: jakdoTool === "ruler" ? `${PASTEL.sky}15` : theme.card,
                 color: jakdoArcs.length > 0 ? theme.text : theme.textSec,
-                fontSize: 14, cursor: "pointer",
+                fontSize: 13, cursor: "pointer",
                 fontFamily: "'Noto Serif KR', serif", fontWeight: jakdoTool === "ruler" ? 700 : 400,
               }}>
-                📏 눈금없는 자
+                <span style={{ display: "inline-block", animation: jakdoTool === "ruler" ? "rulerSlide 1.5s ease-in-out infinite" : "none" }}>📏</span> 눈금없는 자
               </button>
             </div>
-            {/* Status bar */}
-            <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginBottom: 8 }}>
-              <span style={{ fontSize: 11, color: theme.textSec, padding: "4px 10px", background: theme.bg, borderRadius: 8 }}>
-                호: {jakdoArcs.length}
+
+            {/* Compass sub-steps */}
+            {jakdoTool === "compass" && (
+              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                {[
+                  { label: "중심점 찍기", icon: "📍", step: 0, anim: "compassPoke 1s ease infinite" },
+                  { label: "거리 벌리기", icon: "↔️", step: 1, anim: "compassStretch 1.2s ease infinite" },
+                  { label: "호 돌리기", icon: "🌀", step: 2, anim: "compassSpin 2s linear infinite" },
+                ].map(({ label, icon, step, anim }) => (
+                  <div key={step} style={{
+                    flex: 1, textAlign: "center", padding: "8px 4px", borderRadius: 10,
+                    background: compassStep === step ? `${PASTEL.coral}20` : theme.bg,
+                    border: `1.5px solid ${compassStep === step ? PASTEL.coral : compassStep > step ? PASTEL.mint : theme.border}`,
+                    opacity: compassStep >= step ? 1 : 0.4,
+                    transition: "all 0.3s ease",
+                  }}>
+                    <div style={{
+                      fontSize: 18, marginBottom: 2,
+                      display: "inline-block",
+                      animation: compassStep === step ? anim : "none",
+                    }}>{icon}</div>
+                    <div style={{
+                      fontSize: 10, color: compassStep === step ? PASTEL.coral : compassStep > step ? PASTEL.mint : theme.textSec,
+                      fontWeight: compassStep === step ? 700 : 400,
+                      fontFamily: "'Noto Serif KR', serif",
+                    }}>{label}</div>
+                    {compassStep > step && <div style={{ fontSize: 9, color: PASTEL.mint }}>✓</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Ruler sub-steps */}
+            {jakdoTool === "ruler" && (
+              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                {[
+                  { label: "자 대기", icon: "📏", active: !rulerStart },
+                  { label: "선 긋기", icon: "✏️", active: !!rulerStart },
+                ].map(({ label, icon, active }, idx) => (
+                  <div key={idx} style={{
+                    flex: 1, textAlign: "center", padding: "8px 4px", borderRadius: 10,
+                    background: active ? `${PASTEL.sky}20` : theme.bg,
+                    border: `1.5px solid ${active ? PASTEL.sky : theme.border}`,
+                    transition: "all 0.3s ease",
+                  }}>
+                    <div style={{
+                      fontSize: 18, marginBottom: 2, display: "inline-block",
+                      animation: active ? "rulerSlide 1.5s ease-in-out infinite" : "none",
+                    }}>{icon}</div>
+                    <div style={{
+                      fontSize: 10, color: active ? PASTEL.sky : theme.textSec,
+                      fontWeight: active ? 700 : 400, fontFamily: "'Noto Serif KR', serif",
+                    }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Status + guide */}
+            <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap", marginBottom: 6 }}>
+              <span style={{ fontSize: 10, color: theme.textSec, padding: "3px 8px", background: theme.bg, borderRadius: 6 }}>
+                호 {jakdoArcs.length} · 선 {jakdoRulerLines.length}
               </span>
-              <span style={{ fontSize: 11, color: theme.textSec, padding: "4px 10px", background: theme.bg, borderRadius: 8 }}>
-                선: {jakdoRulerLines.length}
-              </span>
-              {compassPhase !== "idle" && (
-                <span style={{ fontSize: 11, color: PASTEL.coral, padding: "4px 10px", background: `${PASTEL.coral}15`, borderRadius: 8, fontWeight: 700 }}>
-                  {compassPhase === "radiusSet" ? "반지름 설정 중..." : "호 그리는 중..."}
-                </span>
-              )}
               {crossedEdges > 0 && compassPhase === "radiusSet" && (
-                <span style={{ fontSize: 11, color: PASTEL.mint, padding: "4px 10px", background: `${PASTEL.mint}15`, borderRadius: 8, fontWeight: 700 }}>
+                <span style={{ fontSize: 10, color: PASTEL.mint, padding: "3px 8px", background: `${PASTEL.mint}15`, borderRadius: 6, fontWeight: 700 }}>
                   {crossedEdges === 1 ? "수직이등분선?" : "각이등분선!"}
                 </span>
               )}
             </div>
-            {/* Phase guide */}
-            <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center" }}>
-              {jakdoTool === "compass" && compassPhase === "idle" && "꼭지점이나 교점을 터치하세요"}
-              {jakdoTool === "compass" && compassPhase === "radiusSet" && "드래그하여 반지름을 설정하세요 (놓으면 고정)"}
-              {jakdoTool === "compass" && compassPhase === "drawingArc" && "터치하고 움직여서 호를 그려주세요"}
-              {jakdoTool === "ruler" && "두 점을 터치하여 직선을 그으세요"}
+            <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center", margin: 0 }}>
+              {jakdoTool === "compass" && compassStep === 0 && "꼭지점이나 교점을 터치하세요"}
+              {jakdoTool === "compass" && compassStep === 1 && "드래그해서 반지름을 정해주세요"}
+              {jakdoTool === "compass" && compassStep === 2 && "손가락으로 호를 그려주세요"}
+              {jakdoTool === "ruler" && !rulerStart && "시작점을 터치하세요"}
+              {jakdoTool === "ruler" && rulerStart && "끝점을 터치하세요"}
               {!jakdoTool && "도구를 선택해주세요"}
             </p>
           </div>
