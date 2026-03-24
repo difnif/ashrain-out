@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { detectTriangleFromStroke } from "./config.js";
 
 // ============================================================
 // ashrain.out — Interactive Geometry Education App
@@ -308,6 +309,11 @@ export default function App() {
   const [triangle, setTriangle] = useState(null); // {A,B,C}
   const [buildPhase, setBuildPhase] = useState(null); // "input","animating","done","modeSelect","jedo","jakdo","properties"
   const [sssInput, setSssInput] = useState({ a: "", b: "", c: "" });
+
+  // B-mode (pen/touch drawing) state
+  const [drawPoints, setDrawPoints] = useState([]); // current freehand points
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [drawPreview, setDrawPreview] = useState(null); // detected triangle preview before confirm
 
   // Animation
   const [animPhase, setAnimPhase] = useState(0);
@@ -946,6 +952,66 @@ export default function App() {
     setBuildPhase("animating");
   };
 
+  // --- B-mode: Pen/Touch drawing handlers ---
+  const handleDrawStart = useCallback((e) => {
+    if (buildPhase !== "input" || inputMode !== "B" || triangle) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    const pt = svg.createSVGPoint();
+    const src = e.touches ? e.touches[0] : e;
+    pt.x = src.clientX; pt.y = src.clientY;
+    const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+    setIsDrawing(true);
+    setDrawPoints([{ x: svgPt.x, y: svgPt.y }]);
+    setDrawPreview(null);
+  }, [buildPhase, inputMode, triangle]);
+
+  const handleDrawMove = useCallback((e) => {
+    if (!isDrawing) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    const src = e.touches ? e.touches[0] : e;
+    const pt = svg.createSVGPoint();
+    pt.x = src.clientX; pt.y = src.clientY;
+    const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+    setDrawPoints(prev => [...prev, { x: svgPt.x, y: svgPt.y }]);
+  }, [isDrawing]);
+
+  const handleDrawEnd = useCallback((e) => {
+    if (!isDrawing) return;
+    setIsDrawing(false);
+
+    if (drawPoints.length < 10) {
+      setDrawPoints([]);
+      return;
+    }
+
+    // Try to detect triangle from the freehand stroke
+    const detected = detectTriangleFromStroke(drawPoints, svgSize.w, svgSize.h);
+    if (detected) {
+      setDrawPreview(detected);
+      playSfx("success");
+    } else {
+      showMsg(activeTone.guide.drawFail || "삼각형을 인식하지 못했어요. 다시 그려보세요!", 2500);
+      playSfx("error");
+      setDrawPoints([]);
+    }
+  }, [isDrawing, drawPoints, svgSize, playSfx, showMsg, activeTone]);
+
+  const confirmDrawTriangle = useCallback(() => {
+    if (!drawPreview) return;
+    setTriangle({ ...drawPreview, mode: "draw" });
+    setBuildPhase("modeSelect"); // skip animation for drawn triangle
+    setDrawPoints([]);
+    setDrawPreview(null);
+    playSfx("complete");
+  }, [drawPreview, playSfx]);
+
+  const retryDraw = useCallback(() => {
+    setDrawPoints([]);
+    setDrawPreview(null);
+  }, []);
+
   const handleJedoClick = (e) => {
     if (!triangle || buildPhase !== "jedo") return;
     const svg = svgRef.current;
@@ -1073,6 +1139,9 @@ export default function App() {
     setRulerPhase("idle");
     setUndoStack([]);
     setShowArchiveSave(false);
+    setDrawPoints([]);
+    setDrawPreview(null);
+    setIsDrawing(false);
   };
 
   // --- Properties Data with highlight info ---
@@ -2540,18 +2609,42 @@ export default function App() {
         {/* Left section: mode tabs + SVG + properties */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
 
-        {/* Mode tabs - only when truly in input mode with no existing triangle */}
+        {/* Mode tabs - A/B toggle + sub-modes */}
         {buildPhase === "input" && !triangle && (
-          <div style={{ display: "flex", gap: 8, padding: "12px 20px", animation: "fadeIn 0.4s ease" }}>
-            {[["sss", "SSS"], ["sas", "SAS"], ["asa", "ASA"]].map(([key, label]) => (
-              <button key={key} onClick={() => setTriMode(key)} style={{
-                padding: "8px 20px", borderRadius: 12, fontSize: 13,
-                border: `1.5px solid ${triMode === key ? PASTEL.coral : theme.border}`,
-                background: triMode === key ? theme.accentSoft : theme.card,
-                color: theme.text, cursor: "pointer", fontWeight: triMode === key ? 700 : 400,
-                fontFamily: "'Playfair Display', serif", transition: "all 0.3s ease",
-              }}>{label}</button>
-            ))}
+          <div style={{ padding: "10px 20px", animation: "fadeIn 0.4s ease" }}>
+            {/* A/B toggle */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              {[["A", "수치 입력"], ["B", "직접 그리기"]].map(([key, label]) => (
+                <button key={key} onClick={() => { setInputMode(key); if(key==="B") setTriMode(null); else if(!triMode) setTriMode("sss"); }} style={{
+                  flex: 1, padding: "8px", borderRadius: 10, fontSize: 12,
+                  border: `2px solid ${inputMode === key ? PASTEL.coral : theme.border}`,
+                  background: inputMode === key ? theme.accentSoft : theme.card,
+                  color: theme.text, cursor: "pointer", fontWeight: inputMode === key ? 700 : 400,
+                  fontFamily: "'Noto Serif KR', serif", transition: "all 0.3s ease",
+                }}>
+                  {key === "A" ? "✏️" : "👆"} {label}
+                </button>
+              ))}
+            </div>
+            {/* SSS/SAS/ASA sub-tabs (A mode only) */}
+            {inputMode === "A" && (
+              <div style={{ display: "flex", gap: 8 }}>
+                {[["sss", "SSS"], ["sas", "SAS"], ["asa", "ASA"]].map(([key, label]) => (
+                  <button key={key} onClick={() => setTriMode(key)} style={{
+                    padding: "8px 20px", borderRadius: 12, fontSize: 13,
+                    border: `1.5px solid ${triMode === key ? PASTEL.coral : theme.border}`,
+                    background: triMode === key ? theme.accentSoft : theme.card,
+                    color: theme.text, cursor: "pointer", fontWeight: triMode === key ? 700 : 400,
+                    fontFamily: "'Playfair Display', serif", transition: "all 0.3s ease",
+                  }}>{label}</button>
+                ))}
+              </div>
+            )}
+            {inputMode === "B" && (
+              <p style={{ fontSize: 12, color: theme.textSec, textAlign: "center", margin: "4px 0 0 0", fontFamily: "'Noto Serif KR', serif" }}>
+                {drawPreview ? "삼각형이 인식됐어요! 아래에서 확인해주세요." : (activeTone.guide.drawHint || "캔버스에 삼각형을 그려보세요!")}
+              </p>
+            )}
           </div>
         )}
 
@@ -2603,12 +2696,12 @@ export default function App() {
             }}
             onClick={buildPhase === "jedo" ? handleJedoClick : undefined}
             onWheel={handleWheel}
-            onMouseDown={(e) => { handleMouseDown(e); if(buildPhase==="jakdo") handleJakdoDown(e); }}
-            onMouseMove={(e) => { handleMouseMove(e); if(buildPhase==="jakdo") handleJakdoMove(e); }}
-            onMouseUp={(e) => { handleMouseUp(e); if(buildPhase==="jakdo") handleJakdoUp(e); }}
-            onTouchStart={(e) => { handleTouchStart(e); if(buildPhase==="jakdo") handleJakdoDown(e); }}
-            onTouchMove={(e) => { handleTouchMove(e); if(buildPhase==="jakdo") handleJakdoMove(e); }}
-            onTouchEnd={(e) => { handleTouchEnd(e); if(buildPhase==="jakdo") handleJakdoUp(e); }}
+            onMouseDown={(e) => { handleMouseDown(e); if(buildPhase==="jakdo") handleJakdoDown(e); handleDrawStart(e); }}
+            onMouseMove={(e) => { handleMouseMove(e); if(buildPhase==="jakdo") handleJakdoMove(e); handleDrawMove(e); }}
+            onMouseUp={(e) => { handleMouseUp(e); if(buildPhase==="jakdo") handleJakdoUp(e); handleDrawEnd(e); }}
+            onTouchStart={(e) => { handleTouchStart(e); if(buildPhase==="jakdo") handleJakdoDown(e); handleDrawStart(e); }}
+            onTouchMove={(e) => { handleTouchMove(e); if(buildPhase==="jakdo") handleJakdoMove(e); handleDrawMove(e); }}
+            onTouchEnd={(e) => { handleTouchEnd(e); if(buildPhase==="jakdo") handleJakdoUp(e); handleDrawEnd(e); }}
           >
             {/* Global SVG styles — keep stroke width constant on zoom */}
             <defs>
@@ -2625,6 +2718,43 @@ export default function App() {
             )}
 
             {renderTriangleAnim()}
+
+            {/* B-mode: freehand drawing stroke */}
+            {inputMode === "B" && drawPoints.length > 1 && !drawPreview && (
+              <polyline
+                points={drawPoints.map(p => `${p.x},${p.y}`).join(" ")}
+                fill="none" stroke={PASTEL.coral} strokeWidth={3}
+                strokeLinecap="round" strokeLinejoin="round" opacity={0.7}
+              />
+            )}
+            {/* B-mode: detected triangle preview */}
+            {drawPreview && !triangle && (
+              <g>
+                {/* Faded freehand path */}
+                {drawPoints.length > 1 && (
+                  <polyline
+                    points={drawPoints.map(p => `${p.x},${p.y}`).join(" ")}
+                    fill="none" stroke={PASTEL.coral} strokeWidth={1.5} opacity={0.2}
+                  />
+                )}
+                {/* Snapped triangle preview */}
+                <polygon
+                  points={`${drawPreview.A.x},${drawPreview.A.y} ${drawPreview.B.x},${drawPreview.B.y} ${drawPreview.C.x},${drawPreview.C.y}`}
+                  fill={`${PASTEL.mint}20`} stroke={PASTEL.mint} strokeWidth={2.5}
+                  strokeDasharray="8 4"
+                />
+                {/* Vertex labels on preview */}
+                {[drawPreview.A, drawPreview.B, drawPreview.C].map((p, i) => (
+                  <FixedG key={`prev${i}`} x={p.x} y={p.y}>
+                    <circle cx={p.x} cy={p.y} r={6} fill={PASTEL.mint} />
+                    <text x={p.x} y={p.y - 14} textAnchor="middle" fill={PASTEL.mint}
+                      fontSize={12} fontFamily="'Playfair Display', serif" fontWeight={700}>
+                      {["A", "B", "C"][i]}
+                    </text>
+                  </FixedG>
+                ))}
+              </g>
+            )}
 
             {/* Property highlight overlay */}
             {showProperties && renderHighlight()}
@@ -2925,6 +3055,52 @@ export default function App() {
               color: theme.text, fontSize: 13, fontWeight: 700, cursor: "pointer",
               fontFamily: "'Noto Serif KR', serif",
             }}>📁 아카이브에 저장</button>
+          </div>
+        )}
+
+        {/* B-mode confirm/retry panel */}
+        {buildPhase === "input" && inputMode === "B" && drawPreview && (
+          <div style={{
+            padding: "16px 20px", borderTop: `1px solid ${theme.border}`,
+            background: theme.card, animation: "fadeIn 0.3s ease",
+          }}>
+            <p style={{ fontSize: 13, color: PASTEL.mint, fontWeight: 700, textAlign: "center", marginBottom: 4, fontFamily: "'Noto Serif KR', serif" }}>
+              삼각형이 인식됐어요!
+            </p>
+            <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center", marginBottom: 14, fontFamily: "'Noto Serif KR', serif" }}>
+              변: {drawPreview.sides.map(s => s.toFixed(1)).join(", ")}
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={confirmDrawTriangle} style={{
+                flex: 1, padding: "14px", borderRadius: 14, border: "none",
+                background: `linear-gradient(135deg, ${PASTEL.mint}, ${PASTEL.sage})`,
+                color: "white", fontSize: 15, fontWeight: 700, cursor: "pointer",
+                fontFamily: "'Noto Serif KR', serif",
+              }}>이걸로 할래요!</button>
+              <button onClick={retryDraw} style={{
+                padding: "14px 20px", borderRadius: 14,
+                border: `1.5px solid ${theme.border}`, background: theme.card,
+                color: theme.textSec, fontSize: 13, cursor: "pointer",
+                fontFamily: "'Noto Serif KR', serif",
+              }}>다시 그리기</button>
+            </div>
+          </div>
+        )}
+
+        {/* B-mode guide (no preview yet) */}
+        {buildPhase === "input" && inputMode === "B" && !drawPreview && !isDrawing && (
+          <div style={{
+            padding: "16px 20px", borderTop: `1px solid ${theme.border}`,
+            background: theme.card, animation: "fadeIn 0.3s ease",
+            textAlign: "center",
+          }}>
+            <p style={{ fontSize: 28, marginBottom: 8 }}>👆</p>
+            <p style={{ fontSize: 13, color: theme.text, fontFamily: "'Noto Serif KR', serif", marginBottom: 4 }}>
+              캔버스에 삼각형을 그려주세요
+            </p>
+            <p style={{ fontSize: 11, color: theme.textSec, fontFamily: "'Noto Serif KR', serif" }}>
+              한 붓 그리기로 삼각형 모양을 그리면 자동 인식돼요
+            </p>
           </div>
         )}
 
