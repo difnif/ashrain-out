@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
 // ashrain.out — Interactive Geometry Education App
@@ -231,6 +231,29 @@ function findCorners(pts, minAngleDeg) {
 
 // --- Components ---
 
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  render() {
+    if (this.state.error) return (
+      <div style={{ padding: 40, fontFamily: "monospace", background: "#1E1B18", color: "#E8A598", minHeight: "100vh" }}>
+        <h2>ashrain.out 오류 발생</h2>
+        <pre style={{ whiteSpace: "pre-wrap", fontSize: 13, marginTop: 20, color: "#E8DDD4" }}>
+          {this.state.error.message}
+        </pre>
+        <pre style={{ whiteSpace: "pre-wrap", fontSize: 11, marginTop: 10, color: "#9B8E82" }}>
+          {this.state.error.stack}
+        </pre>
+        <button onClick={() => { localStorage.clear(); sessionStorage.clear(); window.location.reload(); }}
+          style={{ marginTop: 20, padding: "12px 24px", borderRadius: 12, background: "#E8A598", color: "white", border: "none", fontSize: 14, cursor: "pointer" }}>
+          데이터 초기화 후 새로고침
+        </button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
 function FloatingMsg({ msg, theme }) {
   if (!msg) return null;
   return (
@@ -275,7 +298,7 @@ function InfoPanel({ data, theme }) {
 // ============================================================
 // Main App
 // ============================================================
-export default function App() {
+function AppInner() {
   // Session persistence
   const savedUser = useMemo(() => { try { return JSON.parse(localStorage.getItem("ar_user")); } catch { return null; } }, []);
   const savedScreen = useMemo(() => {
@@ -4024,4 +4047,8 @@ export default function App() {
   }
 
   return null;
+}
+
+export default function App() {
+  return <ErrorBoundary><AppInner /></ErrorBoundary>;
 }
