@@ -1209,34 +1209,65 @@ function AppInner() {
 
   // Utility: recognize an angle (V/<) from freehand stroke
   const recognizeAngle = useCallback((pts) => {
-    if (pts.length < 8) return null;
-    // Step 1: Find vertex (sharpest direction change)
+    if (pts.length < 10) return null;
+
+    // Step 1: Find approximate vertex (sharpest turn)
     let bestIdx = -1, bestTurn = 0;
-    const step = Math.max(1, Math.floor(pts.length / 20));
-    for (let i = step * 2; i < pts.length - step * 2; i += step) {
-      const prev = pts[Math.max(0, i - step * 2)];
+    for (let i = 3; i < pts.length - 3; i++) {
+      const prev = pts[Math.max(0, i - 3)];
       const cur = pts[i];
-      const next = pts[Math.min(pts.length - 1, i + step * 2)];
+      const next = pts[Math.min(pts.length - 1, i + 3)];
       const a1 = Math.atan2(cur.y - prev.y, cur.x - prev.x);
       const a2 = Math.atan2(next.y - cur.y, next.x - cur.x);
       let diff = Math.abs(a2 - a1);
       if (diff > Math.PI) diff = 2 * Math.PI - diff;
       if (diff > bestTurn) { bestTurn = diff; bestIdx = i; }
     }
-    if (bestIdx < 0 || bestTurn < 0.15) return null;
+    if (bestIdx < 3 || bestIdx > pts.length - 4 || bestTurn < 0.15) return null;
     const vertex = pts[bestIdx];
 
-    // Step 2: Calculate angle using vectors from vertex to arm endpoints
-    const v1 = { x: pts[0].x - vertex.x, y: pts[0].y - vertex.y };
-    const v2 = { x: pts[pts.length-1].x - vertex.x, y: pts[pts.length-1].y - vertex.y };
-    const len1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
-    const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
-    if (len1 < 10 || len2 < 10) return null;
-    const dot = v1.x * v2.x + v1.y * v2.y;
-    const cosAngle = Math.max(-1, Math.min(1, dot / (len1 * len2)));
-    const vectorAngle = Math.acos(cosAngle) * 180 / Math.PI;
-    // V-shape: vector angle = supplementary to opening angle
-    let angle = 180 - vectorAngle;
+    // Step 2: Get arm directions using linear regression on each half
+    // Arm 1: pts[0..bestIdx]  Arm 2: pts[bestIdx..end]
+    const arm1Pts = pts.slice(0, bestIdx + 1);
+    const arm2Pts = pts.slice(bestIdx);
+    if (arm1Pts.length < 3 || arm2Pts.length < 3) return null;
+
+    // Linear regression: returns direction vector {dx, dy}
+    const fitDir = (points) => {
+      const n = points.length;
+      let sx = 0, sy = 0, sxx = 0, sxy = 0, syy = 0;
+      // Use parameter t = 0..1 to fit x(t) and y(t)
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1);
+        sx += t; sy += points[i].x; sxx += t * t; sxy += t * points[i].x;
+      }
+      const dxDt = (n * sxy - sx * sy) / (n * sxx - sx * sx);
+      sx = 0; sy = 0; sxx = 0; sxy = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1);
+        sx += t; sy += points[i].y; sxx += t * t; sxy += t * points[i].y;
+      }
+      const dyDt = (n * sxy - sx * sy) / (n * sxx - sx * sx);
+      return { dx: dxDt, dy: dyDt };
+    };
+
+    const dir1 = fitDir(arm1Pts); // direction: start → vertex
+    const dir2 = fitDir(arm2Pts); // direction: vertex → end
+
+    // Step 3: Angle between the two arm directions
+    const len1 = Math.sqrt(dir1.dx ** 2 + dir1.dy ** 2);
+    const len2 = Math.sqrt(dir2.dx ** 2 + dir2.dy ** 2);
+    if (len1 < 1 || len2 < 1) return null;
+
+    const dot = dir1.dx * dir2.dx + dir1.dy * dir2.dy;
+    const cosA = Math.max(-1, Math.min(1, dot / (len1 * len2)));
+    const dirAngle = Math.acos(cosA) * 180 / Math.PI;
+
+    // dir1 goes INTO vertex, dir2 goes OUT of vertex
+    // When they're opposite (180°) = straight line = 180° opening → not a V
+    // When they're same direction (0°) = fold back = ~0° opening
+    // V opening angle = 180° - dirAngle
+    let angle = dirAngle;
     if (angle < 3 || angle > 177) return null;
     return { vertex, angle, arm1: pts[0], arm2: pts[pts.length - 1] };
   }, []);
