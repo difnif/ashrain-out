@@ -422,6 +422,7 @@ function AppInner() {
   const [signupDone, setSignupDone] = useState(false);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
   const [chatMsg, setChatMsg] = useState("");
+  const [chatLog, setChatLog] = useState(() => { try { return JSON.parse(localStorage.getItem("ar_chat")) || []; } catch { return []; } });
   const [chatNotif, setChatNotif] = useState(true);
   const chatEndRef = useRef(null);
   const [editingMemberId, setEditingMemberId] = useState(null);
