@@ -763,7 +763,8 @@ function AppInner() {
   }, [buildPhase, jakdoTool, compassPhase, compassCursors]);
 
   // Compass sub-step (for 3-button UI)
-  const compassStep = compassPhase === "idle" ? 0 : compassPhase === "radiusSet" ? 1 : 2;
+  // compassPhase: "idle" → "centerSet" → "radiusSet" → "drawingArc"
+  const compassStep = compassPhase === "idle" ? 0 : compassPhase === "centerSet" ? 0 : compassPhase === "radiusSet" ? 1 : 2;
 
   // Undo history — must be before deleteArc/deleteRulerLine
   const [undoStack, setUndoStack] = useState([]);
@@ -979,7 +980,21 @@ function AppInner() {
           }
         });
 
-        const newArc = { center: {...compassCenter}, radius: compassRadius, startAngle, endAngle, intersections, id: Date.now() };
+        // Determine sweep direction from freehand points
+        const midIdx = Math.floor(arcDrawPoints.length / 2);
+        const midPt = arcDrawPoints[midIdx];
+        const midAngle = Math.atan2(midPt.y - compassCenter.y, midPt.x - compassCenter.x);
+        let s2m = midAngle - startAngle;
+        if (s2m < -Math.PI) s2m += 2*Math.PI;
+        if (s2m > Math.PI) s2m -= 2*Math.PI;
+        let s2e = endAngle - startAngle;
+        if (s2e < -Math.PI) s2e += 2*Math.PI;
+        if (s2e > Math.PI) s2e -= 2*Math.PI;
+        // If midpoint is in the "short" direction and end is too, sweepCW matches sign
+        // Otherwise the arc goes the long way around
+        const sweepCW = s2m > 0;
+
+        const newArc = { center: {...compassCenter}, radius: compassRadius, startAngle, endAngle, intersections, id: Date.now(), sweepCW };
         pushUndo();
         setJakdoArcs(prev => [...prev, newArc]);
         playSfx("draw");
@@ -3357,11 +3372,19 @@ function AppInner() {
               const sy = arc.center.y + arc.radius * Math.sin(arc.startAngle);
               const ex = arc.center.x + arc.radius * Math.cos(arc.endAngle);
               const ey = arc.center.y + arc.radius * Math.sin(arc.endAngle);
-              let diff = arc.endAngle - arc.startAngle;
-              if (diff < -Math.PI) diff += 2*Math.PI;
-              if (diff > Math.PI) diff -= 2*Math.PI;
-              const largeArc = Math.abs(diff) > Math.PI ? 1 : 0;
-              const sweep = diff > 0 ? 1 : 0;
+              // Compute actual swept angle respecting drawing direction
+              let swept = arc.endAngle - arc.startAngle;
+              // Normalize to [0, 2π] for CW or [-2π, 0] for CCW based on freehand direction
+              if (arc.sweepCW !== undefined) {
+                // Use stored sweep direction
+                if (arc.sweepCW) { while (swept < 0) swept += 2*Math.PI; }
+                else { while (swept > 0) swept -= 2*Math.PI; }
+              } else {
+                if (swept < -Math.PI) swept += 2*Math.PI;
+                if (swept > Math.PI) swept -= 2*Math.PI;
+              }
+              const largeArc = Math.abs(swept) > Math.PI ? 1 : 0;
+              const sweep = swept > 0 ? 1 : 0;
               return (
                 <g key={`arc${i}`}>
                   <path d={`M ${sx} ${sy} A ${arc.radius} ${arc.radius} 0 ${largeArc} ${sweep} ${ex} ${ey}`}
