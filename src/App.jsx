@@ -390,10 +390,13 @@ function AppInner() {
   const [buildPhase, setBuildPhase] = useState(null); // "input","animating","done","modeSelect","jedo","jakdo","properties"
   const [sssInput, setSssInput] = useState({ a: "", b: "", c: "" });
 
-  // B-mode (pen/touch drawing) state
-  const [drawPoints, setDrawPoints] = useState([]); // current freehand points
+  // B-mode (multi-step drawing) state
+  const [drawStep, setDrawStep] = useState(0); // 0=idle, 1=drawing lines, 2=drawing angles, 3=preview
+  const [drawStrokes, setDrawStrokes] = useState([]); // completed strokes: [{start, end, length}]
+  const [drawAngles, setDrawAngles] = useState([]); // completed angle marks: [{vertex, angle}]
+  const [currentStroke, setCurrentStroke] = useState([]); // points of stroke in progress
   const [isDrawing, setIsDrawing] = useState(false);
-  const [drawPreview, setDrawPreview] = useState(null); // detected triangle preview before confirm
+  const [drawPreview, setDrawPreview] = useState(null); // {a,b,c} or {b,c,angle} etc
 
   // Animation
   const [animPhase, setAnimPhase] = useState(0);
@@ -1184,9 +1187,57 @@ function AppInner() {
     setBuildPhase("animating");
   };
 
-  // --- B-mode: Pen/Touch drawing handlers ---
+  // --- B-mode: Multi-step drawing (SSS/SAS/ASA specific) ---
+  // Utility: recognize a straight line from freehand stroke
+  const recognizeLine = useCallback((pts) => {
+    if (pts.length < 5) return null;
+    const s = pts[0], e = pts[pts.length - 1];
+    const len = dist(s, e);
+    if (len < 30) return null; // too short
+    // Check straightness: max perpendicular distance
+    let maxD = 0;
+    for (const p of pts) {
+      const dx = e.x - s.x, dy = e.y - s.y;
+      const lenSq = dx * dx + dy * dy;
+      const t = Math.max(0, Math.min(1, ((p.x - s.x) * dx + (p.y - s.y) * dy) / lenSq));
+      const proj = { x: s.x + t * dx, y: s.y + t * dy };
+      maxD = Math.max(maxD, dist(p, proj));
+    }
+    if (maxD > len * 0.25) return null; // too curved
+    return { start: s, end: e, length: len };
+  }, []);
+
+  // Utility: recognize an angle (V/<) from freehand stroke
+  const recognizeAngle = useCallback((pts) => {
+    if (pts.length < 8) return null;
+    // Find the corner: point with sharpest direction change
+    let bestIdx = -1, bestAngle = 0;
+    const step = Math.max(1, Math.floor(pts.length / 20));
+    for (let i = step * 2; i < pts.length - step * 2; i += step) {
+      const prev = pts[Math.max(0, i - step * 2)];
+      const cur = pts[i];
+      const next = pts[Math.min(pts.length - 1, i + step * 2)];
+      const a1 = Math.atan2(cur.y - prev.y, cur.x - prev.x);
+      const a2 = Math.atan2(next.y - cur.y, next.x - cur.x);
+      let diff = Math.abs(a2 - a1);
+      if (diff > Math.PI) diff = 2 * Math.PI - diff;
+      if (diff > bestAngle) { bestAngle = diff; bestIdx = i; }
+    }
+    if (bestIdx < 0 || bestAngle < 0.15) return null; // no clear corner
+    const vertex = pts[bestIdx];
+    const arm1 = pts[0];
+    const arm2 = pts[pts.length - 1];
+    // Turn angle at V-vertex = opening angle directly
+    const angle = bestAngle * 180 / Math.PI;
+    if (angle < 3 || angle > 177) return null;
+    return { vertex, angle, arm1, arm2 };
+  }, []);
+
+  // Drawing scale: pixels → abstract units (longest drawable line ≈ 10)
+  const drawScale = useMemo(() => svgSize.w * 0.06, [svgSize]);
+
   const handleDrawStart = useCallback((e) => {
-    if (buildPhase !== "input" || inputMode !== "B" || triangle) return;
+    if (buildPhase !== "input" || inputMode !== "B" || triangle || drawStep === 0) return;
     const svg = svgRef.current;
     if (!svg) return;
     const pt = svg.createSVGPoint();
@@ -1194,9 +1245,8 @@ function AppInner() {
     pt.x = src.clientX; pt.y = src.clientY;
     const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
     setIsDrawing(true);
-    setDrawPoints([{ x: svgPt.x, y: svgPt.y }]);
-    setDrawPreview(null);
-  }, [buildPhase, inputMode, triangle]);
+    setCurrentStroke([{ x: svgPt.x, y: svgPt.y }]);
+  }, [buildPhase, inputMode, triangle, drawStep]);
 
   const handleDrawMove = useCallback((e) => {
     if (!isDrawing) return;
@@ -1206,43 +1256,126 @@ function AppInner() {
     const pt = svg.createSVGPoint();
     pt.x = src.clientX; pt.y = src.clientY;
     const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
-    setDrawPoints(prev => [...prev, { x: svgPt.x, y: svgPt.y }]);
+    setCurrentStroke(prev => [...prev, { x: svgPt.x, y: svgPt.y }]);
   }, [isDrawing]);
 
-  const handleDrawEnd = useCallback((e) => {
+  const handleDrawEnd = useCallback(() => {
     if (!isDrawing) return;
     setIsDrawing(false);
+    if (currentStroke.length < 5) { setCurrentStroke([]); return; }
 
-    if (drawPoints.length < 10) {
-      setDrawPoints([]);
-      return;
+    const mode = triMode;
+    if (drawStep === 1) {
+      // Drawing lines phase
+      const line = recognizeLine(currentStroke);
+      if (!line) {
+        showMsg("직선으로 그어주세요!", 1500);
+        playSfx("error");
+        setCurrentStroke([]);
+        return;
+      }
+      const newStrokes = [...drawStrokes, { ...line, lengthUnit: line.length / drawScale }];
+      setDrawStrokes(newStrokes);
+      playSfx("draw");
+      setCurrentStroke([]);
+
+      // Check completion
+      const neededLines = mode === "sss" ? 3 : mode === "sas" ? 2 : 1;
+      if (newStrokes.length >= neededLines) {
+        if (mode === "sss") {
+          // SSS complete → generate triangle
+          const a = newStrokes[0].lengthUnit, b = newStrokes[1].lengthUnit, c = newStrokes[2].lengthUnit;
+          const tri = generateTriangle(a, b, c);
+          if (tri) {
+            setTriangle({ ...tri, mode: "sss" });
+            setBuildPhase("animating");
+            setDrawStep(0);
+            playSfx("success");
+          } else {
+            showMsg("이 세 변으로는 삼각형을 만들 수 없어요!", 2500);
+            playSfx("error");
+            setDrawStrokes([]); setDrawStep(1);
+          }
+        } else {
+          // SAS/ASA needs angles next
+          setDrawStep(2);
+          if (mode === "sas") showMsg("이제 빈 공간에 < 모양으로\n끼인각을 표시해보세요!", 3000);
+          else showMsg("이제 빈 공간에 < 모양으로\n각도를 2개 표시해보세요!", 3000);
+        }
+      } else {
+        showMsg(`${neededLines - newStrokes.length}개 더 그어주세요!`, 1500);
+      }
+    } else if (drawStep === 2) {
+      // Drawing angles phase
+      const ang = recognizeAngle(currentStroke);
+      if (!ang) {
+        showMsg("< 모양으로 각도를 그려주세요!", 1500);
+        playSfx("error");
+        setCurrentStroke([]);
+        return;
+      }
+      const newAngles = [...drawAngles, ang];
+      setDrawAngles(newAngles);
+      playSfx("draw");
+      setCurrentStroke([]);
+
+      const neededAngles = mode === "sas" ? 1 : 2;
+      if (newAngles.length >= neededAngles) {
+        // Generate triangle
+        if (mode === "sas") {
+          const b = drawStrokes[0].lengthUnit, c = drawStrokes[1].lengthUnit;
+          const angle = newAngles[0].angle;
+          const rad = angle * Math.PI / 180;
+          const a = Math.sqrt(b * b + c * c - 2 * b * c * Math.cos(rad));
+          const tri = generateTriangleWithBase(a, c, b);
+          if (tri) {
+            setTriangle({ ...tri, mode: "sas", sasData: { b, c, angle } });
+            setBuildPhase("animating");
+            setDrawStep(0);
+            playSfx("success");
+          } else {
+            showMsg("삼각형을 만들 수 없어요! 다시 시도해주세요.", 2500);
+            playSfx("error");
+            setDrawStrokes([]); setDrawAngles([]); setDrawStep(1);
+          }
+        } else {
+          // ASA
+          const a = drawStrokes[0].lengthUnit;
+          const angB = newAngles[0].angle, angC = newAngles[1].angle;
+          if (angB + angC >= 180) {
+            showMsg("두 각의 합이 180° 이상이에요!", 2500);
+            playSfx("error");
+            setDrawAngles([]); setDrawStep(2);
+            return;
+          }
+          const angA = 180 - angB - angC;
+          const radA = angA * Math.PI / 180;
+          const b = a * Math.sin(angB * Math.PI / 180) / Math.sin(radA);
+          const c = a * Math.sin(angC * Math.PI / 180) / Math.sin(radA);
+          const tri = generateTriangleWithBase(a, c, b);
+          if (tri) {
+            setTriangle({ ...tri, mode: "asa", asaData: { a, angB, angC } });
+            setBuildPhase("animating");
+            setDrawStep(0);
+            playSfx("success");
+          } else {
+            showMsg("삼각형을 만들 수 없어요!", 2500);
+            playSfx("error");
+            setDrawStrokes([]); setDrawAngles([]); setDrawStep(1);
+          }
+        }
+      } else {
+        showMsg(`${neededAngles - newAngles.length}개 더 그려주세요!`, 1500);
+      }
     }
-
-    // Try to detect triangle from the freehand stroke
-    const detected = detectTriangleFromStroke(drawPoints, svgSize.w, svgSize.h);
-    if (detected) {
-      setDrawPreview(detected);
-      playSfx("success");
-    } else {
-      showMsg(activeTone.guide.drawFail || "삼각형을 인식하지 못했어요. 다시 그려보세요!", 2500);
-      playSfx("error");
-      setDrawPoints([]);
-    }
-  }, [isDrawing, drawPoints, svgSize, playSfx, showMsg, activeTone]);
-
-  const confirmDrawTriangle = useCallback(() => {
-    if (!drawPreview) return;
-    setTriangle({ ...drawPreview, mode: "draw" });
-    setBuildPhase("modeSelect"); // skip animation for drawn triangle
-    setDrawPoints([]);
-    setDrawPreview(null);
-    playSfx("complete");
-  }, [drawPreview, playSfx]);
+  }, [isDrawing, currentStroke, drawStep, triMode, drawStrokes, drawAngles, drawScale,
+      recognizeLine, recognizeAngle, generateTriangle, generateTriangleWithBase,
+      playSfx, showMsg]);
 
   const retryDraw = useCallback(() => {
-    setDrawPoints([]);
-    setDrawPreview(null);
-  }, []);
+    setDrawStrokes([]); setDrawAngles([]); setCurrentStroke([]);
+    setDrawStep(triMode ? 1 : 0); setDrawPreview(null);
+  }, [triMode]);
 
   const handleJedoClick = (e) => {
     if (!triangle || buildPhase !== "jedo") return;
@@ -1371,7 +1504,7 @@ function AppInner() {
     setRulerPhase("idle");
     setUndoStack([]);
     setShowArchiveSave(false);
-    setDrawPoints([]);
+    setDrawStrokes([]); setDrawAngles([]); setCurrentStroke([]); setDrawStep(0);
     setDrawPreview(null);
     setIsDrawing(false);
   };
@@ -3223,7 +3356,11 @@ function AppInner() {
             {/* A/B toggle */}
             <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
               {[["A", "수치 입력"], ["B", "직접 그리기"]].map(([key, label]) => (
-                <button key={key} onClick={() => { setInputMode(key); if(key==="B") setTriMode(null); else if(!triMode) setTriMode("sss"); }} style={{
+                <button key={key} onClick={() => {
+                  setInputMode(key);
+                  if (!triMode) setTriMode("sss");
+                  setDrawStrokes([]); setDrawAngles([]); setCurrentStroke([]); setDrawStep(0);
+                }} style={{
                   flex: 1, padding: "8px", borderRadius: 10, fontSize: 12,
                   border: `2px solid ${inputMode === key ? PASTEL.coral : theme.border}`,
                   background: inputMode === key ? theme.accentSoft : theme.card,
@@ -3234,23 +3371,35 @@ function AppInner() {
                 </button>
               ))}
             </div>
-            {/* SSS/SAS/ASA sub-tabs (A mode only) */}
-            {inputMode === "A" && (
-              <div style={{ display: "flex", gap: 8 }}>
-                {[["sss", "SSS"], ["sas", "SAS"], ["asa", "ASA"]].map(([key, label]) => (
-                  <button key={key} onClick={() => setTriMode(key)} style={{
-                    padding: "8px 20px", borderRadius: 12, fontSize: 13,
-                    border: `1.5px solid ${triMode === key ? PASTEL.coral : theme.border}`,
-                    background: triMode === key ? theme.accentSoft : theme.card,
-                    color: theme.text, cursor: "pointer", fontWeight: triMode === key ? 700 : 400,
-                    fontFamily: "'Playfair Display', serif", transition: "all 0.3s ease",
-                  }}>{label}</button>
-                ))}
-              </div>
+            {/* SSS/SAS/ASA sub-tabs (both modes) */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              {[["sss", "SSS"], ["sas", "SAS"], ["asa", "ASA"]].map(([key, label]) => (
+                <button key={key} onClick={() => {
+                  setTriMode(key);
+                  setDrawStrokes([]); setDrawAngles([]); setCurrentStroke([]);
+                  if (inputMode === "B") setDrawStep(1);
+                }} style={{
+                  padding: "8px 20px", borderRadius: 12, fontSize: 13,
+                  border: `1.5px solid ${triMode === key ? PASTEL.coral : theme.border}`,
+                  background: triMode === key ? theme.accentSoft : theme.card,
+                  color: theme.text, cursor: "pointer", fontWeight: triMode === key ? 700 : 400,
+                  fontFamily: "'Playfair Display', serif", transition: "all 0.3s ease",
+                }}>{label}</button>
+              ))}
+            </div>
+            {/* B-mode drawing guide */}
+            {inputMode === "B" && drawStep > 0 && (
+              <p style={{ fontSize: 12, color: PASTEL.coral, textAlign: "center", margin: 0, fontFamily: "'Noto Serif KR', serif", fontWeight: 700 }}>
+                {drawStep === 1 && triMode === "sss" && `세 변을 각각 그려주세요! (${drawStrokes.length}/3)`}
+                {drawStep === 1 && triMode === "sas" && `두 변을 먼저 각각 그려주세요! (${drawStrokes.length}/2)`}
+                {drawStep === 1 && triMode === "asa" && `밑변을 먼저 그려주세요! (${drawStrokes.length}/1)`}
+                {drawStep === 2 && triMode === "sas" && `< 모양으로 끼인각을 표시해보세요! (${drawAngles.length}/1)`}
+                {drawStep === 2 && triMode === "asa" && `< 모양으로 각도를 2개 표시해보세요! (${drawAngles.length}/2)`}
+              </p>
             )}
-            {inputMode === "B" && (
-              <p style={{ fontSize: 12, color: theme.textSec, textAlign: "center", margin: "4px 0 0 0", fontFamily: "'Noto Serif KR', serif" }}>
-                {drawPreview ? "삼각형이 인식됐어요! 아래에서 확인해주세요." : (activeTone.guide.drawHint || "캔버스에 삼각형을 그려보세요!")}
+            {inputMode === "B" && drawStep === 0 && triMode && (
+              <p style={{ fontSize: 12, color: theme.textSec, textAlign: "center", margin: 0, fontFamily: "'Noto Serif KR', serif" }}>
+                위에서 모드를 선택하면 시작돼요!
               </p>
             )}
           </div>
@@ -3327,41 +3476,49 @@ function AppInner() {
 
             {renderTriangleAnim()}
 
-            {/* B-mode: freehand drawing stroke */}
-            {inputMode === "B" && drawPoints.length > 1 && !drawPreview && (
-              <polyline
-                points={drawPoints.map(p => `${p.x},${p.y}`).join(" ")}
-                fill="none" stroke={PASTEL.coral} strokeWidth={3}
-                strokeLinecap="round" strokeLinejoin="round" opacity={0.7}
-              />
-            )}
-            {/* B-mode: detected triangle preview */}
-            {drawPreview && !triangle && (
-              <g>
-                {/* Faded freehand path */}
-                {drawPoints.length > 1 && (
-                  <polyline
-                    points={drawPoints.map(p => `${p.x},${p.y}`).join(" ")}
-                    fill="none" stroke={PASTEL.coral} strokeWidth={1.5} opacity={0.2}
-                  />
-                )}
-                {/* Snapped triangle preview */}
-                <polygon
-                  points={`${drawPreview.A.x},${drawPreview.A.y} ${drawPreview.B.x},${drawPreview.B.y} ${drawPreview.C.x},${drawPreview.C.y}`}
-                  fill={`${PASTEL.mint}20`} stroke={PASTEL.mint} strokeWidth={2.5}
-                  strokeDasharray="8 4"
-                />
-                {/* Vertex labels on preview */}
-                {[drawPreview.A, drawPreview.B, drawPreview.C].map((p, i) => (
-                  <FixedG key={`prev${i}`} x={p.x} y={p.y}>
-                    <circle cx={p.x} cy={p.y} r={6} fill={PASTEL.mint} />
-                    <text x={p.x} y={p.y - 14} textAnchor="middle" fill={PASTEL.mint}
-                      fontSize={12} fontFamily="'Playfair Display', serif" fontWeight={700}>
-                      {["A", "B", "C"][i]}
-                    </text>
-                  </FixedG>
-                ))}
+            {/* B-mode: completed strokes (lines) */}
+            {inputMode === "B" && drawStep > 0 && drawStrokes.map((s, i) => (
+              <g key={`ds${i}`}>
+                <line x1={s.start.x} y1={s.start.y} x2={s.end.x} y2={s.end.y}
+                  stroke={PASTEL.coral} strokeWidth={3} strokeLinecap="round" opacity={0.8} />
+                <FixedG x={(s.start.x+s.end.x)/2} y={(s.start.y+s.end.y)/2}>
+                  <text x={(s.start.x+s.end.x)/2} y={(s.start.y+s.end.y)/2 - 12}
+                    textAnchor="middle" fill={PASTEL.coral} fontSize={11}
+                    fontFamily="'Playfair Display', serif" fontWeight={700}>
+                    {s.lengthUnit.toFixed(1)}
+                  </text>
+                </FixedG>
+                <FixedG x={s.start.x} y={s.start.y}>
+                  <circle cx={s.start.x} cy={s.start.y} r={4} fill={PASTEL.coral} />
+                </FixedG>
+                <FixedG x={s.end.x} y={s.end.y}>
+                  <circle cx={s.end.x} cy={s.end.y} r={4} fill={PASTEL.coral} />
+                </FixedG>
               </g>
+            ))}
+            {/* B-mode: completed angle marks */}
+            {inputMode === "B" && drawStep === 2 && drawAngles.map((a, i) => (
+              <g key={`da${i}`}>
+                <line x1={a.arm1.x} y1={a.arm1.y} x2={a.vertex.x} y2={a.vertex.y}
+                  stroke={PASTEL.lavender} strokeWidth={2} opacity={0.7} />
+                <line x1={a.vertex.x} y1={a.vertex.y} x2={a.arm2.x} y2={a.arm2.y}
+                  stroke={PASTEL.lavender} strokeWidth={2} opacity={0.7} />
+                <FixedG x={a.vertex.x} y={a.vertex.y}>
+                  <circle cx={a.vertex.x} cy={a.vertex.y} r={4} fill={PASTEL.lavender} />
+                  <text x={a.vertex.x} y={a.vertex.y - 14} textAnchor="middle"
+                    fill={PASTEL.lavender} fontSize={11} fontFamily="'Noto Serif KR', serif" fontWeight={700}>
+                    {a.angle.toFixed(1)}°
+                  </text>
+                </FixedG>
+              </g>
+            ))}
+            {/* B-mode: current stroke in progress */}
+            {inputMode === "B" && isDrawing && currentStroke.length > 1 && (
+              <polyline
+                points={currentStroke.map(p => `${p.x},${p.y}`).join(" ")}
+                fill="none" stroke={drawStep === 2 ? PASTEL.lavender : PASTEL.coral}
+                strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" opacity={0.6}
+              />
             )}
 
             {/* Property highlight overlay */}
@@ -3694,48 +3851,47 @@ function AppInner() {
           </div>
         )}
 
-        {/* B-mode confirm/retry panel */}
-        {buildPhase === "input" && inputMode === "B" && drawPreview && (
+        {/* B-mode drawing status panel */}
+        {buildPhase === "input" && inputMode === "B" && drawStep > 0 && !triangle && (
           <div style={{
-            padding: "16px 20px", borderTop: `1px solid ${theme.border}`,
+            padding: "14px 20px", borderTop: `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.3s ease",
           }}>
-            <p style={{ fontSize: 13, color: PASTEL.mint, fontWeight: 700, textAlign: "center", marginBottom: 4, fontFamily: "'Noto Serif KR', serif" }}>
-              삼각형이 인식됐어요!
-            </p>
-            <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center", marginBottom: 14, fontFamily: "'Noto Serif KR', serif" }}>
-              변: {drawPreview.sides.map(s => s.toFixed(1)).join(", ")}
-            </p>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={confirmDrawTriangle} style={{
-                flex: 1, padding: "14px", borderRadius: 14, border: "none",
-                background: `linear-gradient(135deg, ${PASTEL.mint}, ${PASTEL.sage})`,
-                color: "white", fontSize: 15, fontWeight: 700, cursor: "pointer",
-                fontFamily: "'Noto Serif KR', serif",
-              }}>이걸로 할래요!</button>
-              <button onClick={retryDraw} style={{
-                padding: "14px 20px", borderRadius: 14,
-                border: `1.5px solid ${theme.border}`, background: theme.card,
-                color: theme.textSec, fontSize: 13, cursor: "pointer",
-                fontFamily: "'Noto Serif KR', serif",
-              }}>다시 그리기</button>
+            {/* Progress indicators */}
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginBottom: 10 }}>
+              {drawStrokes.map((s, i) => (
+                <span key={`sl${i}`} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 8, background: `${PASTEL.coral}15`, color: PASTEL.coral, fontWeight: 700 }}>
+                  변{i+1}={s.lengthUnit.toFixed(1)}
+                </span>
+              ))}
+              {drawAngles.map((a, i) => (
+                <span key={`al${i}`} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 8, background: `${PASTEL.lavender}15`, color: PASTEL.lavender, fontWeight: 700 }}>
+                  ∠{i+1}={a.angle.toFixed(1)}°
+                </span>
+              ))}
             </div>
+            {/* Retry button */}
+            <button onClick={retryDraw} style={{
+              width: "100%", padding: "12px", borderRadius: 12,
+              border: `1.5px solid ${theme.border}`, background: theme.card,
+              color: theme.textSec, fontSize: 12, cursor: "pointer",
+              fontFamily: "'Noto Serif KR', serif",
+            }}>↻ 처음부터 다시 그리기</button>
           </div>
         )}
 
-        {/* B-mode guide (no preview yet) */}
-        {buildPhase === "input" && inputMode === "B" && !drawPreview && !isDrawing && (
+        {/* B-mode initial guide (no mode selected or step 0) */}
+        {buildPhase === "input" && inputMode === "B" && drawStep === 0 && !triangle && (
           <div style={{
             padding: "16px 20px", borderTop: `1px solid ${theme.border}`,
-            background: theme.card, animation: "fadeIn 0.3s ease",
-            textAlign: "center",
+            background: theme.card, animation: "fadeIn 0.3s ease", textAlign: "center",
           }}>
             <p style={{ fontSize: 28, marginBottom: 8 }}>👆</p>
             <p style={{ fontSize: 13, color: theme.text, fontFamily: "'Noto Serif KR', serif", marginBottom: 4 }}>
-              캔버스에 삼각형을 그려주세요
+              위에서 SSS / SAS / ASA를 선택하세요
             </p>
             <p style={{ fontSize: 11, color: theme.textSec, fontFamily: "'Noto Serif KR', serif" }}>
-              한 붓 그리기로 삼각형 모양을 그리면 자동 인식돼요
+              모드별로 다른 방식으로 삼각형을 그려요
             </p>
           </div>
         )}
