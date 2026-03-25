@@ -1223,13 +1223,16 @@ function AppInner() {
       if (diff > Math.PI) diff = 2 * Math.PI - diff;
       if (diff > bestAngle) { bestAngle = diff; bestIdx = i; }
     }
-    if (bestIdx < 0 || bestAngle < 0.15) return null; // no clear corner
+    if (bestIdx < 0 || bestAngle < 0.15) return null;
     const vertex = pts[bestIdx];
     const arm1 = pts[0];
     const arm2 = pts[pts.length - 1];
-    // Turn angle at V-vertex = opening angle directly
-    const angle = bestAngle * 180 / Math.PI;
-    if (angle < 3 || angle > 177) return null;
+    let angle = bestAngle * 180 / Math.PI;
+    // Always pick the angle < 180°
+    if (angle >= 180) angle = 360 - angle;
+    if (angle < 3) return null;
+    // Clamp to safe range for triangle math
+    angle = Math.min(angle, 179);
     return { vertex, angle, arm1, arm2 };
   }, []);
 
