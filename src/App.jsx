@@ -1210,8 +1210,8 @@ function AppInner() {
   // Utility: recognize an angle (V/<) from freehand stroke
   const recognizeAngle = useCallback((pts) => {
     if (pts.length < 8) return null;
-    // Find the corner: point with sharpest direction change
-    let bestIdx = -1, bestAngle = 0;
+    // Step 1: Find vertex (sharpest direction change)
+    let bestIdx = -1, bestTurn = 0;
     const step = Math.max(1, Math.floor(pts.length / 20));
     for (let i = step * 2; i < pts.length - step * 2; i += step) {
       const prev = pts[Math.max(0, i - step * 2)];
@@ -1221,19 +1221,24 @@ function AppInner() {
       const a2 = Math.atan2(next.y - cur.y, next.x - cur.x);
       let diff = Math.abs(a2 - a1);
       if (diff > Math.PI) diff = 2 * Math.PI - diff;
-      if (diff > bestAngle) { bestAngle = diff; bestIdx = i; }
+      if (diff > bestTurn) { bestTurn = diff; bestIdx = i; }
     }
-    if (bestIdx < 0 || bestAngle < 0.15) return null;
+    if (bestIdx < 0 || bestTurn < 0.15) return null;
     const vertex = pts[bestIdx];
-    const arm1 = pts[0];
-    const arm2 = pts[pts.length - 1];
-    let angle = bestAngle * 180 / Math.PI;
-    // Always pick the angle < 180°
-    if (angle >= 180) angle = 360 - angle;
-    if (angle < 3) return null;
-    // Clamp to safe range for triangle math
-    angle = Math.min(angle, 179);
-    return { vertex, angle, arm1, arm2 };
+
+    // Step 2: Calculate angle using vectors from vertex to arm endpoints
+    const v1 = { x: pts[0].x - vertex.x, y: pts[0].y - vertex.y };
+    const v2 = { x: pts[pts.length-1].x - vertex.x, y: pts[pts.length-1].y - vertex.y };
+    const len1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+    const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+    if (len1 < 10 || len2 < 10) return null;
+    const dot = v1.x * v2.x + v1.y * v2.y;
+    const cosAngle = Math.max(-1, Math.min(1, dot / (len1 * len2)));
+    const vectorAngle = Math.acos(cosAngle) * 180 / Math.PI;
+    // V-shape: vector angle = supplementary to opening angle
+    let angle = 180 - vectorAngle;
+    if (angle < 3 || angle > 177) return null;
+    return { vertex, angle, arm1: pts[0], arm2: pts[pts.length - 1] };
   }, []);
 
   // Drawing scale: pixels → abstract units (longest drawable line ≈ 10)
