@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v4.0)
+// ashrain.out — Interactive Geometry Education App (v4.1)
 // ============================================================
 
 // --- Constants & Config ---
@@ -657,6 +657,30 @@ function AppInner() {
   useEffect(() => { localStorage.setItem("ar_members", JSON.stringify(members)); }, [members]);
   useEffect(() => { localStorage.setItem("ar_signups", JSON.stringify(signupRequests)); }, [signupRequests]);
   useEffect(() => { localStorage.setItem("ar_autoapprove", autoApprove ? "true" : "false"); }, [autoApprove]);
+
+  // Online presence heartbeat for plaza
+  useEffect(() => {
+    if (screen !== "plaza") return;
+    const myName = user?.nickname || user?.name || "익명";
+    const update = () => {
+      try {
+        const online = JSON.parse(localStorage.getItem("ar_online") || "{}");
+        online[myName] = { time: Date.now(), role: user?.role || "external" };
+        for (const k of Object.keys(online)) { if (Date.now() - online[k].time > 30000) delete online[k]; }
+        localStorage.setItem("ar_online", JSON.stringify(online));
+      } catch {}
+    };
+    update();
+    const iv = setInterval(update, 10000);
+    return () => {
+      clearInterval(iv);
+      try {
+        const online = JSON.parse(localStorage.getItem("ar_online") || "{}");
+        delete online[myName];
+        localStorage.setItem("ar_online", JSON.stringify(online));
+      } catch {}
+    };
+  }, [screen, user]);
 
   // Register touch+mouse events on angle collection SVG with { passive: false }
   // Angle data collection state
@@ -2943,18 +2967,52 @@ function AppInner() {
       localStorage.setItem("ar_chat", JSON.stringify(filteredLog));
     }
 
+    // Online presence + delete
+    const myName = user?.nickname || user?.name || "익명";
+
+    const onlineUsers = (() => {
+      try {
+        const online = JSON.parse(localStorage.getItem("ar_online") || "{}");
+        return Object.entries(online).filter(([, v]) => Date.now() - v.time < 30000).map(([name, v]) => ({ name, role: v.role }));
+      } catch { return []; }
+    })();
+
+    const deleteChat = (time) => {
+      const updated = chatLog.filter(m => m.time !== time);
+      setChatLog(updated);
+      localStorage.setItem("ar_chat", JSON.stringify(updated));
+    };
+
     const roleColors = { admin: PASTEL.coral, assistant: PASTEL.lavender, student: PASTEL.sky, external: PASTEL.sage };
 
     return (
       <div style={{ height: "100vh", maxHeight: "100dvh", display: "flex", flexDirection: "column", background: theme.bg, fontFamily: "'Noto Serif KR', serif" }}>
         {/* Header */}
-        <div style={{ flexShrink: 0, display: "flex", alignItems: "center", padding: "16px 20px", borderBottom: `1px solid ${theme.border}` }}>
+        <div style={{ flexShrink: 0, display: "flex", alignItems: "center", padding: "14px 20px", borderBottom: `1px solid ${theme.border}` }}>
           <button onClick={() => { playSfx("click"); setScreen("menu"); }} style={{ background: "none", border: "none", color: theme.textSec, fontSize: 13, cursor: "pointer" }}>← 메뉴</button>
           <span style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 700, color: theme.text, fontFamily: "'Playfair Display', serif" }}>광장</span>
-          <span style={{ width: 40 }} />
+          <span style={{ fontSize: 11, color: PASTEL.mint }}>
+            <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 3, background: PASTEL.mint, marginRight: 4 }} />
+            {onlineUsers.length}
+          </span>
         </div>
+
+        {/* Online users bar */}
+        {onlineUsers.length > 0 && (
+          <div style={{ flexShrink: 0, display: "flex", gap: 8, padding: "6px 16px", borderBottom: `1px solid ${theme.border}`, overflowX: "auto" }}>
+            {onlineUsers.map((u, i) => (
+              <span key={i} style={{
+                fontSize: 10, padding: "3px 8px", borderRadius: 10, whiteSpace: "nowrap",
+                background: `${roleColors[u.role] || theme.textSec}15`,
+                color: roleColors[u.role] || theme.textSec, fontWeight: 600,
+              }}>
+                <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 3, background: PASTEL.mint, marginRight: 3 }} />
+                {u.name}
+              </span>
+            ))}
+          </div>
+        )}
         
-        {/* Screenshot deterrent CSS */}
         <style>{`
           .plaza-content { position: relative; }
           @media print { .plaza-content { display: none !important; } }
@@ -2969,7 +3027,7 @@ function AppInner() {
             </p>
           )}
           {filteredLog.map((msg, i) => {
-            const isMe = msg.user === (user?.nickname || user?.name);
+            const isMe = msg.user === myName;
             const remaining = Math.max(0, Math.ceil((10 * 60 * 1000 - (now - msg.time)) / 60000));
             return (
               <div key={`${msg.time}-${i}`} style={{
@@ -2996,6 +3054,12 @@ function AppInner() {
                   <p style={{ fontSize: 13, color: theme.text, margin: 0, lineHeight: 1.5, fontFamily: "'Noto Serif KR', serif" }}>
                     {msg.text}
                   </p>
+                  {isMe && (
+                    <button onClick={() => deleteChat(msg.time)} style={{
+                      background: "none", border: "none", color: theme.textSec, fontSize: 9,
+                      cursor: "pointer", padding: "2px 0", marginTop: 2, textAlign: "right", display: "block",
+                    }}>삭제</button>
+                  )}
                 </div>
               </div>
             );
@@ -3908,6 +3972,8 @@ function AppInner() {
             <defs>
               <style>{`
                 line, path, polyline, polygon, circle { vector-effect: non-scaling-stroke; }
+                text { pointer-events: none; -webkit-user-select: none; user-select: none; }
+                text { -webkit-user-select: none; user-select: none; pointer-events: none; }
               `}</style>
             </defs>
             {/* Grid dots */}
@@ -4013,11 +4079,8 @@ function AppInner() {
               const sy = arc.center.y + arc.radius * Math.sin(arc.startAngle);
               const ex = arc.center.x + arc.radius * Math.cos(arc.endAngle);
               const ey = arc.center.y + arc.radius * Math.sin(arc.endAngle);
-              // Compute actual swept angle respecting drawing direction
               let swept = arc.endAngle - arc.startAngle;
-              // Normalize to [0, 2π] for CW or [-2π, 0] for CCW based on freehand direction
               if (arc.sweepCW !== undefined) {
-                // Use stored sweep direction
                 if (arc.sweepCW) { while (swept < 0) swept += 2*Math.PI; }
                 else { while (swept > 0) swept -= 2*Math.PI; }
               } else {
@@ -4026,16 +4089,22 @@ function AppInner() {
               }
               const largeArc = Math.abs(swept) > Math.PI ? 1 : 0;
               const sweep = swept > 0 ? 1 : 0;
+              // Guide mode: color by group
+              let arcColor = PASTEL.lavender;
+              if (guideGoal === "circumcenter") {
+                arcColor = i < 2 ? PASTEL.coral : PASTEL.sky; // first edge pink, second edge blue
+              } else if (guideGoal === "incenter") {
+                arcColor = i < 3 ? PASTEL.coral : PASTEL.sky; // first vertex pink, second vertex blue
+              }
               return (
                 <g key={`arc${i}`}>
                   <path d={`M ${sx} ${sy} A ${arc.radius} ${arc.radius} 0 ${largeArc} ${sweep} ${ex} ${ey}`}
-                    fill="none" stroke={PASTEL.lavender} strokeWidth={2} opacity={0.8} />
-                  {/* Intersection points — only show in jakdo mode, hide during jedo */}
-                  {buildPhase === "jakdo" && arc.intersections?.map((ip, j) => (
+                    fill="none" stroke={arcColor} strokeWidth={2} opacity={0.7} />
+                  {/* Intersection dots — only in free mode */}
+                  {buildPhase === "jakdo" && !guideGoal && arc.intersections?.map((ip, j) => (
                     <FixedG key={j} x={ip.x} y={ip.y}>
                       <circle cx={ip.x} cy={ip.y} r={5}
-                        fill={PASTEL.coral} stroke="white" strokeWidth={1.5} opacity={0.9}
-                        style={{ cursor: "pointer" }}>
+                        fill={PASTEL.coral} stroke="white" strokeWidth={1.5} opacity={0.9}>
                         <animate attributeName="r" values="4;6;4" dur="1.5s" repeatCount="indefinite" />
                       </circle>
                     </FixedG>
@@ -4043,11 +4112,17 @@ function AppInner() {
                 </g>
               );
             })}
-            {/* Jakdo ruler lines */}
-            {jakdoRulerLines.map((line, i) => (
-              <line key={`rl${i}`} x1={line.start.x} y1={line.start.y} x2={line.end.x} y2={line.end.y}
-                stroke={PASTEL.sky} strokeWidth={2} opacity={0.8} />
-            ))}
+            {/* Jakdo ruler lines — green for bisectors */}
+            {jakdoRulerLines.map((line, i) => {
+              let lineColor = guideGoal ? PASTEL.mint : PASTEL.sky;
+              if (guideGoal === "circumcenter") lineColor = i === 0 ? PASTEL.coral : PASTEL.sky;
+              if (guideGoal === "incenter") lineColor = i === 0 ? PASTEL.coral : PASTEL.sky;
+              return (
+                <line key={`rl${i}`} x1={line.start.x} y1={line.start.y} x2={line.end.x} y2={line.end.y}
+                  stroke={lineColor} strokeWidth={2} opacity={0.7}
+                  strokeDasharray="8 4" />
+              );
+            })}
             {/* Compass Phase 2: radius preview (dotted line) */}
             {compassPhase === "radiusSet" && compassCenter && compassDragPt && (
               <g>
