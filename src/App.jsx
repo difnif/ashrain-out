@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v4.3)
+// ashrain.out — Interactive Geometry Education App (v4.4)
 // ============================================================
 
 // --- Constants & Config ---
@@ -890,43 +890,43 @@ function AppInner() {
       const v = currentGuide.vertex;
       const [arm1, arm2] = currentGuide.arms;
 
-      // Arc 1: from vertex, crossing both edges
-      const r1 = Math.min(dist(v, arm1), dist(v, arm2)) * 0.4;
+      // Step 1: Arc from vertex crossing both edges
+      const r1 = Math.min(dist(v, arm1), dist(v, arm2)) * 0.45;
       const a1 = Math.atan2(arm1.y - v.y, arm1.x - v.x);
       const a2 = Math.atan2(arm2.y - v.y, arm2.x - v.x);
-      // Edge intersection points
       const eInt1 = { x: v.x + r1 * Math.cos(a1), y: v.y + r1 * Math.sin(a1) };
       const eInt2 = { x: v.x + r1 * Math.cos(a2), y: v.y + r1 * Math.sin(a2) };
-      
-      // Ensure arc sweeps through the interior angle
-      let startA = a1, endA = a2;
-      let sw = endA - startA;
-      if (sw > Math.PI) { startA = a2; endA = a1; }
-      else if (sw < -Math.PI) { /* keep */ }
-      else if (sw < 0) { startA = a2; endA = a1; }
-      
-      const arc1 = { center: { ...v }, radius: r1, startAngle: startA - 0.15, endAngle: endA + 0.15, intersections: [eInt1, eInt2], id: Date.now(), sweepCW: true };
 
-      // Arcs 2 & 3: from each edge intersection, sweeping AWAY from vertex (into angle interior)
-      const r2 = dist(eInt1, eInt2) * 0.65;
-      // Direction from vertex through midpoint of edge intersections = angle bisector direction
-      const midE = { x: (eInt1.x + eInt2.x) / 2, y: (eInt1.y + eInt2.y) / 2 };
-      const bisAngle = Math.atan2(midE.y - v.y, midE.x - v.x); // AWAY from vertex
-      const arc2 = { center: { ...eInt1 }, radius: r2, startAngle: bisAngle - 0.6, endAngle: bisAngle + 0.6, intersections: [], id: Date.now() + 1, sweepCW: true };
-      const arc3 = { center: { ...eInt2 }, radius: r2, startAngle: bisAngle - 0.6, endAngle: bisAngle + 0.6, intersections: [], id: Date.now() + 2, sweepCW: true };
+      // Sweep the interior angle (shorter arc)
+      let sa = a1, ea = a2;
+      let sw = ea - sa;
+      while (sw > Math.PI) sw -= 2 * Math.PI;
+      while (sw < -Math.PI) sw += 2 * Math.PI;
+      if (sw < 0) { sa = a2; ea = a1; }
 
-      // Calculate arc2-arc3 intersection (the angle bisector point)
+      const arc1 = { center: { ...v }, radius: r1, startAngle: sa - 0.1, endAngle: ea + 0.1, intersections: [], id: Date.now(), sweepCW: true };
+
+      // Step 2 & 3: Arcs from each edge intersection — must cross each other
       const d23 = dist(eInt1, eInt2);
+      const r2 = d23 * 0.75; // must be > d23/2 so arcs cross
+
+      // Arc from eInt1: aimed toward eInt2 direction (so it crosses arc from eInt2)
+      const ang1to2 = Math.atan2(eInt2.y - eInt1.y, eInt2.x - eInt1.x);
+      const ang2to1 = Math.atan2(eInt1.y - eInt2.y, eInt1.x - eInt2.x);
+      const arc2 = { center: { ...eInt1 }, radius: r2, startAngle: ang1to2 - 0.7, endAngle: ang1to2 + 0.7, intersections: [], id: Date.now() + 1, sweepCW: true };
+      const arc3 = { center: { ...eInt2 }, radius: r2, startAngle: ang2to1 - 0.7, endAngle: ang2to1 + 0.7, intersections: [], id: Date.now() + 2, sweepCW: true };
+
+      // Calculate intersection of arc2 and arc3
       let innerPt = null;
       if (d23 > 0 && d23 < r2 * 2) {
-        const aa = (r2 * r2 - r2 * r2 + d23 * d23) / (2 * d23);
-        const hh = Math.sqrt(Math.max(0, r2 * r2 - aa * aa));
-        const ddx = (eInt2.x - eInt1.x) / d23, ddy = (eInt2.y - eInt1.y) / d23;
-        const mmx = eInt1.x + aa * ddx, mmy = eInt1.y + aa * ddy;
-        const ip1 = { x: mmx + hh * (-ddy), y: mmy + hh * ddx };
-        const ip2 = { x: mmx - hh * (-ddy), y: mmy - hh * ddx };
-        // Pick point on the angle bisector side (closer to interior, farther from v along bisector)
-        const bisDir = { x: (eInt1.x + eInt2.x) / 2 - v.x, y: (eInt1.y + eInt2.y) / 2 - v.y };
+        const h = Math.sqrt(Math.max(0, r2 * r2 - (d23 / 2) * (d23 / 2)));
+        const mx = (eInt1.x + eInt2.x) / 2, my = (eInt1.y + eInt2.y) / 2;
+        const dx = (eInt2.x - eInt1.x) / d23, dy = (eInt2.y - eInt1.y) / d23;
+        const ip1 = { x: mx + h * (-dy), y: my + h * dx };
+        const ip2 = { x: mx - h * (-dy), y: my - h * dx };
+        // Pick the one on the bisector side (same side as angle interior)
+        const mid = { x: (eInt1.x + eInt2.x) / 2, y: (eInt1.y + eInt2.y) / 2 };
+        const bisDir = { x: mid.x - v.x, y: mid.y - v.y };
         const dot1 = (ip1.x - v.x) * bisDir.x + (ip1.y - v.y) * bisDir.y;
         const dot2 = (ip2.x - v.x) * bisDir.x + (ip2.y - v.y) * bisDir.y;
         innerPt = dot1 > dot2 ? ip1 : ip2;
@@ -2612,32 +2612,26 @@ function AppInner() {
           </g>
           );
         })()}
-        {/* Circle with radar sweep animation */}
+        {/* Circle drawing animation — stroke progressively drawn */}
         {jedoCircle && (() => {
           const { cx, cy, r } = jedoCircle;
           const color = jedoType === "circum" ? PASTEL.sky : PASTEL.lavender;
+          const circumference = 2 * Math.PI * r;
           return (
             <g>
-              {/* Radar sweep fill - rotating wedge */}
-              <circle cx={cx} cy={cy} r={r} fill={`${color}12`} stroke="none">
-                <animate attributeName="r" from="0" to={r} dur="1s" fill="freeze" />
+              {/* Filled circle fades in then out */}
+              <circle cx={cx} cy={cy} r={r} fill={`${color}18`} stroke="none" opacity={0}>
+                <animate attributeName="opacity" values="0;0.4;0.4;0" dur="2.5s" fill="freeze" />
+                <animate attributeName="r" from="0" to={r} dur="0.8s" fill="freeze" />
               </circle>
-              {/* Sweeping radius line */}
-              <line x1={cx} y1={cy} x2={cx + r} y2={cy}
-                stroke={color} strokeWidth={1.5} opacity={0.6}>
-                <animateTransform attributeName="transform" type="rotate"
-                  from={`0 ${cx} ${cy}`} to={`360 ${cx} ${cy}`}
-                  dur="1.5s" fill="freeze" />
-              </line>
-              {/* Semi-transparent fill that fades out after animation */}
-              <circle cx={cx} cy={cy} r={r} fill={`${color}15`} stroke="none">
-                <animate attributeName="opacity" values="0.3;0.3;0" begin="1.5s" dur="0.5s" fill="freeze" />
-              </circle>
-              {/* Final circle outline */}
+              {/* Circle stroke drawn progressively */}
               <circle cx={cx} cy={cy} r={r}
-                fill="none" stroke={color} strokeWidth={2.5} opacity={0}>
-                <animate attributeName="opacity" values="0;0;1" begin="0s" dur="1.5s" fill="freeze" />
-                <animate attributeName="r" from="0" to={r} dur="1s" fill="freeze" />
+                fill="none" stroke={color} strokeWidth={2.5}
+                strokeDasharray={circumference}
+                strokeDashoffset={circumference}
+                strokeLinecap="round">
+                <animate attributeName="strokeDashoffset" from={circumference} to="0" dur="1.8s" fill="freeze" />
+                <animate attributeName="r" from="0" to={r} dur="0.01s" fill="freeze" />
               </circle>
             </g>
           );
