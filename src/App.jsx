@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v2.4)
+// ashrain.out — Interactive Geometry Education App (v2.5)
 // ============================================================
 
 // --- Constants & Config ---
@@ -1207,55 +1207,54 @@ function AppInner() {
     return { start: s, end: e, length: len };
   }, []);
 
-  // Utility: recognize an angle (V/<) from freehand stroke
-  // Hybrid: farthest-point vertex (robust) + regression directions (accurate)
+  // Utility: recognize an angle (V/<) via 2-line fitting
+  // Works even with zigzag/wobbly strokes — finds the two best-fit lines
   const recognizeAngle = useCallback((pts) => {
     if (pts.length < 6) return null;
-    const A = pts[0], B = pts[pts.length - 1];
-    const baseDist = dist(A, B);
-    if (baseDist < 15) return null;
 
-    // Find vertex: farthest point from line A→B
-    let maxD = 0, vertexIdx = -1;
-    const dx = B.x - A.x, dy = B.y - A.y, lenSq = dx * dx + dy * dy;
-    for (let i = 1; i < pts.length - 1; i++) {
-      const px = pts[i].x - A.x, py = pts[i].y - A.y;
-      const d = Math.abs(px * dy - py * dx) / Math.sqrt(lenSq);
-      if (d > maxD) { maxD = d; vertexIdx = i; }
-    }
-    if (vertexIdx < 1 || maxD < 8) return null;
-
-    // Split into two arms and fit direction via regression
-    const arm1 = pts.slice(0, vertexIdx + 1);
-    const arm2 = pts.slice(vertexIdx);
-    if (arm1.length < 3 || arm2.length < 3) return null;
-
-    const fitDir = (p) => {
-      const n = p.length;
-      let sx = 0, sxx = 0, sxy1 = 0, sxy2 = 0, sumx = 0, sumy = 0;
-      for (let i = 0; i < n; i++) {
-        const t = i / (n - 1);
-        sx += t; sxx += t * t;
-        sxy1 += t * p[i].x; sxy2 += t * p[i].y;
-        sumx += p[i].x; sumy += p[i].y;
-      }
-      const denom = n * sxx - sx * sx;
-      if (Math.abs(denom) < 0.001) return null;
-      return { dx: (n * sxy1 - sx * sumx) / denom, dy: (n * sxy2 - sx * sumy) / denom };
+    // Fit points to a line (PCA-based), return direction + error
+    const fitLine = (points) => {
+      const n = points.length;
+      if (n < 2) return null;
+      let sx = 0, sy = 0;
+      for (const p of points) { sx += p.x; sy += p.y; }
+      const mx = sx / n, my = sy / n;
+      let sxx = 0, sxy = 0, syy = 0;
+      for (const p of points) { const dx = p.x - mx, dy = p.y - my; sxx += dx * dx; sxy += dx * dy; syy += dy * dy; }
+      const trace = sxx + syy, det = sxx * syy - sxy * sxy;
+      const lambda = (trace + Math.sqrt(Math.max(0, trace * trace - 4 * det))) / 2;
+      let dx = sxy, dy = lambda - sxx;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 0.001) { dx = 1; dy = 0; } else { dx /= len; dy /= len; }
+      let err = 0;
+      for (const p of points) { const px = p.x - mx, py = p.y - my; const proj = px * dx + py * dy; err += (px - proj * dx) ** 2 + (py - proj * dy) ** 2; }
+      return { dir: { x: dx, y: dy }, error: err / n };
     };
 
-    const d1 = fitDir(arm1), d2 = fitDir(arm2);
-    if (!d1 || !d2) return null;
-    const l1 = Math.sqrt(d1.dx ** 2 + d1.dy ** 2);
-    const l2 = Math.sqrt(d2.dx ** 2 + d2.dy ** 2);
-    if (l1 < 1 || l2 < 1) return null;
+    // Try every split point: fit 2 lines, find best split
+    const minArm = Math.max(2, Math.floor(pts.length * 0.15));
+    let bestSplit = -1, bestErr = Infinity, bestL1 = null, bestL2 = null;
+    for (let s = minArm; s <= pts.length - minArm; s++) {
+      const l1 = fitLine(pts.slice(0, s)), l2 = fitLine(pts.slice(s));
+      if (!l1 || !l2) continue;
+      const total = l1.error + l2.error;
+      if (total < bestErr) { bestErr = total; bestSplit = s; bestL1 = l1; bestL2 = l2; }
+    }
+    if (bestSplit < 0 || !bestL1 || !bestL2) return null;
 
-    const cosA = Math.max(-1, Math.min(1, (d1.dx * d2.dx + d1.dy * d2.dy) / (l1 * l2)));
-    let angle = Math.acos(cosA) * 180 / Math.PI;
-    // Regression directions: arm1 goes start→vertex, arm2 goes vertex→end
-    // Their angle IS the opening angle directly (no 180° correction needed)
+    // Orient directions: point AWAY from vertex (toward arm tips)
+    const vertex = pts[bestSplit];
+    const A = pts[0], B = pts[pts.length - 1];
+    let d1 = { ...bestL1.dir }, d2 = { ...bestL2.dir };
+    if ((A.x - vertex.x) * d1.x + (A.y - vertex.y) * d1.y < 0) { d1.x *= -1; d1.y *= -1; }
+    if ((B.x - vertex.x) * d2.x + (B.y - vertex.y) * d2.y < 0) { d2.x *= -1; d2.y *= -1; }
+
+    // Angle between outward vectors = 180° - V opening
+    const dot = d1.x * d2.x + d1.y * d2.y;
+    const outerAngle = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+    let angle = 180 - outerAngle;
     if (angle < 3 || angle > 177) return null;
-    return { vertex: pts[vertexIdx], angle, arm1: A, arm2: B };
+    return { vertex, angle, arm1: A, arm2: B };
   }, []);
 
   // Drawing scale: pixels → abstract units (longest drawable line ≈ 10)
