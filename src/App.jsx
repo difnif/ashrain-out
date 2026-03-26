@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v3.0)
+// ashrain.out — Interactive Geometry Education App (v3.1)
 // ============================================================
 
 // --- Constants & Config ---
@@ -658,17 +658,25 @@ function AppInner() {
   useEffect(() => { localStorage.setItem("ar_autoapprove", autoApprove ? "true" : "false"); }, [autoApprove]);
 
   // Register touch+mouse events on angle collection SVG with { passive: false }
+  // Angle data collection - use callback ref for reliable event binding
   const angleDrawingRef = useRef(false);
   const angleStrokeRef = useRef([]);
-  useEffect(() => {
-    const svg = angleCollectRef.current;
-    if (!svg || screen !== "admin-angles") return;
+  const angleSvgCleanup = useRef(null);
 
+  const angleCollectCallback = useCallback((svgNode) => {
+    // Cleanup previous
+    if (angleSvgCleanup.current) { angleSvgCleanup.current(); angleSvgCleanup.current = null; }
+    angleCollectRef.current = svgNode;
+    if (!svgNode) return;
+
+    const svgW = 400, svgH = 300;
     const getPos = (e) => {
       const src = e.touches ? e.touches[0] : e;
-      const pt = svg.createSVGPoint();
-      pt.x = src.clientX; pt.y = src.clientY;
-      return pt.matrixTransform(svg.getScreenCTM().inverse());
+      const rect = svgNode.getBoundingClientRect();
+      return {
+        x: ((src.clientX - rect.left) / rect.width) * svgW,
+        y: ((src.clientY - rect.top) / rect.height) * svgH,
+      };
     };
     const down = (e) => {
       e.preventDefault(); e.stopPropagation();
@@ -688,21 +696,23 @@ function AppInner() {
       if (e) { e.preventDefault(); e.stopPropagation(); }
       angleDrawingRef.current = false;
     };
-    svg.addEventListener("touchstart", down, { passive: false });
-    svg.addEventListener("touchmove", move, { passive: false });
-    svg.addEventListener("touchend", up, { passive: false });
-    svg.addEventListener("mousedown", down);
-    svg.addEventListener("mousemove", move);
-    svg.addEventListener("mouseup", up);
-    return () => {
-      svg.removeEventListener("touchstart", down);
-      svg.removeEventListener("touchmove", move);
-      svg.removeEventListener("touchend", up);
-      svg.removeEventListener("mousedown", down);
-      svg.removeEventListener("mousemove", move);
-      svg.removeEventListener("mouseup", up);
+
+    svgNode.addEventListener("touchstart", down, { passive: false });
+    svgNode.addEventListener("touchmove", move, { passive: false });
+    svgNode.addEventListener("touchend", up, { passive: false });
+    svgNode.addEventListener("mousedown", down);
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+
+    angleSvgCleanup.current = () => {
+      svgNode.removeEventListener("touchstart", down);
+      svgNode.removeEventListener("touchmove", move);
+      svgNode.removeEventListener("touchend", up);
+      svgNode.removeEventListener("mousedown", down);
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
     };
-  }, [screen]);
+  }, []);
 
   // Permission helpers
   const userRole = user?.role || "external";
@@ -3276,7 +3286,7 @@ function AppInner() {
             background: theme.svgBg, borderRadius: 16, border: `1.5px solid ${theme.border}`,
             overflow: "hidden", marginBottom: 12, touchAction: "none",
           }}>
-            <svg ref={angleCollectRef} width="100%" viewBox={`0 0 ${svgW} ${svgH}`}
+            <svg ref={angleCollectCallback} width="100%" viewBox={`0 0 ${svgW} ${svgH}`}
               style={{ display: "block", cursor: "crosshair", touchAction: "none" }}
               preserveAspectRatio="xMidYMid meet"
             >
