@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v4.5)
+// ashrain.out — Interactive Geometry Education App (v4.6)
 // ============================================================
 
 // --- Constants & Config ---
@@ -2626,22 +2626,21 @@ function AppInner() {
         {jedoCircle && (() => {
           const { cx, cy, r } = jedoCircle;
           const color = jedoType === "circum" ? PASTEL.sky : PASTEL.lavender;
-          const circumference = 2 * Math.PI * r;
+          const circ = 2 * Math.PI * r;
           return (
-            <g>
+            <g key={`circle-${jedoCircle.cx}-${jedoCircle.cy}`}>
               {/* Filled circle fades in then out */}
-              <circle cx={cx} cy={cy} r={r} fill={`${color}18`} stroke="none" opacity={0}>
-                <animate attributeName="opacity" values="0;0.4;0.4;0" dur="2.5s" fill="freeze" />
-                <animate attributeName="r" from="0" to={r} dur="0.8s" fill="freeze" />
+              <circle cx={cx} cy={cy} r={r} fill={`${color}20`} stroke="none">
+                <animate attributeName="opacity" values="0;0.35;0.35;0" dur="2.5s" fill="freeze" />
               </circle>
-              {/* Circle stroke drawn progressively */}
+              {/* Circle outline drawn progressively using dash trick */}
               <circle cx={cx} cy={cy} r={r}
                 fill="none" stroke={color} strokeWidth={2.5}
-                strokeDasharray={circumference}
-                strokeDashoffset={circumference}
-                strokeLinecap="round">
-                <animate attributeName="strokeDashoffset" from={circumference} to="0" dur="1.8s" fill="freeze" />
-                <animate attributeName="r" from="0" to={r} dur="0.01s" fill="freeze" />
+                strokeDasharray={circ}
+                strokeDashoffset={circ}
+                strokeLinecap="round"
+                opacity={0.9}>
+                <animate attributeName="stroke-dashoffset" from={circ} to="0" dur="1.8s" fill="freeze" />
               </circle>
             </g>
           );
