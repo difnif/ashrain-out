@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v4.4)
+// ashrain.out — Interactive Geometry Education App (v4.5)
 // ============================================================
 
 // --- Constants & Config ---
@@ -826,23 +826,30 @@ function AppInner() {
         { type: "tap", msg: "같은 반지름으로\n점 C를 터치하세요", target: C, targetLabel: "C", highlight: "BC", edge: [B, C], role: "second" },
         { type: "tap_inter", msg: "교차점을 터치하세요!", highlight: "BC" },
         { type: "done_line", msg: "변 BC 수직이등분선 완성! ✨" },
-        { type: "complete", msg: "두 수직이등분선이 만나는 점이\n외심이에요! 🎉" },
+        { type: "tap_center", msg: "외심을 터치하세요!\n외접원이 그려집니다" },
       ];
     } else if (guideGoal === "incenter") {
       return [
+        // Vertex A: step-by-step
         { type: "tap_vertex", msg: "꼭지점 A의 각의 이등분선!\n점 A를 터치하세요", target: A, targetLabel: "A", highlight: "vertex_A", vertex: A, arms: [B, C] },
-        { type: "tap_inter", msg: "안쪽 교차점을 터치하면\n각의 이등분선이 그려져요!", highlight: "vertex_A", bisectFrom: A },
+        { type: "tap_edge_inter", msg: "호와 변의 교차점을\n하나 터치하세요", highlight: "vertex_A", vertex: A, arms: [B, C], role: "first_inter" },
+        { type: "tap_edge_inter", msg: "다른 교차점도\n터치하세요", highlight: "vertex_A", vertex: A, arms: [B, C], role: "second_inter" },
+        { type: "tap_inner", msg: "두 호의 교차점을 터치하면\n각의 이등분선이 그려져요!", highlight: "vertex_A", bisectFrom: A },
         { type: "done_line", msg: "꼭지점 A 각의 이등분선 완성! ✨" },
+        // Vertex B: step-by-step
         { type: "tap_vertex", msg: "꼭지점 B도 해봅시다!\n점 B를 터치하세요", target: B, targetLabel: "B", highlight: "vertex_B", vertex: B, arms: [A, C] },
-        { type: "tap_inter", msg: "안쪽 교차점을 터치하세요!", highlight: "vertex_B", bisectFrom: B },
+        { type: "tap_edge_inter", msg: "호와 변의 교차점을\n하나 터치하세요", highlight: "vertex_B", vertex: B, arms: [A, C], role: "first_inter" },
+        { type: "tap_edge_inter", msg: "다른 교차점도\n터치하세요", highlight: "vertex_B", vertex: B, arms: [A, C], role: "second_inter" },
+        { type: "tap_inner", msg: "두 호의 교차점을\n터치하세요!", highlight: "vertex_B", bisectFrom: B },
         { type: "done_line", msg: "꼭지점 B 각의 이등분선 완성! ✨" },
-        { type: "complete", msg: "두 각의 이등분선이 만나는 점이\n내심이에요! 🎉" },
+        { type: "tap_center", msg: "내심을 터치하세요!\n내접원이 그려집니다" },
       ];
     }
     return [];
   }, [triangle, guideGoal]);
 
   const currentGuide = guideSteps[guideStep] || null;
+  const guideDataRef = useRef({}); // store intermediate data between steps
 
   // Guide tap handler
   const guideHandleTap = useCallback((tapPt) => {
@@ -853,135 +860,138 @@ function AppInner() {
     if (currentGuide.type === "tap" && currentGuide.target) {
       if (dist(tapPt, currentGuide.target) > 30) return false;
       const [p1, p2] = currentGuide.edge;
-      const edgeLen = dist(p1, p2);
-      const r = edgeLen * 0.7;
+      const r = dist(p1, p2) * 0.7;
       const center = currentGuide.target;
-      // Arc centered at target, sweeping across perpendicular bisector region
       const midPt = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
       const midAngle = Math.atan2(midPt.y - center.y, midPt.x - center.x);
-      const sweep = Math.PI * 0.7;
-      const newArc = { center: { ...center }, radius: r, startAngle: midAngle - sweep / 2, endAngle: midAngle + sweep / 2, intersections: [], id: Date.now(), sweepCW: true };
+      const newArc = { center: { ...center }, radius: r, startAngle: midAngle - Math.PI*0.35, endAngle: midAngle + Math.PI*0.35, intersections: [], id: Date.now(), sweepCW: true };
       setJakdoArcs(prev => [...prev, newArc]);
       playSfx("draw");
-
-      // If this is the second tap, calculate arc-arc intersections
       if (currentGuide.role === "second" && jakdoArcs.length >= 1) {
         const prevArc = jakdoArcs[jakdoArcs.length - 1];
         const d = dist(prevArc.center, center);
         const r1 = prevArc.radius, r2 = r;
         if (d > 0 && d < r1 + r2 && d > Math.abs(r1 - r2)) {
-          const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
-          const h = Math.sqrt(Math.max(0, r1 * r1 - a * a));
-          const dx = (center.x - prevArc.center.x) / d;
-          const dy = (center.y - prevArc.center.y) / d;
-          const mx = prevArc.center.x + a * dx, my = prevArc.center.y + a * dy;
-          const ip1 = { x: mx + h * (-dy), y: my + h * dx };
-          const ip2 = { x: mx - h * (-dy), y: my - h * dx };
-          setGuideIntersections([ip1, ip2]);
+          const a = (r1*r1 - r2*r2 + d*d) / (2*d);
+          const h = Math.sqrt(Math.max(0, r1*r1 - a*a));
+          const dx = (center.x - prevArc.center.x)/d, dy = (center.y - prevArc.center.y)/d;
+          const mx = prevArc.center.x + a*dx, my = prevArc.center.y + a*dy;
+          setGuideIntersections([{x:mx+h*(-dy),y:my+h*dx},{x:mx-h*(-dy),y:my-h*dx}]);
         }
       }
       setGuideStep(s => s + 1);
       return true;
     }
 
-    // --- Incenter: tap vertex to draw all arcs at once ---
+    // --- Circumcenter: tap intersection -> perpendicular bisector ---
+    if (currentGuide.type === "tap_inter") {
+      let nearest = null, minD = 35;
+      for (const ip of guideIntersections) { const d = dist(tapPt, ip); if (d < minD) { minD = d; nearest = ip; } }
+      if (!nearest) return false;
+      if (guideIntersections.length >= 2) {
+        const [ip1, ip2] = guideIntersections;
+        const dx = ip2.x - ip1.x, dy = ip2.y - ip1.y;
+        const len = Math.sqrt(dx*dx + dy*dy) || 1;
+        setJakdoRulerLines(prev => [...prev, {
+          start: { x: ip1.x - (dx/len)*250, y: ip1.y - (dy/len)*250 },
+          end: { x: ip2.x + (dx/len)*250, y: ip2.y + (dy/len)*250 },
+        }]);
+      }
+      playSfx("draw"); setGuideIntersections([]); setGuideStep(s => s + 1);
+      return true;
+    }
+
+    // --- Incenter: tap vertex -> draw arc1 only ---
     if (currentGuide.type === "tap_vertex" && currentGuide.target) {
       if (dist(tapPt, currentGuide.target) > 30) return false;
-      const v = currentGuide.vertex;
-      const [arm1, arm2] = currentGuide.arms;
-
-      // Step 1: Arc from vertex crossing both edges
+      const v = currentGuide.vertex, [arm1, arm2] = currentGuide.arms;
       const r1 = Math.min(dist(v, arm1), dist(v, arm2)) * 0.45;
       const a1 = Math.atan2(arm1.y - v.y, arm1.x - v.x);
       const a2 = Math.atan2(arm2.y - v.y, arm2.x - v.x);
-      const eInt1 = { x: v.x + r1 * Math.cos(a1), y: v.y + r1 * Math.sin(a1) };
-      const eInt2 = { x: v.x + r1 * Math.cos(a2), y: v.y + r1 * Math.sin(a2) };
-
-      // Sweep the interior angle (shorter arc)
-      let sa = a1, ea = a2;
-      let sw = ea - sa;
-      while (sw > Math.PI) sw -= 2 * Math.PI;
-      while (sw < -Math.PI) sw += 2 * Math.PI;
+      const eInt1 = { x: v.x + r1*Math.cos(a1), y: v.y + r1*Math.sin(a1) };
+      const eInt2 = { x: v.x + r1*Math.cos(a2), y: v.y + r1*Math.sin(a2) };
+      let sa = a1, ea = a2, sw = ea - sa;
+      while (sw > Math.PI) sw -= 2*Math.PI;
+      while (sw < -Math.PI) sw += 2*Math.PI;
       if (sw < 0) { sa = a2; ea = a1; }
+      setJakdoArcs(prev => [...prev, { center: {...v}, radius: r1, startAngle: sa-0.1, endAngle: ea+0.1, intersections: [], id: Date.now(), sweepCW: true }]);
+      guideDataRef.current = { eInt1, eInt2, vertex: v };
+      setGuideIntersections([eInt1, eInt2]);
+      playSfx("draw"); setGuideStep(s => s + 1);
+      return true;
+    }
 
-      const arc1 = { center: { ...v }, radius: r1, startAngle: sa - 0.1, endAngle: ea + 0.1, intersections: [], id: Date.now(), sweepCW: true };
-
-      // Step 2 & 3: Arcs from each edge intersection — must cross each other
-      const d23 = dist(eInt1, eInt2);
-      const r2 = d23 * 0.75; // must be > d23/2 so arcs cross
-
-      // Arc from eInt1: aimed toward eInt2 direction (so it crosses arc from eInt2)
-      const ang1to2 = Math.atan2(eInt2.y - eInt1.y, eInt2.x - eInt1.x);
-      const ang2to1 = Math.atan2(eInt1.y - eInt2.y, eInt1.x - eInt2.x);
-      const arc2 = { center: { ...eInt1 }, radius: r2, startAngle: ang1to2 - 0.7, endAngle: ang1to2 + 0.7, intersections: [], id: Date.now() + 1, sweepCW: true };
-      const arc3 = { center: { ...eInt2 }, radius: r2, startAngle: ang2to1 - 0.7, endAngle: ang2to1 + 0.7, intersections: [], id: Date.now() + 2, sweepCW: true };
-
-      // Calculate intersection of arc2 and arc3
-      let innerPt = null;
-      if (d23 > 0 && d23 < r2 * 2) {
-        const h = Math.sqrt(Math.max(0, r2 * r2 - (d23 / 2) * (d23 / 2)));
-        const mx = (eInt1.x + eInt2.x) / 2, my = (eInt1.y + eInt2.y) / 2;
-        const dx = (eInt2.x - eInt1.x) / d23, dy = (eInt2.y - eInt1.y) / d23;
-        const ip1 = { x: mx + h * (-dy), y: my + h * dx };
-        const ip2 = { x: mx - h * (-dy), y: my - h * dx };
-        // Pick the one on the bisector side (same side as angle interior)
-        const mid = { x: (eInt1.x + eInt2.x) / 2, y: (eInt1.y + eInt2.y) / 2 };
-        const bisDir = { x: mid.x - v.x, y: mid.y - v.y };
-        const dot1 = (ip1.x - v.x) * bisDir.x + (ip1.y - v.y) * bisDir.y;
-        const dot2 = (ip2.x - v.x) * bisDir.x + (ip2.y - v.y) * bisDir.y;
-        innerPt = dot1 > dot2 ? ip1 : ip2;
-      }
-
-      setJakdoArcs(prev => [...prev, arc1, arc2, arc3]);
-      if (innerPt) setGuideIntersections([innerPt]);
+    // --- Incenter: tap edge-arc intersection -> draw small arc ---
+    if (currentGuide.type === "tap_edge_inter") {
+      let nearest = null, minD = 35;
+      for (const ip of guideIntersections) { const d = dist(tapPt, ip); if (d < minD) { minD = d; nearest = ip; } }
+      if (!nearest) return false;
+      const { eInt1, eInt2, vertex } = guideDataRef.current;
+      const other = dist(nearest, eInt1) < 5 ? eInt2 : eInt1;
+      const d23 = dist(eInt1, eInt2), r2 = d23 * 0.75;
+      const angToOther = Math.atan2(other.y - nearest.y, other.x - nearest.x);
+      setJakdoArcs(prev => [...prev, { center: {...nearest}, radius: r2, startAngle: angToOther-0.7, endAngle: angToOther+0.7, intersections: [], id: Date.now(), sweepCW: true }]);
       playSfx("draw");
+      setGuideIntersections(prev => prev.filter(ip => dist(ip, nearest) > 5));
+      if (currentGuide.role === "second_inter") {
+        const h = Math.sqrt(Math.max(0, r2*r2 - (d23/2)*(d23/2)));
+        const mx = (eInt1.x+eInt2.x)/2, my = (eInt1.y+eInt2.y)/2;
+        const dx = (eInt2.x-eInt1.x)/d23, dy = (eInt2.y-eInt1.y)/d23;
+        const ip1 = {x:mx+h*(-dy),y:my+h*dx}, ip2 = {x:mx-h*(-dy),y:my-h*dx};
+        const bisDir = {x:mx-vertex.x, y:my-vertex.y};
+        const dot1 = (ip1.x-vertex.x)*bisDir.x + (ip1.y-vertex.y)*bisDir.y;
+        const dot2 = (ip2.x-vertex.x)*bisDir.x + (ip2.y-vertex.y)*bisDir.y;
+        setGuideIntersections([dot1 > dot2 ? ip1 : ip2]);
+      }
       setGuideStep(s => s + 1);
       return true;
     }
 
-    // --- Tap intersection point → draw bisector line ---
-    if (currentGuide.type === "tap_inter") {
+    // --- Incenter: tap inner intersection -> draw angle bisector ---
+    if (currentGuide.type === "tap_inner") {
       let nearest = null, minD = 35;
-      for (const ip of guideIntersections) {
-        const d = dist(tapPt, ip);
-        if (d < minD) { minD = d; nearest = ip; }
-      }
+      for (const ip of guideIntersections) { const d = dist(tapPt, ip); if (d < minD) { minD = d; nearest = ip; } }
       if (!nearest) return false;
-
-      if (guideGoal === "circumcenter") {
-        // Draw perpendicular bisector through BOTH intersection points
-        if (guideIntersections.length >= 2) {
-          const [ip1, ip2] = guideIntersections;
-          const dx = ip2.x - ip1.x, dy = ip2.y - ip1.y;
-          const len = Math.sqrt(dx * dx + dy * dy) || 1;
-          const ext = 250;
-          setJakdoRulerLines(prev => [...prev, {
-            start: { x: ip1.x - (dx / len) * ext, y: ip1.y - (dy / len) * ext },
-            end: { x: ip2.x + (dx / len) * ext, y: ip2.y + (dy / len) * ext },
-          }]);
-        }
-      } else if (guideGoal === "incenter") {
-        // Draw angle bisector from vertex through inner intersection
-        const v = currentGuide.bisectFrom;
-        if (v) {
-          const dx = nearest.x - v.x, dy = nearest.y - v.y;
-          const len = Math.sqrt(dx * dx + dy * dy) || 1;
-          const ext = 350;
-          setJakdoRulerLines(prev => [...prev, {
-            start: { ...v },
-            end: { x: v.x + (dx / len) * ext, y: v.y + (dy / len) * ext },
-          }]);
-        }
+      const v = currentGuide.bisectFrom;
+      if (v) {
+        const dx = nearest.x - v.x, dy = nearest.y - v.y, len = Math.sqrt(dx*dx+dy*dy) || 1;
+        setJakdoRulerLines(prev => [...prev, { start: {...v}, end: {x:v.x+(dx/len)*350, y:v.y+(dy/len)*350} }]);
       }
+      playSfx("draw"); setGuideIntersections([]); setGuideStep(s => s + 1);
+      return true;
+    }
 
-      playSfx("draw");
-      setGuideIntersections([]);
+    // --- Tap center -> calculate + draw circle with animation -> then properties ---
+    if (currentGuide.type === "tap_center") {
+      let cx, cy, r;
+      if (guideGoal === "circumcenter") {
+        const D = 2*(A.x*(B.y-C.y) + B.x*(C.y-A.y) + C.x*(A.y-B.y));
+        if (Math.abs(D) > 0.01) {
+          cx = ((A.x*A.x+A.y*A.y)*(B.y-C.y)+(B.x*B.x+B.y*B.y)*(C.y-A.y)+(C.x*C.x+C.y*C.y)*(A.y-B.y))/D;
+          cy = ((A.x*A.x+A.y*A.y)*(C.x-B.x)+(B.x*B.x+B.y*B.y)*(A.x-C.x)+(C.x*C.x+C.y*C.y)*(B.x-A.x))/D;
+        }
+        if (cx === undefined || dist(tapPt, {x:cx,y:cy}) > 40) return false;
+        r = dist({x:cx,y:cy}, A);
+        setJedoType("circum");
+      } else {
+        const a=dist(B,C), b=dist(A,C), c=dist(A,B), sum=a+b+c;
+        cx = (a*A.x+b*B.x+c*C.x)/sum; cy = (a*A.y+b*B.y+c*C.y)/sum;
+        if (dist(tapPt, {x:cx,y:cy}) > 40) return false;
+        const dToEdge = (p,e1,e2)=>{const dx=e2.x-e1.x,dy=e2.y-e1.y;return Math.abs((p.x-e1.x)*dy-(p.y-e1.y)*dx)/Math.sqrt(dx*dx+dy*dy);};
+        r = Math.min(dToEdge({x:cx,y:cy},A,B), dToEdge({x:cx,y:cy},B,C), dToEdge({x:cx,y:cy},A,C));
+        setJedoType("in");
+      }
+      setJedoCenter({x:cx, y:cy});
+      setTimeout(() => setJedoCircle({cx, cy, r}), 300);
+      setTimeout(() => { setShowProperties(true); setBuildPhase("properties"); }, 2500);
+      playSfx("complete");
       setGuideStep(s => s + 1);
       return true;
     }
 
     return false;
   }, [currentGuide, triangle, guideGoal, guideStep, guideSteps, jakdoArcs, guideIntersections, playSfx]);
+
 
 
   // Undo history — must be before deleteArc/deleteRulerLine
