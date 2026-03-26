@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v3.8)
+// ashrain.out — Interactive Geometry Education App (v3.9)
 // ============================================================
 
 // --- Constants & Config ---
@@ -786,61 +786,187 @@ function AppInner() {
   // compassPhase: "idle" → "centerSet" → "radiusSet" → "drawingArc"
   const compassStep = compassPhase === "idle" ? 0 : compassPhase === "centerSet" ? 0 : compassPhase === "radiusSet" ? 1 : 2;
 
-  // Guide construction step definitions
+  // Guide construction step definitions — user taps points, app draws automatically
   const guideSteps = useMemo(() => {
-    if (!triangle || !guideGoal) return [];
+    if (!triangle || !guideGoal || guideGoal === "select") return [];
     const { A, B, C } = triangle;
-    const edges = [
-      { name: "AB", p1: A, p2: B, label1: "A", label2: "B" },
-      { name: "BC", p1: B, p2: C, label1: "B", label2: "C" },
-    ];
-    const vertices = [
-      { name: "A", pt: A, p1: B, p2: C },
-      { name: "B", pt: B, p1: A, p2: C },
-    ];
 
     if (guideGoal === "circumcenter") {
-      const steps = [];
-      for (let ei = 0; ei < 2; ei++) {
-        const e = edges[ei];
-        const halfLen = dist(e.p1, e.p2) / 2;
-        steps.push(
-          { type: "info", msg: `변 ${e.name}의 수직이등분선을 만들어봅시다!`, highlight: e.name, tool: null },
-          { type: "compass_center", msg: `컴퍼스를 점 ${e.label1}에 놓으세요`, target: e.p1, targetLabel: e.label1, tool: "compass", highlight: e.name },
-          { type: "compass_radius", msg: `${e.name}의 절반(${(halfLen/triangle.scale).toFixed(1)})보다 길게 벌리세요`, minRadius: halfLen * 1.05, tool: "compass", highlight: e.name },
-          { type: "compass_arc", msg: "호를 그려주세요", tool: "compass", highlight: e.name },
-          { type: "compass_center", msg: `같은 반지름으로 점 ${e.label2}에서!`, target: e.p2, targetLabel: e.label2, tool: "compass", sameRadius: true, highlight: e.name },
-          { type: "compass_arc", msg: "호를 그려주세요", tool: "compass", highlight: e.name },
-          { type: "ruler", msg: "두 교차점을 자로 연결하세요", tool: "ruler", highlight: e.name },
-          { type: "done_bisector", msg: `변 ${e.name} 수직이등분선 완성! ✨` },
-        );
-      }
-      steps.push({ type: "complete", msg: "두 선이 만나는 점이 외심이에요! 🎉" });
-      return steps;
+      return [
+        { type: "tap", msg: "변 AB의 수직이등분선!\n점 A를 터치하세요", target: A, targetLabel: "A", highlight: "AB", edge: [A, B] },
+        { type: "tap", msg: "점 B를 터치하세요", target: B, targetLabel: "B", highlight: "AB", edge: [A, B] },
+        { type: "tap_inter", msg: "교차점을 터치하세요!", highlight: "AB" },
+        { type: "done_line", msg: "변 AB 수직이등분선 완성! ✨" },
+        { type: "tap", msg: "변 BC도 해봅시다!\n점 B를 터치하세요", target: B, targetLabel: "B", highlight: "BC", edge: [B, C] },
+        { type: "tap", msg: "점 C를 터치하세요", target: C, targetLabel: "C", highlight: "BC", edge: [B, C] },
+        { type: "tap_inter", msg: "교차점을 터치하세요!", highlight: "BC" },
+        { type: "done_line", msg: "변 BC 수직이등분선 완성! ✨" },
+        { type: "complete", msg: "두 선이 만나는 점이 외심이에요! 🎉" },
+      ];
     } else if (guideGoal === "incenter") {
-      const steps = [];
-      for (let vi = 0; vi < 2; vi++) {
-        const v = vertices[vi];
-        steps.push(
-          { type: "info", msg: `꼭지점 ${v.name}의 각의 이등분선!`, highlight: `vertex_${v.name}`, tool: null },
-          { type: "compass_center", msg: `컴퍼스를 점 ${v.name}에 놓으세요`, target: v.pt, targetLabel: v.name, tool: "compass", highlight: `vertex_${v.name}` },
-          { type: "compass_radius", msg: "적당히 벌리세요", minRadius: 20, tool: "compass", highlight: `vertex_${v.name}` },
-          { type: "compass_arc", msg: "호를 그려서 두 변과 교차시키세요", tool: "compass", highlight: `vertex_${v.name}` },
-          { type: "compass_center_inter", msg: "교차점 하나에 컴퍼스를 놓으세요", tool: "compass", highlight: `vertex_${v.name}` },
-          { type: "compass_arc", msg: "호를 그려주세요", tool: "compass" },
-          { type: "compass_center_inter", msg: "다른 교차점에서도!", tool: "compass", sameRadius: true },
-          { type: "compass_arc", msg: "호를 그려주세요", tool: "compass" },
-          { type: "ruler", msg: `점 ${v.name}과 안쪽 교차점을 연결하세요`, tool: "ruler" },
-          { type: "done_bisector", msg: `꼭지점 ${v.name} 각의 이등분선 완성! ✨` },
-        );
-      }
-      steps.push({ type: "complete", msg: "두 선이 만나는 점이 내심이에요! 🎉" });
-      return steps;
+      return [
+        { type: "tap", msg: "꼭지점 A의 각의 이등분선!\n점 A를 터치하세요", target: A, targetLabel: "A", highlight: "vertex_A", vertex: A, arms: [B, C] },
+        { type: "tap_inter", msg: "교차점을 터치하세요!", highlight: "vertex_A" },
+        { type: "done_line", msg: "꼭지점 A 각의 이등분선 완성! ✨" },
+        { type: "tap", msg: "꼭지점 B의 각의 이등분선!\n점 B를 터치하세요", target: B, targetLabel: "B", highlight: "vertex_B", vertex: B, arms: [A, C] },
+        { type: "tap_inter", msg: "교차점을 터치하세요!", highlight: "vertex_B" },
+        { type: "done_line", msg: "꼭지점 B 각의 이등분선 완성! ✨" },
+        { type: "complete", msg: "두 선이 만나는 점이 내심이에요! 🎉" },
+      ];
     }
     return [];
   }, [triangle, guideGoal]);
 
   const currentGuide = guideSteps[guideStep] || null;
+
+  // Guide: auto-draw arcs when user taps a vertex
+  const guideHandleTap = useCallback((tapPt) => {
+    if (!currentGuide || !triangle) return false;
+    const { A, B, C } = triangle;
+
+    if (currentGuide.type === "tap") {
+      // Check if user tapped the correct target
+      if (currentGuide.target && dist(tapPt, currentGuide.target) > 25) return false;
+
+      if (currentGuide.edge) {
+        // Circumcenter: draw arc from this vertex across the edge
+        const [p1, p2] = currentGuide.edge;
+        const edgeLen = dist(p1, p2);
+        const r = edgeLen * 0.7; // radius > half edge
+        const center = currentGuide.target;
+        // Draw a nice arc that crosses the perpendicular bisector area
+        const midAngle = Math.atan2(p1.y + p2.y - 2 * center.y, p1.x + p2.x - 2 * center.x);
+        const sweep = Math.PI * 0.6;
+        const newArc = {
+          center: { ...center }, radius: r,
+          startAngle: midAngle - sweep / 2, endAngle: midAngle + sweep / 2,
+          intersections: [], id: Date.now(), sweepCW: true,
+        };
+        setJakdoArcs(prev => [...prev, newArc]);
+        playSfx("draw");
+      } else if (currentGuide.vertex) {
+        // Incenter: draw arc from vertex across both adjacent edges
+        const v = currentGuide.vertex;
+        const [arm1, arm2] = currentGuide.arms;
+        const r = Math.min(dist(v, arm1), dist(v, arm2)) * 0.4;
+        const a1 = Math.atan2(arm1.y - v.y, arm1.x - v.x);
+        const a2 = Math.atan2(arm2.y - v.y, arm2.x - v.x);
+        // Ensure we sweep the interior angle
+        let start = a1, end = a2;
+        let sweep = end - start;
+        if (sweep < -Math.PI) sweep += 2 * Math.PI;
+        if (sweep > Math.PI) sweep -= 2 * Math.PI;
+        if (sweep < 0) { start = a2; end = a1; }
+        const newArc = {
+          center: { ...v }, radius: r,
+          startAngle: start, endAngle: end,
+          intersections: [], id: Date.now(), sweepCW: true,
+        };
+        // Find intersections with the two edges
+        const int1 = { x: v.x + r * Math.cos(a1), y: v.y + r * Math.sin(a1) };
+        const int2 = { x: v.x + r * Math.cos(a2), y: v.y + r * Math.sin(a2) };
+        newArc.intersections = [int1, int2];
+
+        // Also draw second pair of arcs from these intersection points
+        const r2 = dist(int1, int2) * 0.7;
+        const arc2 = {
+          center: { ...int1 }, radius: r2,
+          startAngle: Math.atan2(v.y - int1.y, v.x - int1.x) - 0.4,
+          endAngle: Math.atan2(v.y - int1.y, v.x - int1.x) + 0.4,
+          intersections: [], id: Date.now() + 1, sweepCW: true,
+        };
+        const arc3 = {
+          center: { ...int2 }, radius: r2,
+          startAngle: Math.atan2(v.y - int2.y, v.x - int2.x) - 0.4,
+          endAngle: Math.atan2(v.y - int2.y, v.x - int2.x) + 0.4,
+          intersections: [], id: Date.now() + 2, sweepCW: true,
+        };
+        // Find intersection of arc2 and arc3
+        const d = dist(int1, int2);
+        if (d < r2 * 2 && d > 0) {
+          const a = (r2 * r2 - r2 * r2 + d * d) / (2 * d);
+          const h = Math.sqrt(Math.max(0, r2 * r2 - a * a));
+          const dx = (int2.x - int1.x) / d, dy = (int2.y - int1.y) / d;
+          const mx = int1.x + a * dx, my = int1.y + a * dy;
+          const ip1 = { x: mx + h * (-dy), y: my + h * dx };
+          const ip2 = { x: mx - h * (-dy), y: my - h * dx };
+          // Pick the one closer to interior (farther from vertex)
+          const inner = dist(ip1, v) > dist(ip2, v) ? ip1 : ip2;
+          arc2.intersections = [inner];
+          arc3.intersections = [inner];
+        }
+
+        setJakdoArcs(prev => [...prev, newArc, arc2, arc3]);
+        playSfx("draw");
+      }
+
+      setGuideStep(s => s + 1);
+      return true;
+    }
+
+    if (currentGuide.type === "tap_inter") {
+      // User taps an intersection point — draw the bisector line
+      // Find nearest intersection from all arcs
+      let nearest = null, minD = 30;
+      for (const arc of jakdoArcs) {
+        for (const ip of (arc.intersections || [])) {
+          const d = dist(tapPt, ip);
+          if (d < minD) { minD = d; nearest = ip; }
+        }
+      }
+      if (!nearest) return false;
+
+      // For circumcenter: draw perpendicular bisector through intersection points
+      if (guideGoal === "circumcenter") {
+        // Find the two most recent arcs — their intersections form the bisector
+        const recentArcs = jakdoArcs.slice(-2);
+        if (recentArcs.length === 2) {
+          const c1 = recentArcs[0].center, c2 = recentArcs[1].center;
+          const r1 = recentArcs[0].radius, r2 = recentArcs[1].radius;
+          const d = dist(c1, c2);
+          if (d > 0 && d < r1 + r2) {
+            const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
+            const h = Math.sqrt(Math.max(0, r1 * r1 - a * a));
+            const dx = (c2.x - c1.x) / d, dy = (c2.y - c1.y) / d;
+            const mx = c1.x + a * dx, my = c1.y + a * dy;
+            const ip1 = { x: mx + h * (-dy), y: my + h * dx };
+            const ip2 = { x: mx - h * (-dy), y: my - h * dx };
+            // Extend the line
+            const lx = ip2.x - ip1.x, ly = ip2.y - ip1.y;
+            const len = Math.sqrt(lx * lx + ly * ly) || 1;
+            const ext = 200;
+            setJakdoRulerLines(prev => [...prev, {
+              start: { x: ip1.x - (lx / len) * ext, y: ip1.y - (ly / len) * ext },
+              end: { x: ip2.x + (lx / len) * ext, y: ip2.y + (ly / len) * ext },
+            }]);
+          }
+        }
+      } else if (guideGoal === "incenter") {
+        // Draw angle bisector from vertex through inner intersection
+        const step = guideSteps[guideStep - 1] || guideSteps[guideStep - 2];
+        // Find the vertex for this bisector group
+        let vertex = null;
+        for (let i = guideStep; i >= 0; i--) {
+          if (guideSteps[i]?.vertex) { vertex = guideSteps[i].vertex; break; }
+        }
+        if (vertex) {
+          const dx = nearest.x - vertex.x, dy = nearest.y - vertex.y;
+          const len = Math.sqrt(dx * dx + dy * dy) || 1;
+          const ext = 300;
+          setJakdoRulerLines(prev => [...prev, {
+            start: { ...vertex },
+            end: { x: vertex.x + (dx / len) * ext, y: vertex.y + (dy / len) * ext },
+          }]);
+        }
+      }
+
+      playSfx("draw");
+      setGuideStep(s => s + 1);
+      return true;
+    }
+
+    return false;
+  }, [currentGuide, triangle, guideGoal, guideStep, guideSteps, jakdoArcs, playSfx]);
 
   // Undo history — must be before deleteArc/deleteRulerLine
   const [undoStack, setUndoStack] = useState([]);
@@ -949,6 +1075,12 @@ function AppInner() {
     const p = svgCoords(e);
     if (!p) return;
 
+    // Guide mode: only accept point taps
+    if (guideGoal && currentGuide) {
+      guideHandleTap(p);
+      return;
+    }
+
     if (jakdoTool === "compass") {
       if (compassPhase === "idle") {
         // Check max arcs
@@ -968,18 +1100,6 @@ function AppInner() {
           setCompassDragPt(p);
           playSfx("click");
           setTimeout(() => setPressedSnap(null), 400);
-          // Guide: advance if correct center was picked
-          if (currentGuide && (currentGuide.type === "compass_center" || currentGuide.type === "compass_center_inter")) {
-            if (currentGuide.target) {
-              if (dist(nearest, currentGuide.target) < 20) {
-                setGuideStep(s => s + 1);
-              } else {
-                showMsg(`점 ${currentGuide.targetLabel}에 놓아주세요!`, 1500);
-              }
-            } else {
-              setGuideStep(s => s + 1); // no specific target required
-            }
-          }
         }
       } else if (compassPhase === "radiusSet") {
         setCompassDragPt(p);
@@ -1003,7 +1123,7 @@ function AppInner() {
         setTimeout(() => setPressedSnap(null), 400);
       }
     }
-  }, [triangle, buildPhase, jakdoTool, compassPhase, jakdoSnaps, jakdoArcs, jakdoRulerLines, svgCoords, playSfx, showMsg, currentGuide, guideStep, guideSteps]);
+  }, [triangle, buildPhase, jakdoTool, compassPhase, jakdoSnaps, jakdoArcs, jakdoRulerLines, svgCoords, playSfx, showMsg, currentGuide, guideStep, guideSteps, guideGoal, guideHandleTap]);
 
   const handleJakdoMove = useCallback((e) => {
     if (!triangle || buildPhase !== "jakdo") return;
@@ -1035,20 +1155,7 @@ function AppInner() {
     if (jakdoTool === "compass") {
       if (compassPhase === "radiusSet" && compassCenter && compassRadius > 8) {
         setCompassDragPt(null);
-        // Guide mode: auto-advance radius step + auto-enter arc drawing
-        if (currentGuide && currentGuide.type === "compass_radius") {
-          if (currentGuide.minRadius && compassRadius < currentGuide.minRadius) {
-            showMsg("더 길게 벌려주세요!", 1500);
-            setCompassPhase("idle"); setCompassCenter(null); setCompassRadius(0);
-            return;
-          }
-          setGuideStep(s => s + 1);
-          setCompassPhase("drawingArc");
-          setArcDrawPoints([]);
-          showMsg("호를 그려주세요!", 1500);
-        } else {
-          showMsg("반지름 고정! '호 돌리기' 버튼을 눌러주세요.", 2000);
-        }
+        showMsg("반지름 고정! '호 돌리기' 버튼을 눌러주세요.", 2000);
         playSfx("pop");
       } else if (compassPhase === "radiusSet") {
         // Too short — reset
@@ -1097,18 +1204,6 @@ function AppInner() {
         setJakdoArcs(prev => [...prev, newArc]);
         playSfx("draw");
 
-        // Guide auto-advance after arc
-        if (currentGuide && (currentGuide.type === "compass_arc")) {
-          setGuideStep(s => s + 1);
-          const next = guideSteps[guideStep + 1];
-          if (next?.tool === "compass" && next?.sameRadius) {
-            // Keep same radius, set new center target
-            setCompassPhase("idle"); setCompassCenter(null);
-          } else if (next?.tool === "ruler") {
-            setTimeout(() => { setJakdoTool("ruler"); setRulerPhase("idle"); setRulerStart(null); }, 300);
-          }
-        }
-
         // Reset compass fully after arc creation
         setCompassPhase("idle"); setCompassCenter(null); setCompassRadius(0);
         setArcDrawPoints([]); setCrossedEdges(0); setCompassDragPt(null);
@@ -1130,11 +1225,6 @@ function AppInner() {
         pushUndo();
         setJakdoRulerLines(prev => [...prev, { start: rulerStart, end: { x: nearest.x, y: nearest.y } }]);
         playSfx("draw");
-
-        // Guide auto-advance after ruler line
-        if (currentGuide && currentGuide.type === "ruler") {
-          setGuideStep(s => s + 1);
-        }
       }
       setRulerStart(null);
     }
@@ -3703,7 +3793,7 @@ function AppInner() {
         }}>
 
         {/* Left section: mode tabs + SVG + properties */}
-        <div style={{ flex: isPC ? 1 : "0 0 auto", display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+        <div style={{ flex: isPC ? 1 : (showProperties ? 1 : "0 0 auto"), display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
 
         {/* Mode tabs - A/B toggle + sub-modes */}
         {buildPhase === "input" && !triangle && (
@@ -3989,7 +4079,25 @@ function AppInner() {
               </FixedG>
             )}
             {/* Snap points glow in jakdo mode */}
-            {buildPhase === "jakdo" && (compassPhase === "idle" || jakdoTool === "ruler") && jakdoSnaps.map((sp, i) => {
+            {buildPhase === "jakdo" && (compassPhase === "idle" || jakdoTool === "ruler") && jakdoSnaps
+              .filter(sp => {
+                if (!guideGoal) return true; // free mode: show all
+                if (!currentGuide) return false;
+                if (currentGuide.type === "tap" && currentGuide.target) {
+                  return dist(sp, currentGuide.target) < 15; // only target point
+                }
+                if (currentGuide.type === "tap_inter") {
+                  // only arc intersection points (not vertices)
+                  for (const arc of jakdoArcs) {
+                    for (const ip of (arc.intersections || [])) {
+                      if (dist(sp, ip) < 10) return true;
+                    }
+                  }
+                  return false;
+                }
+                return false;
+              })
+              .map((sp, i) => {
               const isPressed = pressedSnap && Math.abs(sp.x - pressedSnap.x) < 2 && Math.abs(sp.y - pressedSnap.y) < 2;
               return (
                 <FixedG key={`snap${i}`} x={sp.x} y={sp.y}>
@@ -4532,82 +4640,68 @@ function AppInner() {
             {/* Guide instruction banner */}
             {currentGuide && (
               <div style={{
-                padding: "12px 16px", marginBottom: 12, borderRadius: 12,
+                padding: "14px 16px", marginBottom: 12, borderRadius: 14,
                 background: `linear-gradient(135deg, ${PASTEL.lavender}15, ${PASTEL.mint}15)`,
                 border: `1.5px solid ${PASTEL.lavender}40`,
               }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                   <span style={{ fontSize: 10, color: PASTEL.lavender, fontWeight: 700 }}>
                     단계 {guideStep + 1}/{guideSteps.length}
                   </span>
                   {guideGoal === "circumcenter" && <span style={{ fontSize: 10, color: PASTEL.coral }}>⊙ 외심 찾기</span>}
                   {guideGoal === "incenter" && <span style={{ fontSize: 10, color: PASTEL.mint }}>⊙ 내심 찾기</span>}
                 </div>
-                <p style={{ fontSize: 14, color: theme.text, fontWeight: 700, margin: "6px 0 0 0", fontFamily: "'Noto Serif KR', serif" }}>
+                <p style={{ fontSize: 15, color: theme.text, fontWeight: 700, margin: 0, fontFamily: "'Noto Serif KR', serif", whiteSpace: "pre-line", lineHeight: 1.5 }}>
                   {currentGuide.msg}
                 </p>
-                {(currentGuide.type === "info" || currentGuide.type === "done_bisector") && (
-                  <button onClick={() => {
-                    setGuideStep(s => s + 1);
-                    const next = guideSteps[guideStep + 1];
-                    if (next?.tool === "compass") { setJakdoTool("compass"); setCompassPhase("idle"); setCompassCenter(null); setCompassRadius(0); }
-                    if (next?.tool === "ruler") { setJakdoTool("ruler"); setRulerPhase("idle"); setRulerStart(null); }
-                    playSfx("click");
-                  }} style={{
-                    marginTop: 8, padding: "8px 20px", borderRadius: 8, border: "none",
-                    background: PASTEL.lavender, color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                {/* Progress dots */}
+                <div style={{ display: "flex", gap: 4, marginTop: 10 }}>
+                  {guideSteps.map((_, i) => (
+                    <div key={i} style={{
+                      width: i === guideStep ? 16 : 6, height: 6, borderRadius: 3,
+                      background: i < guideStep ? PASTEL.mint : i === guideStep ? PASTEL.coral : theme.lineLight,
+                      transition: "all 0.3s ease",
+                    }} />
+                  ))}
+                </div>
+                {/* Done/Next buttons */}
+                {currentGuide.type === "done_line" && (
+                  <button onClick={() => { setGuideStep(s => s + 1); playSfx("click"); }} style={{
+                    marginTop: 10, padding: "10px 24px", borderRadius: 10, border: "none",
+                    background: PASTEL.lavender, color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer", width: "100%",
                   }}>다음 →</button>
                 )}
                 {currentGuide.type === "complete" && (
                   <button onClick={() => {
-                    // Complete: show result via jedo system
-                    if (guideGoal === "circumcenter") {
-                      // Find circumcenter from ruler line intersections
-                      if (jakdoRulerLines.length >= 2) {
-                        const l1 = jakdoRulerLines[0], l2 = jakdoRulerLines[1];
-                        // Line intersection
-                        const dx1 = l1.end.x - l1.start.x, dy1 = l1.end.y - l1.start.y;
-                        const dx2 = l2.end.x - l2.start.x, dy2 = l2.end.y - l2.start.y;
-                        const det = dx1 * dy2 - dy1 * dx2;
-                        if (Math.abs(det) > 0.01) {
-                          const t = ((l2.start.x - l1.start.x) * dy2 - (l2.start.y - l1.start.y) * dx2) / det;
-                          const cx = l1.start.x + t * dx1, cy = l1.start.y + t * dy1;
-                          const r = dist({ x: cx, y: cy }, triangle.A);
+                    // Find center from ruler line intersections
+                    if (jakdoRulerLines.length >= 2) {
+                      const l1 = jakdoRulerLines[0], l2 = jakdoRulerLines[1];
+                      const dx1 = l1.end.x - l1.start.x, dy1 = l1.end.y - l1.start.y;
+                      const dx2 = l2.end.x - l2.start.x, dy2 = l2.end.y - l2.start.y;
+                      const det = dx1 * dy2 - dy1 * dx2;
+                      if (Math.abs(det) > 0.01) {
+                        const t = ((l2.start.x - l1.start.x) * dy2 - (l2.start.y - l1.start.y) * dx2) / det;
+                        const cx = l1.start.x + t * dx1, cy = l1.start.y + t * dy1;
+                        if (guideGoal === "circumcenter") {
                           setJedoCenter({ x: cx, y: cy });
-                          setJedoCircle(r);
+                          setJedoCircle(dist({ x: cx, y: cy }, triangle.A));
                           setJedoType("circum");
-                          setShowProperties(true);
-                        }
-                      }
-                    } else if (guideGoal === "incenter") {
-                      if (jakdoRulerLines.length >= 2) {
-                        const l1 = jakdoRulerLines[0], l2 = jakdoRulerLines[1];
-                        const dx1 = l1.end.x - l1.start.x, dy1 = l1.end.y - l1.start.y;
-                        const dx2 = l2.end.x - l2.start.x, dy2 = l2.end.y - l2.start.y;
-                        const det = dx1 * dy2 - dy1 * dx2;
-                        if (Math.abs(det) > 0.01) {
-                          const t = ((l2.start.x - l1.start.x) * dy2 - (l2.start.y - l1.start.y) * dx2) / det;
-                          const cx = l1.start.x + t * dx1, cy = l1.start.y + t * dy1;
-                          // Incircle radius = distance to nearest edge
+                        } else {
                           const { A, B, C } = triangle;
-                          const distToEdge = (p, e1, e2) => {
-                            const dx = e2.x-e1.x, dy = e2.y-e1.y, len = Math.sqrt(dx*dx+dy*dy);
-                            return Math.abs((p.x-e1.x)*dy - (p.y-e1.y)*dx) / len;
-                          };
-                          const r = Math.min(distToEdge({x:cx,y:cy},A,B), distToEdge({x:cx,y:cy},B,C), distToEdge({x:cx,y:cy},A,C));
+                          const dToEdge = (p, e1, e2) => { const dx=e2.x-e1.x,dy=e2.y-e1.y; return Math.abs((p.x-e1.x)*dy-(p.y-e1.y)*dx)/Math.sqrt(dx*dx+dy*dy); };
                           setJedoCenter({ x: cx, y: cy });
-                          setJedoCircle(r);
+                          setJedoCircle(Math.min(dToEdge({x:cx,y:cy},A,B), dToEdge({x:cx,y:cy},B,C), dToEdge({x:cx,y:cy},A,C)));
                           setJedoType("in");
-                          setShowProperties(true);
                         }
+                        setShowProperties(true);
                       }
                     }
                     setBuildPhase("properties");
                     playSfx("complete");
                   }} style={{
-                    marginTop: 8, padding: "10px 24px", borderRadius: 10, border: "none",
+                    marginTop: 10, padding: "12px 24px", borderRadius: 12, border: "none",
                     background: `linear-gradient(135deg, ${PASTEL.mint}, ${PASTEL.sage})`,
-                    color: "white", fontSize: 14, fontWeight: 700, cursor: "pointer",
+                    color: "white", fontSize: 15, fontWeight: 700, cursor: "pointer", width: "100%",
                   }}>✨ 결과 확인!</button>
                 )}
               </div>
