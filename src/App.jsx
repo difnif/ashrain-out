@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v3.9)
+// ashrain.out — Interactive Geometry Education App (v4.0)
 // ============================================================
 
 // --- Constants & Config ---
@@ -786,32 +786,33 @@ function AppInner() {
   // compassPhase: "idle" → "centerSet" → "radiusSet" → "drawingArc"
   const compassStep = compassPhase === "idle" ? 0 : compassPhase === "centerSet" ? 0 : compassPhase === "radiusSet" ? 1 : 2;
 
-  // Guide construction step definitions — user taps points, app draws automatically
+  // Guide construction — user taps points, app auto-draws everything
+  const [guideIntersections, setGuideIntersections] = useState([]); // [{x,y}] intersection points for current step
+
   const guideSteps = useMemo(() => {
     if (!triangle || !guideGoal || guideGoal === "select") return [];
     const { A, B, C } = triangle;
-
     if (guideGoal === "circumcenter") {
       return [
-        { type: "tap", msg: "변 AB의 수직이등분선!\n점 A를 터치하세요", target: A, targetLabel: "A", highlight: "AB", edge: [A, B] },
-        { type: "tap", msg: "점 B를 터치하세요", target: B, targetLabel: "B", highlight: "AB", edge: [A, B] },
-        { type: "tap_inter", msg: "교차점을 터치하세요!", highlight: "AB" },
+        { type: "tap", msg: "변 AB의 수직이등분선!\n점 A를 터치하세요", target: A, targetLabel: "A", highlight: "AB", edge: [A, B], role: "first" },
+        { type: "tap", msg: "같은 반지름으로\n점 B를 터치하세요", target: B, targetLabel: "B", highlight: "AB", edge: [A, B], role: "second" },
+        { type: "tap_inter", msg: "교차점을 터치하면\n수직이등분선이 그려져요!", highlight: "AB" },
         { type: "done_line", msg: "변 AB 수직이등분선 완성! ✨" },
-        { type: "tap", msg: "변 BC도 해봅시다!\n점 B를 터치하세요", target: B, targetLabel: "B", highlight: "BC", edge: [B, C] },
-        { type: "tap", msg: "점 C를 터치하세요", target: C, targetLabel: "C", highlight: "BC", edge: [B, C] },
+        { type: "tap", msg: "변 BC도 해봅시다!\n점 B를 터치하세요", target: B, targetLabel: "B", highlight: "BC", edge: [B, C], role: "first" },
+        { type: "tap", msg: "같은 반지름으로\n점 C를 터치하세요", target: C, targetLabel: "C", highlight: "BC", edge: [B, C], role: "second" },
         { type: "tap_inter", msg: "교차점을 터치하세요!", highlight: "BC" },
         { type: "done_line", msg: "변 BC 수직이등분선 완성! ✨" },
-        { type: "complete", msg: "두 선이 만나는 점이 외심이에요! 🎉" },
+        { type: "complete", msg: "두 수직이등분선이 만나는 점이\n외심이에요! 🎉" },
       ];
     } else if (guideGoal === "incenter") {
       return [
-        { type: "tap", msg: "꼭지점 A의 각의 이등분선!\n점 A를 터치하세요", target: A, targetLabel: "A", highlight: "vertex_A", vertex: A, arms: [B, C] },
-        { type: "tap_inter", msg: "교차점을 터치하세요!", highlight: "vertex_A" },
+        { type: "tap_vertex", msg: "꼭지점 A의 각의 이등분선!\n점 A를 터치하세요", target: A, targetLabel: "A", highlight: "vertex_A", vertex: A, arms: [B, C] },
+        { type: "tap_inter", msg: "안쪽 교차점을 터치하면\n각의 이등분선이 그려져요!", highlight: "vertex_A", bisectFrom: A },
         { type: "done_line", msg: "꼭지점 A 각의 이등분선 완성! ✨" },
-        { type: "tap", msg: "꼭지점 B의 각의 이등분선!\n점 B를 터치하세요", target: B, targetLabel: "B", highlight: "vertex_B", vertex: B, arms: [A, C] },
-        { type: "tap_inter", msg: "교차점을 터치하세요!", highlight: "vertex_B" },
+        { type: "tap_vertex", msg: "꼭지점 B도 해봅시다!\n점 B를 터치하세요", target: B, targetLabel: "B", highlight: "vertex_B", vertex: B, arms: [A, C] },
+        { type: "tap_inter", msg: "안쪽 교차점을 터치하세요!", highlight: "vertex_B", bisectFrom: B },
         { type: "done_line", msg: "꼭지점 B 각의 이등분선 완성! ✨" },
-        { type: "complete", msg: "두 선이 만나는 점이 내심이에요! 🎉" },
+        { type: "complete", msg: "두 각의 이등분선이 만나는 점이\n내심이에요! 🎉" },
       ];
     }
     return [];
@@ -819,154 +820,143 @@ function AppInner() {
 
   const currentGuide = guideSteps[guideStep] || null;
 
-  // Guide: auto-draw arcs when user taps a vertex
+  // Guide tap handler
   const guideHandleTap = useCallback((tapPt) => {
     if (!currentGuide || !triangle) return false;
     const { A, B, C } = triangle;
 
-    if (currentGuide.type === "tap") {
-      // Check if user tapped the correct target
-      if (currentGuide.target && dist(tapPt, currentGuide.target) > 25) return false;
+    // --- Circumcenter: tap vertex to draw arc ---
+    if (currentGuide.type === "tap" && currentGuide.target) {
+      if (dist(tapPt, currentGuide.target) > 30) return false;
+      const [p1, p2] = currentGuide.edge;
+      const edgeLen = dist(p1, p2);
+      const r = edgeLen * 0.7;
+      const center = currentGuide.target;
+      // Arc centered at target, sweeping across perpendicular bisector region
+      const midPt = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+      const midAngle = Math.atan2(midPt.y - center.y, midPt.x - center.x);
+      const sweep = Math.PI * 0.7;
+      const newArc = { center: { ...center }, radius: r, startAngle: midAngle - sweep / 2, endAngle: midAngle + sweep / 2, intersections: [], id: Date.now(), sweepCW: true };
+      setJakdoArcs(prev => [...prev, newArc]);
+      playSfx("draw");
 
-      if (currentGuide.edge) {
-        // Circumcenter: draw arc from this vertex across the edge
-        const [p1, p2] = currentGuide.edge;
-        const edgeLen = dist(p1, p2);
-        const r = edgeLen * 0.7; // radius > half edge
-        const center = currentGuide.target;
-        // Draw a nice arc that crosses the perpendicular bisector area
-        const midAngle = Math.atan2(p1.y + p2.y - 2 * center.y, p1.x + p2.x - 2 * center.x);
-        const sweep = Math.PI * 0.6;
-        const newArc = {
-          center: { ...center }, radius: r,
-          startAngle: midAngle - sweep / 2, endAngle: midAngle + sweep / 2,
-          intersections: [], id: Date.now(), sweepCW: true,
-        };
-        setJakdoArcs(prev => [...prev, newArc]);
-        playSfx("draw");
-      } else if (currentGuide.vertex) {
-        // Incenter: draw arc from vertex across both adjacent edges
-        const v = currentGuide.vertex;
-        const [arm1, arm2] = currentGuide.arms;
-        const r = Math.min(dist(v, arm1), dist(v, arm2)) * 0.4;
-        const a1 = Math.atan2(arm1.y - v.y, arm1.x - v.x);
-        const a2 = Math.atan2(arm2.y - v.y, arm2.x - v.x);
-        // Ensure we sweep the interior angle
-        let start = a1, end = a2;
-        let sweep = end - start;
-        if (sweep < -Math.PI) sweep += 2 * Math.PI;
-        if (sweep > Math.PI) sweep -= 2 * Math.PI;
-        if (sweep < 0) { start = a2; end = a1; }
-        const newArc = {
-          center: { ...v }, radius: r,
-          startAngle: start, endAngle: end,
-          intersections: [], id: Date.now(), sweepCW: true,
-        };
-        // Find intersections with the two edges
-        const int1 = { x: v.x + r * Math.cos(a1), y: v.y + r * Math.sin(a1) };
-        const int2 = { x: v.x + r * Math.cos(a2), y: v.y + r * Math.sin(a2) };
-        newArc.intersections = [int1, int2];
-
-        // Also draw second pair of arcs from these intersection points
-        const r2 = dist(int1, int2) * 0.7;
-        const arc2 = {
-          center: { ...int1 }, radius: r2,
-          startAngle: Math.atan2(v.y - int1.y, v.x - int1.x) - 0.4,
-          endAngle: Math.atan2(v.y - int1.y, v.x - int1.x) + 0.4,
-          intersections: [], id: Date.now() + 1, sweepCW: true,
-        };
-        const arc3 = {
-          center: { ...int2 }, radius: r2,
-          startAngle: Math.atan2(v.y - int2.y, v.x - int2.x) - 0.4,
-          endAngle: Math.atan2(v.y - int2.y, v.x - int2.x) + 0.4,
-          intersections: [], id: Date.now() + 2, sweepCW: true,
-        };
-        // Find intersection of arc2 and arc3
-        const d = dist(int1, int2);
-        if (d < r2 * 2 && d > 0) {
-          const a = (r2 * r2 - r2 * r2 + d * d) / (2 * d);
-          const h = Math.sqrt(Math.max(0, r2 * r2 - a * a));
-          const dx = (int2.x - int1.x) / d, dy = (int2.y - int1.y) / d;
-          const mx = int1.x + a * dx, my = int1.y + a * dy;
+      // If this is the second tap, calculate arc-arc intersections
+      if (currentGuide.role === "second" && jakdoArcs.length >= 1) {
+        const prevArc = jakdoArcs[jakdoArcs.length - 1];
+        const d = dist(prevArc.center, center);
+        const r1 = prevArc.radius, r2 = r;
+        if (d > 0 && d < r1 + r2 && d > Math.abs(r1 - r2)) {
+          const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
+          const h = Math.sqrt(Math.max(0, r1 * r1 - a * a));
+          const dx = (center.x - prevArc.center.x) / d;
+          const dy = (center.y - prevArc.center.y) / d;
+          const mx = prevArc.center.x + a * dx, my = prevArc.center.y + a * dy;
           const ip1 = { x: mx + h * (-dy), y: my + h * dx };
           const ip2 = { x: mx - h * (-dy), y: my - h * dx };
-          // Pick the one closer to interior (farther from vertex)
-          const inner = dist(ip1, v) > dist(ip2, v) ? ip1 : ip2;
-          arc2.intersections = [inner];
-          arc3.intersections = [inner];
+          setGuideIntersections([ip1, ip2]);
         }
-
-        setJakdoArcs(prev => [...prev, newArc, arc2, arc3]);
-        playSfx("draw");
       }
-
       setGuideStep(s => s + 1);
       return true;
     }
 
-    if (currentGuide.type === "tap_inter") {
-      // User taps an intersection point — draw the bisector line
-      // Find nearest intersection from all arcs
-      let nearest = null, minD = 30;
-      for (const arc of jakdoArcs) {
-        for (const ip of (arc.intersections || [])) {
-          const d = dist(tapPt, ip);
-          if (d < minD) { minD = d; nearest = ip; }
-        }
-      }
-      if (!nearest) return false;
+    // --- Incenter: tap vertex to draw all arcs at once ---
+    if (currentGuide.type === "tap_vertex" && currentGuide.target) {
+      if (dist(tapPt, currentGuide.target) > 30) return false;
+      const v = currentGuide.vertex;
+      const [arm1, arm2] = currentGuide.arms;
 
-      // For circumcenter: draw perpendicular bisector through intersection points
-      if (guideGoal === "circumcenter") {
-        // Find the two most recent arcs — their intersections form the bisector
-        const recentArcs = jakdoArcs.slice(-2);
-        if (recentArcs.length === 2) {
-          const c1 = recentArcs[0].center, c2 = recentArcs[1].center;
-          const r1 = recentArcs[0].radius, r2 = recentArcs[1].radius;
-          const d = dist(c1, c2);
-          if (d > 0 && d < r1 + r2) {
-            const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
-            const h = Math.sqrt(Math.max(0, r1 * r1 - a * a));
-            const dx = (c2.x - c1.x) / d, dy = (c2.y - c1.y) / d;
-            const mx = c1.x + a * dx, my = c1.y + a * dy;
-            const ip1 = { x: mx + h * (-dy), y: my + h * dx };
-            const ip2 = { x: mx - h * (-dy), y: my - h * dx };
-            // Extend the line
-            const lx = ip2.x - ip1.x, ly = ip2.y - ip1.y;
-            const len = Math.sqrt(lx * lx + ly * ly) || 1;
-            const ext = 200;
-            setJakdoRulerLines(prev => [...prev, {
-              start: { x: ip1.x - (lx / len) * ext, y: ip1.y - (ly / len) * ext },
-              end: { x: ip2.x + (lx / len) * ext, y: ip2.y + (ly / len) * ext },
-            }]);
-          }
-        }
-      } else if (guideGoal === "incenter") {
-        // Draw angle bisector from vertex through inner intersection
-        const step = guideSteps[guideStep - 1] || guideSteps[guideStep - 2];
-        // Find the vertex for this bisector group
-        let vertex = null;
-        for (let i = guideStep; i >= 0; i--) {
-          if (guideSteps[i]?.vertex) { vertex = guideSteps[i].vertex; break; }
-        }
-        if (vertex) {
-          const dx = nearest.x - vertex.x, dy = nearest.y - vertex.y;
-          const len = Math.sqrt(dx * dx + dy * dy) || 1;
-          const ext = 300;
-          setJakdoRulerLines(prev => [...prev, {
-            start: { ...vertex },
-            end: { x: vertex.x + (dx / len) * ext, y: vertex.y + (dy / len) * ext },
-          }]);
-        }
+      // Arc 1: from vertex, crossing both edges
+      const r1 = Math.min(dist(v, arm1), dist(v, arm2)) * 0.4;
+      const a1 = Math.atan2(arm1.y - v.y, arm1.x - v.x);
+      const a2 = Math.atan2(arm2.y - v.y, arm2.x - v.x);
+      // Edge intersection points
+      const eInt1 = { x: v.x + r1 * Math.cos(a1), y: v.y + r1 * Math.sin(a1) };
+      const eInt2 = { x: v.x + r1 * Math.cos(a2), y: v.y + r1 * Math.sin(a2) };
+      
+      // Ensure arc sweeps through the interior angle
+      let startA = a1, endA = a2;
+      let sw = endA - startA;
+      if (sw > Math.PI) { startA = a2; endA = a1; }
+      else if (sw < -Math.PI) { /* keep */ }
+      else if (sw < 0) { startA = a2; endA = a1; }
+      
+      const arc1 = { center: { ...v }, radius: r1, startAngle: startA - 0.15, endAngle: endA + 0.15, intersections: [eInt1, eInt2], id: Date.now(), sweepCW: true };
+
+      // Arcs 2 & 3: from each edge intersection
+      const r2 = dist(eInt1, eInt2) * 0.65;
+      const mid12 = Math.atan2(v.y - (eInt1.y + eInt2.y) / 2, v.x - (eInt1.x + eInt2.x) / 2);
+      const arc2 = { center: { ...eInt1 }, radius: r2, startAngle: mid12 - 0.5, endAngle: mid12 + 0.5, intersections: [], id: Date.now() + 1, sweepCW: true };
+      const arc3 = { center: { ...eInt2 }, radius: r2, startAngle: mid12 - 0.5, endAngle: mid12 + 0.5, intersections: [], id: Date.now() + 2, sweepCW: true };
+
+      // Calculate arc2-arc3 intersection (the angle bisector point)
+      const d23 = dist(eInt1, eInt2);
+      let innerPt = null;
+      if (d23 > 0 && d23 < r2 * 2) {
+        const aa = (r2 * r2 - r2 * r2 + d23 * d23) / (2 * d23);
+        const hh = Math.sqrt(Math.max(0, r2 * r2 - aa * aa));
+        const ddx = (eInt2.x - eInt1.x) / d23, ddy = (eInt2.y - eInt1.y) / d23;
+        const mmx = eInt1.x + aa * ddx, mmy = eInt1.y + aa * ddy;
+        const ip1 = { x: mmx + hh * (-ddy), y: mmy + hh * ddx };
+        const ip2 = { x: mmx - hh * (-ddy), y: mmy - hh * ddx };
+        // Pick point on the angle bisector side (closer to interior, farther from v along bisector)
+        const bisDir = { x: (eInt1.x + eInt2.x) / 2 - v.x, y: (eInt1.y + eInt2.y) / 2 - v.y };
+        const dot1 = (ip1.x - v.x) * bisDir.x + (ip1.y - v.y) * bisDir.y;
+        const dot2 = (ip2.x - v.x) * bisDir.x + (ip2.y - v.y) * bisDir.y;
+        innerPt = dot1 > dot2 ? ip1 : ip2;
       }
 
+      setJakdoArcs(prev => [...prev, arc1, arc2, arc3]);
+      if (innerPt) setGuideIntersections([innerPt]);
       playSfx("draw");
       setGuideStep(s => s + 1);
       return true;
     }
 
+    // --- Tap intersection point → draw bisector line ---
+    if (currentGuide.type === "tap_inter") {
+      let nearest = null, minD = 35;
+      for (const ip of guideIntersections) {
+        const d = dist(tapPt, ip);
+        if (d < minD) { minD = d; nearest = ip; }
+      }
+      if (!nearest) return false;
+
+      if (guideGoal === "circumcenter") {
+        // Draw perpendicular bisector through BOTH intersection points
+        if (guideIntersections.length >= 2) {
+          const [ip1, ip2] = guideIntersections;
+          const dx = ip2.x - ip1.x, dy = ip2.y - ip1.y;
+          const len = Math.sqrt(dx * dx + dy * dy) || 1;
+          const ext = 250;
+          setJakdoRulerLines(prev => [...prev, {
+            start: { x: ip1.x - (dx / len) * ext, y: ip1.y - (dy / len) * ext },
+            end: { x: ip2.x + (dx / len) * ext, y: ip2.y + (dy / len) * ext },
+          }]);
+        }
+      } else if (guideGoal === "incenter") {
+        // Draw angle bisector from vertex through inner intersection
+        const v = currentGuide.bisectFrom;
+        if (v) {
+          const dx = nearest.x - v.x, dy = nearest.y - v.y;
+          const len = Math.sqrt(dx * dx + dy * dy) || 1;
+          const ext = 350;
+          setJakdoRulerLines(prev => [...prev, {
+            start: { ...v },
+            end: { x: v.x + (dx / len) * ext, y: v.y + (dy / len) * ext },
+          }]);
+        }
+      }
+
+      playSfx("draw");
+      setGuideIntersections([]);
+      setGuideStep(s => s + 1);
+      return true;
+    }
+
     return false;
-  }, [currentGuide, triangle, guideGoal, guideStep, guideSteps, jakdoArcs, playSfx]);
+  }, [currentGuide, triangle, guideGoal, guideStep, guideSteps, jakdoArcs, guideIntersections, playSfx]);
+
 
   // Undo history — must be before deleteArc/deleteRulerLine
   const [undoStack, setUndoStack] = useState([]);
@@ -1732,7 +1722,7 @@ function AppInner() {
     setDrawStrokes([]); setDrawAngles([]); setCurrentStroke([]); setDrawStep(0);
     setDrawPreview(null);
     setIsDrawing(false);
-    setGuideGoal(null); setGuideStep(0); setGuideSubStep(0);
+    setGuideGoal(null); setGuideStep(0); setGuideSubStep(0); setGuideIntersections([]);
   };
 
   // --- Properties Data with highlight info ---
@@ -2625,6 +2615,8 @@ function AppInner() {
           @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
           @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
           @keyframes gentlePulse { 0%,100% { opacity: 0.3; } 50% { opacity: 0.6; } }
+          * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+          input, textarea { -webkit-user-select: text; user-select: text; }
           input:focus { outline: none; border-color: ${PASTEL.coral} !important; box-shadow: 0 0 0 3px rgba(232,165,152,0.2); }
         `}</style>
 
@@ -2882,7 +2874,7 @@ function AppInner() {
   // --- Menu Screen ---
   if (screen === "menu") {
     const menuItems = [
-      { icon: "📖", label: "공부하기", desc: "기하학 개념 학습", action: () => setScreen("study") },
+      { icon: "📖", label: "복습하기", desc: "기하학 개념 학습", action: () => setScreen("study") },
       { icon: "◎", label: "아카이브", desc: "나만의 작품 갤러리", disabled: !canArchive, action: canArchive ? () => {} : undefined },
       { icon: "🏛️", label: "광장", desc: "실시간 채팅 · 순위", action: () => setScreen("plaza") },
       { icon: "✦", label: "설정", desc: "테마, 알림, 말투 모드", action: () => setScreen("settings") },
@@ -2916,13 +2908,13 @@ function AppInner() {
     );
   }
 
-  // --- Study Screen (공부하기) ---
+  // --- Study Screen (복습하기) ---
   if (screen === "study") {
     const categories = [
-      { icon: "⬡", label: "다각형과 원", desc: "삼각형, 외심, 내심", action: () => setScreen("polygons") },
+      { icon: "⬡", label: "삼각형의 외심과 내심", desc: "삼각형, 외심, 내심", action: () => setScreen("polygons") },
     ];
     return (
-      <ScreenWrap title="공부하기" back="메뉴" backTo="menu">
+      <ScreenWrap title="복습하기" back="메뉴" backTo="menu">
         <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
           <MenuGrid items={categories} cols={1} />
         </div>
@@ -2936,88 +2928,107 @@ function AppInner() {
     const sendChat = () => {
       if (!chatMsg.trim()) return;
       const newMsg = { user: user?.nickname || user?.name || "익명", role: userRole, text: chatMsg.trim(), time: Date.now() };
-      const updated = [...chatLog, newMsg].slice(-100); // keep last 100
+      const updated = [...chatLog, newMsg].slice(-100);
       setChatLog(updated);
       localStorage.setItem("ar_chat", JSON.stringify(updated));
       setChatMsg("");
       setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     };
 
+    // Auto-delete messages older than 10 minutes
+    const now = Date.now();
+    const filteredLog = chatLog.filter(m => now - m.time < 10 * 60 * 1000);
+    if (filteredLog.length !== chatLog.length) {
+      setChatLog(filteredLog);
+      localStorage.setItem("ar_chat", JSON.stringify(filteredLog));
+    }
+
     const roleColors = { admin: PASTEL.coral, assistant: PASTEL.lavender, student: PASTEL.sky, external: PASTEL.sage };
 
     return (
-      <ScreenWrap title="광장" back="메뉴" backTo="menu">
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          {/* Chat area */}
-          <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", WebkitOverflowScrolling: "touch" }}>
-            {chatLog.length === 0 && (
-              <p style={{ textAlign: "center", color: theme.textSec, fontSize: 13, marginTop: 40 }}>
-                아직 대화가 없어요. 첫 메시지를 보내보세요!
-              </p>
-            )}
-            {chatLog.map((msg, i) => {
-              const isMe = msg.user === (user?.nickname || user?.name);
-              return (
-                <div key={i} style={{
-                  display: "flex", flexDirection: isMe ? "row-reverse" : "row",
-                  marginBottom: 8, animation: "fadeIn 0.3s ease",
-                }}>
-                  <div style={{
-                    maxWidth: "75%", padding: "10px 14px", borderRadius: 14,
-                    background: isMe ? `${PASTEL.coral}20` : theme.card,
-                    border: `1px solid ${isMe ? PASTEL.coral : theme.border}`,
-                  }}>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
-                      <span style={{
-                        fontSize: 9, padding: "1px 6px", borderRadius: 4,
-                        background: `${roleColors[msg.role] || theme.textSec}20`,
-                        color: roleColors[msg.role] || theme.textSec,
-                      }}>{ROLES[msg.role] || ""}</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: theme.text }}>{msg.user}</span>
-                      <span style={{ fontSize: 9, color: theme.textSec }}>
-                        {new Date(msg.time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    </div>
-                    <p style={{ fontSize: 13, color: theme.text, margin: 0, lineHeight: 1.5, fontFamily: "'Noto Serif KR', serif" }}>
-                      {msg.text}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-            <div ref={chatEndRef} />
-          </div>
-
-          {/* Chat input */}
-          <div style={{
-            display: "flex", gap: 8, padding: "12px 16px",
-            borderTop: `1px solid ${theme.border}`, background: theme.card,
-          }}>
-            <button onClick={() => setChatNotif(!chatNotif)} style={{
-              width: 36, height: 36, borderRadius: 10, border: `1px solid ${theme.border}`,
-              background: chatNotif ? `${PASTEL.coral}15` : theme.bg,
-              fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-            }}>{chatNotif ? "🔔" : "🔕"}</button>
-            <input value={chatMsg} onChange={e => setChatMsg(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && sendChat()}
-              placeholder="메시지를 입력하세요..."
-              style={{
-                flex: 1, padding: "10px 14px", borderRadius: 12,
-                border: `1.5px solid ${theme.border}`, background: theme.bg,
-                color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif",
-              }} />
-            <button onClick={sendChat} style={{
-              padding: "10px 18px", borderRadius: 12, border: "none",
-              background: `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
-              color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer",
-            }}>전송</button>
-          </div>
+      <div style={{ height: "100vh", maxHeight: "100dvh", display: "flex", flexDirection: "column", background: theme.bg, fontFamily: "'Noto Serif KR', serif" }}>
+        {/* Header */}
+        <div style={{ flexShrink: 0, display: "flex", alignItems: "center", padding: "16px 20px", borderBottom: `1px solid ${theme.border}` }}>
+          <button onClick={() => { playSfx("click"); setScreen("menu"); }} style={{ background: "none", border: "none", color: theme.textSec, fontSize: 13, cursor: "pointer" }}>← 메뉴</button>
+          <span style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 700, color: theme.text, fontFamily: "'Playfair Display', serif" }}>광장</span>
+          <span style={{ width: 40 }} />
         </div>
-      </ScreenWrap>
+        
+        {/* Screenshot deterrent CSS */}
+        <style>{`
+          .plaza-content { position: relative; }
+          @media print { .plaza-content { display: none !important; } }
+        `}</style>
+
+        {/* Chat area */}
+        <div className="plaza-content" style={{ flex: 1, overflowY: "auto", padding: "12px 16px", WebkitOverflowScrolling: "touch" }}>
+          {filteredLog.length === 0 && (
+            <p style={{ textAlign: "center", color: theme.textSec, fontSize: 13, marginTop: 40 }}>
+              아직 대화가 없어요. 첫 메시지를 보내보세요!
+              <br /><span style={{ fontSize: 10 }}>메시지는 10분 후 자동 삭제됩니다</span>
+            </p>
+          )}
+          {filteredLog.map((msg, i) => {
+            const isMe = msg.user === (user?.nickname || user?.name);
+            const remaining = Math.max(0, Math.ceil((10 * 60 * 1000 - (now - msg.time)) / 60000));
+            return (
+              <div key={`${msg.time}-${i}`} style={{
+                display: "flex", flexDirection: isMe ? "row-reverse" : "row",
+                marginBottom: 8, animation: "fadeIn 0.3s ease",
+              }}>
+                <div style={{
+                  maxWidth: "75%", padding: "10px 14px", borderRadius: 14,
+                  background: isMe ? `${PASTEL.coral}20` : theme.card,
+                  border: `1px solid ${isMe ? PASTEL.coral : theme.border}`,
+                }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
+                    <span style={{
+                      fontSize: 9, padding: "1px 6px", borderRadius: 4,
+                      background: `${roleColors[msg.role] || theme.textSec}20`,
+                      color: roleColors[msg.role] || theme.textSec,
+                    }}>{ROLES[msg.role] || ""}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: theme.text }}>{msg.user}</span>
+                    <span style={{ fontSize: 9, color: theme.textSec }}>
+                      {new Date(msg.time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                    {remaining <= 3 && <span style={{ fontSize: 8, color: PASTEL.coral }}>{remaining}분</span>}
+                  </div>
+                  <p style={{ fontSize: 13, color: theme.text, margin: 0, lineHeight: 1.5, fontFamily: "'Noto Serif KR', serif" }}>
+                    {msg.text}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={chatEndRef} />
+        </div>
+
+        {/* Chat input — fixed at bottom, outside scroll */}
+        <div style={{
+          flexShrink: 0, display: "flex", gap: 8, padding: "12px 16px",
+          borderTop: `1px solid ${theme.border}`, background: theme.card,
+        }}>
+          <input value={chatMsg} onChange={e => setChatMsg(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); sendChat(); } }}
+            placeholder="메시지를 입력하세요..."
+            autoComplete="off" autoCorrect="off"
+            style={{
+              flex: 1, padding: "10px 14px", borderRadius: 12,
+              border: `1.5px solid ${theme.border}`, background: theme.bg,
+              color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif",
+              WebkitUserSelect: "text", userSelect: "text",
+            }} />
+          <button onClick={sendChat} style={{
+            padding: "10px 18px", borderRadius: 12, border: "none",
+            background: `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
+            color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer",
+          }}>전송</button>
+        </div>
+      </div>
     );
   }
 
-  // --- Polygons & Circles Screen (다각형과 원) ---
+  // --- Polygons & Circles Screen (삼각형의 외심과 내심) ---
   if (screen === "polygons") {
     const hasSavedWork = (() => { try { return !!JSON.parse(sessionStorage.getItem("ar_work"))?.triangle; } catch { return false; } })();
 
@@ -3036,15 +3047,15 @@ function AppInner() {
 
 
     const topics = [
-      { icon: "△", label: "삼각형 작도", desc: hasSavedWork ? "이전 작업 있음 ✦" : "SSS · SAS · ASA", compact: true,
+      { icon: "📏", label: "거리", desc: "점과 직선 사이의 거리", compact: true, disabled: true },
+      { icon: "△", label: "삼각형에서 원까지", desc: hasSavedWork ? "이전 작업 있음 ✦" : "SSS · SAS · ASA",
         action: () => { if (hasSavedWork) setShowLoadDialog(true); else enterDraw(false); } },
       { icon: "⊙⊙", label: "외접원 옆에 내접원", desc: "두 원의 관계", compact: true, disabled: true },
       { icon: "O · I", label: "외심 옆에 내심", desc: "두 중심의 비교", compact: true, disabled: true },
-      { icon: "▲", label: "이등변삼각형", desc: "성질과 활용", compact: true, disabled: true },
-      { icon: "∟≅", label: "직각삼각형의 합동", desc: "RHA · RHS", compact: true, disabled: true },
+      { icon: "∟≅", label: "직각삼각형의 합동 조건", desc: "RHA · RHS", compact: true, disabled: true },
     ];
     return (
-      <ScreenWrap title="다각형과 원" back="공부하기" backTo="study">
+      <ScreenWrap title="삼각형의 외심과 내심" back="복습하기" backTo="study">
         <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16, position:"relative" }}>
           <p style={{ fontSize:12, color:theme.textSec, textAlign:"center", margin:"20px 0 0 0" }}>중1-2 · 중2-2 기하 단원</p>
           <MenuGrid items={topics} cols={2} />
@@ -4079,25 +4090,7 @@ function AppInner() {
               </FixedG>
             )}
             {/* Snap points glow in jakdo mode */}
-            {buildPhase === "jakdo" && (compassPhase === "idle" || jakdoTool === "ruler") && jakdoSnaps
-              .filter(sp => {
-                if (!guideGoal) return true; // free mode: show all
-                if (!currentGuide) return false;
-                if (currentGuide.type === "tap" && currentGuide.target) {
-                  return dist(sp, currentGuide.target) < 15; // only target point
-                }
-                if (currentGuide.type === "tap_inter") {
-                  // only arc intersection points (not vertices)
-                  for (const arc of jakdoArcs) {
-                    for (const ip of (arc.intersections || [])) {
-                      if (dist(sp, ip) < 10) return true;
-                    }
-                  }
-                  return false;
-                }
-                return false;
-              })
-              .map((sp, i) => {
+            {buildPhase === "jakdo" && (compassPhase === "idle" || jakdoTool === "ruler") && !guideGoal && jakdoSnaps.map((sp, i) => {
               const isPressed = pressedSnap && Math.abs(sp.x - pressedSnap.x) < 2 && Math.abs(sp.y - pressedSnap.y) < 2;
               return (
                 <FixedG key={`snap${i}`} x={sp.x} y={sp.y}>
@@ -4111,6 +4104,16 @@ function AppInner() {
                 </FixedG>
               );
             })}
+
+            {/* Guide mode: show only guide intersection points */}
+            {buildPhase === "jakdo" && guideGoal && guideIntersections.map((ip, i) => (
+              <FixedG key={`gip${i}`} x={ip.x} y={ip.y}>
+                <circle cx={ip.x} cy={ip.y} r={10}
+                  fill={`${PASTEL.mint}30`} stroke={PASTEL.mint} strokeWidth={2.5}>
+                  <animate attributeName="r" values="8;14;8" dur="1.2s" repeatCount="indefinite" />
+                </circle>
+              </FixedG>
+            ))}
 
             {/* Fail animation */}
             {failAnim && (
