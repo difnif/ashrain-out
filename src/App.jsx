@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v3.2)
+// ashrain.out — Interactive Geometry Education App (v3.5)
 // ============================================================
 
 // --- Constants & Config ---
@@ -1263,7 +1263,7 @@ function AppInner() {
     // Angle between outward vectors = 180° - V opening
     const dot = d1.x * d2.x + d1.y * d2.y;
     const outerAngle = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
-    let angle = 180 - outerAngle;
+    let angle = outerAngle;
     if (angle < 3 || angle > 177) return null;
     return { vertex, angle, arm1: A, arm2: B };
   }, []);
@@ -2648,18 +2648,20 @@ function AppInner() {
 
   // --- Shared UI Helpers ---
   const ScreenWrap = ({ children, title, back, backTo }) => (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: theme.bg, fontFamily: "'Noto Serif KR', serif" }}>
+    <div style={{ height: "100vh", maxHeight: "100dvh", display: "flex", flexDirection: "column", background: theme.bg, fontFamily: "'Noto Serif KR', serif", overflow: "hidden" }}>
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Noto+Serif+KR:wght@400;700&display=swap" rel="stylesheet" />
       <style>{`@keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
         @keyframes float { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-6px); } }`}</style>
       {title && (
-        <div style={{ display:"flex", alignItems:"center", padding:"16px 20px", borderBottom:`1px solid ${theme.border}` }}>
+        <div style={{ flexShrink: 0, display:"flex", alignItems:"center", padding:"16px 20px", borderBottom:`1px solid ${theme.border}` }}>
           {back && <button onClick={() => { playSfx("click"); setScreen(backTo||"menu"); }} style={{ background:"none", border:"none", color:theme.textSec, fontSize:13, cursor:"pointer", fontFamily:"'Noto Serif KR', serif" }}>← {back}</button>}
           <span style={{ flex:1, textAlign:"center", fontSize:14, fontWeight:700, color:theme.text, fontFamily:"'Playfair Display', serif" }}>{title}</span>
           {back && <span style={{width:40}} />}
         </div>
       )}
-      {children}
+      <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch", display: "flex", flexDirection: "column" }}>
+        {children}
+      </div>
     </div>
   );
 
@@ -3212,6 +3214,7 @@ function AppInner() {
           position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
           background: theme.bg, display: "flex", flexDirection: "column",
         }}>
+          {/* Top bar */}
           <div style={{
             display: "flex", justifyContent: "space-between", alignItems: "center",
             padding: "12px 16px", borderBottom: `1px solid ${theme.border}`, background: theme.card,
@@ -3234,6 +3237,8 @@ function AppInner() {
               }}>저장</button>
             </div>
           </div>
+
+          {/* Canvas */}
           <div style={{ flex: 1, touchAction: "none" }}>
             <svg ref={angleCollectRef} width="100%" height="100%"
               viewBox={`0 0 ${svgW} ${svgH}`}
@@ -3262,6 +3267,22 @@ function AppInner() {
                 </>
               )}
             </svg>
+          </div>
+
+          {/* Bottom bar — count + export */}
+          <div style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "10px 16px", borderTop: `1px solid ${theme.border}`, background: theme.card,
+          }}>
+            <span style={{ fontSize: 13, color: theme.text }}>
+              <span style={{ fontWeight: 700, fontSize: 16 }}>{collectedAngles.length}</span> 건 수집됨
+            </span>
+            {collectedAngles.length > 0 && (
+              <button onClick={exportData} style={{
+                padding: "8px 16px", borderRadius: 8, border: "none",
+                background: PASTEL.sky, color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer",
+              }}>📥 내보내기</button>
+            )}
           </div>
         </div>
       );
@@ -3984,7 +4005,10 @@ function AppInner() {
             width: 340, flexShrink: 0, borderLeft: `1px solid ${theme.border}`,
             overflowY: "auto", background: theme.card,
             display: "flex", flexDirection: "column",
-          } : {}),
+          } : {
+            overflowY: "auto", WebkitOverflowScrolling: "touch",
+            flexShrink: 1, minHeight: 0,
+          }),
           display: (!isPC && showProperties && !showArchiveSave) ? "none" : undefined,
         }}>
 
