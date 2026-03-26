@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v3.1)
+// ashrain.out — Interactive Geometry Education App (v3.2)
 // ============================================================
 
 // --- Constants & Config ---
@@ -658,61 +658,10 @@ function AppInner() {
   useEffect(() => { localStorage.setItem("ar_autoapprove", autoApprove ? "true" : "false"); }, [autoApprove]);
 
   // Register touch+mouse events on angle collection SVG with { passive: false }
-  // Angle data collection - use callback ref for reliable event binding
+  // Angle data collection state
   const angleDrawingRef = useRef(false);
-  const angleStrokeRef = useRef([]);
-  const angleSvgCleanup = useRef(null);
+  const [angleOverlay, setAngleOverlay] = useState(false);
 
-  const angleCollectCallback = useCallback((svgNode) => {
-    // Cleanup previous
-    if (angleSvgCleanup.current) { angleSvgCleanup.current(); angleSvgCleanup.current = null; }
-    angleCollectRef.current = svgNode;
-    if (!svgNode) return;
-
-    const svgW = 400, svgH = 300;
-    const getPos = (e) => {
-      const src = e.touches ? e.touches[0] : e;
-      const rect = svgNode.getBoundingClientRect();
-      return {
-        x: ((src.clientX - rect.left) / rect.width) * svgW,
-        y: ((src.clientY - rect.top) / rect.height) * svgH,
-      };
-    };
-    const down = (e) => {
-      e.preventDefault(); e.stopPropagation();
-      const sp = getPos(e);
-      angleDrawingRef.current = true;
-      angleStrokeRef.current = [{ x: sp.x, y: sp.y, t: Date.now() }];
-      setAngleCollectStroke([...angleStrokeRef.current]);
-    };
-    const move = (e) => {
-      if (!angleDrawingRef.current) return;
-      e.preventDefault(); e.stopPropagation();
-      const sp = getPos(e);
-      angleStrokeRef.current.push({ x: sp.x, y: sp.y, t: Date.now() });
-      setAngleCollectStroke([...angleStrokeRef.current]);
-    };
-    const up = (e) => {
-      if (e) { e.preventDefault(); e.stopPropagation(); }
-      angleDrawingRef.current = false;
-    };
-
-    svgNode.addEventListener("touchstart", down, { passive: false });
-    svgNode.addEventListener("touchmove", move, { passive: false });
-    svgNode.addEventListener("touchend", up, { passive: false });
-    svgNode.addEventListener("mousedown", down);
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
-
-    angleSvgCleanup.current = () => {
-      svgNode.removeEventListener("touchstart", down);
-      svgNode.removeEventListener("touchmove", move);
-      svgNode.removeEventListener("touchend", up);
-      svgNode.removeEventListener("mousedown", down);
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-    };
-  }, []);
 
   // Permission helpers
   const userRole = user?.role || "external";
@@ -3194,7 +3143,7 @@ function AppInner() {
   // --- Admin Angle Data Collection ---
   // --- Admin Angle Data Collection (touch via ref + useEffect) ---
   if (screen === "admin-angles") {
-    const svgW = 400, svgH = 300;
+    const svgW = 400, svgH = 400;
     const curResult = angleCollectStroke.length >= 6 ? recognizeAngle(angleCollectStroke) : null;
 
     const saveStroke = () => {
@@ -3210,27 +3159,13 @@ function AppInner() {
       setCollectedAngles(updated);
       localStorage.setItem("ar_angle_data", JSON.stringify(updated));
       setAngleCollectStroke([]);
-      angleStrokeRef.current = [];
       playSfx("success");
-    };
-
-    const clearStroke = () => {
-      setAngleCollectStroke([]);
-      angleStrokeRef.current = [];
-      angleDrawingRef.current = false;
-    };
-
-    const deleteEntry = (id) => {
-      const updated = collectedAngles.filter(e => e.id !== id);
-      setCollectedAngles(updated);
-      localStorage.setItem("ar_angle_data", JSON.stringify(updated));
     };
 
     const clearAll = () => {
       if (!window.confirm("전체 삭제하시겠어요?")) return;
       setCollectedAngles([]);
       localStorage.removeItem("ar_angle_data");
-      playSfx("pop");
     };
 
     const exportData = () => {
@@ -3245,9 +3180,95 @@ function AppInner() {
       playSfx("complete");
     };
 
+    // Overlay drawing handlers — getBoundingClientRect for correct coords
+    const overlayDown = (e) => {
+      e.preventDefault();
+      const svg = angleCollectRef.current;
+      if (!svg) return;
+      const src = e.touches ? e.touches[0] : e;
+      const rect = svg.getBoundingClientRect();
+      const x = ((src.clientX - rect.left) / rect.width) * svgW;
+      const y = ((src.clientY - rect.top) / rect.height) * svgH;
+      angleDrawingRef.current = true;
+      setAngleCollectStroke([{ x, y, t: Date.now() }]);
+    };
+    const overlayMove = (e) => {
+      if (!angleDrawingRef.current) return;
+      e.preventDefault();
+      const svg = angleCollectRef.current;
+      if (!svg) return;
+      const src = e.touches ? e.touches[0] : e;
+      const rect = svg.getBoundingClientRect();
+      const x = ((src.clientX - rect.left) / rect.width) * svgW;
+      const y = ((src.clientY - rect.top) / rect.height) * svgH;
+      setAngleCollectStroke(prev => [...prev, { x, y, t: Date.now() }]);
+    };
+    const overlayUp = () => { angleDrawingRef.current = false; };
+
+    // Fullscreen overlay for drawing
+    if (angleOverlay) {
+      return (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
+          background: theme.bg, display: "flex", flexDirection: "column",
+        }}>
+          <div style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "12px 16px", borderBottom: `1px solid ${theme.border}`, background: theme.card,
+          }}>
+            <button onClick={() => { setAngleOverlay(false); setAngleCollectStroke([]); angleDrawingRef.current = false; }} style={{
+              background: "none", border: "none", color: theme.textSec, fontSize: 14, cursor: "pointer",
+            }}>✕ 닫기</button>
+            <span style={{ fontSize: 15, fontWeight: 700, color: curResult ? PASTEL.mint : theme.text }}>
+              {curResult ? `${curResult.angle.toFixed(1)}°` : "V자를 그려주세요"}
+            </span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { setAngleCollectStroke([]); angleDrawingRef.current = false; }} style={{
+                padding: "6px 12px", borderRadius: 8, border: `1px solid ${theme.border}`,
+                background: theme.card, color: theme.textSec, fontSize: 12, cursor: "pointer",
+              }}>↻</button>
+              <button onClick={() => { saveStroke(); }} disabled={angleCollectStroke.length < 6} style={{
+                padding: "6px 16px", borderRadius: 8, border: "none",
+                background: angleCollectStroke.length >= 6 ? PASTEL.mint : theme.lineLight,
+                color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer",
+              }}>저장</button>
+            </div>
+          </div>
+          <div style={{ flex: 1, touchAction: "none" }}>
+            <svg ref={angleCollectRef} width="100%" height="100%"
+              viewBox={`0 0 ${svgW} ${svgH}`}
+              style={{ touchAction: "none", cursor: "crosshair", display: "block" }}
+              preserveAspectRatio="xMidYMid meet"
+              onMouseDown={overlayDown} onMouseMove={overlayMove} onMouseUp={overlayUp}
+              onTouchStart={overlayDown} onTouchMove={overlayMove} onTouchEnd={overlayUp}
+            >
+              {[...Array(10)].map((_, i) => [...Array(10)].map((_, j) => (
+                <circle key={`${i}${j}`} cx={20+i*40} cy={20+j*40} r={0.8} fill={theme.lineLight} opacity={0.3} />
+              )))}
+              {angleCollectStroke.length > 1 && (
+                <polyline points={angleCollectStroke.map(p => `${p.x},${p.y}`).join(" ")}
+                  fill="none" stroke={PASTEL.coral} strokeWidth={2.5}
+                  strokeLinecap="round" strokeLinejoin="round" opacity={0.8} />
+              )}
+              {curResult && (
+                <>
+                  <circle cx={curResult.vertex.x} cy={curResult.vertex.y} r={6}
+                    fill="none" stroke={PASTEL.mint} strokeWidth={2} />
+                  <text x={curResult.vertex.x} y={curResult.vertex.y - 16} textAnchor="middle"
+                    fill={PASTEL.mint} fontSize={22} fontWeight={700}
+                    fontFamily="'Playfair Display', serif">
+                    {curResult.angle.toFixed(1)}°
+                  </text>
+                </>
+              )}
+            </svg>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <ScreenWrap title="앵글 데이터 수집" back="관리자" backTo="admin">
-        {/* Stats bar */}
         <div style={{
           display: "flex", gap: 8, padding: "10px 16px",
           background: theme.card, borderBottom: `1px solid ${theme.border}`,
@@ -3267,8 +3288,7 @@ function AppInner() {
               <>
                 <button onClick={exportData} style={{
                   padding: "7px 14px", borderRadius: 8, border: "none",
-                  background: PASTEL.sky, color: "white", fontSize: 12,
-                  fontWeight: 700, cursor: "pointer",
+                  background: PASTEL.sky, color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer",
                 }}>📥 내보내기</button>
                 <button onClick={clearAll} style={{
                   padding: "7px 10px", borderRadius: 8,
@@ -3279,82 +3299,38 @@ function AppInner() {
             )}
           </div>
         </div>
-
-        <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", WebkitOverflowScrolling: "touch" }}>
-          {/* Canvas */}
-          <div style={{
-            background: theme.svgBg, borderRadius: 16, border: `1.5px solid ${theme.border}`,
-            overflow: "hidden", marginBottom: 12, touchAction: "none",
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px", WebkitOverflowScrolling: "touch" }}>
+          <button onClick={() => setAngleOverlay(true)} style={{
+            width: "100%", padding: "24px", borderRadius: 16, border: `2px dashed ${PASTEL.coral}`,
+            background: `${PASTEL.coral}08`, color: PASTEL.coral, fontSize: 16,
+            fontWeight: 700, cursor: "pointer", marginBottom: 16,
+            fontFamily: "'Noto Serif KR', serif",
           }}>
-            <svg ref={angleCollectCallback} width="100%" viewBox={`0 0 ${svgW} ${svgH}`}
-              style={{ display: "block", cursor: "crosshair", touchAction: "none" }}
-              preserveAspectRatio="xMidYMid meet"
-            >
-              {/* Grid dots */}
-              {[...Array(10)].map((_, i) => [...Array(7)].map((_, j) => (
-                <circle key={`${i}${j}`} cx={20+i*40} cy={20+j*40} r={0.8} fill={theme.lineLight} opacity={0.3} />
-              )))}
-              {/* Current stroke */}
-              {angleCollectStroke.length > 1 && (
-                <polyline points={angleCollectStroke.map(p => `${p.x},${p.y}`).join(" ")}
-                  fill="none" stroke={PASTEL.coral} strokeWidth={2.5}
-                  strokeLinecap="round" strokeLinejoin="round" opacity={0.8} />
-              )}
-              {/* Recognized angle display */}
-              {curResult && (
-                <>
-                  <circle cx={curResult.vertex.x} cy={curResult.vertex.y} r={6}
-                    fill="none" stroke={PASTEL.mint} strokeWidth={2} />
-                  <text x={curResult.vertex.x} y={curResult.vertex.y - 14} textAnchor="middle"
-                    fill={PASTEL.mint} fontSize={18} fontWeight={700}
-                    fontFamily="'Playfair Display', serif">
-                    {curResult.angle.toFixed(1)}°
-                  </text>
-                </>
-              )}
-            </svg>
-          </div>
-
-          {/* Buttons */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            <button onClick={clearStroke} style={{
-              flex: 1, padding: "12px", borderRadius: 10, border: `1px solid ${theme.border}`,
-              background: theme.card, color: theme.textSec, fontSize: 13, cursor: "pointer",
-            }}>↻ 지우기</button>
-            <button onClick={saveStroke} disabled={angleCollectStroke.length < 6} style={{
-              flex: 2, padding: "12px", borderRadius: 10, border: "none",
-              background: angleCollectStroke.length >= 6 ? PASTEL.mint : theme.lineLight,
-              color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer",
-              opacity: angleCollectStroke.length >= 6 ? 1 : 0.5,
-            }}>
-              {curResult ? `${curResult.angle.toFixed(1)}° 저장` : "저장"}
-            </button>
-          </div>
-
-          {/* Data list */}
-          {collectedAngles.slice(-20).reverse().map((entry) => (
+            ✏️ 각 그리기
+          </button>
+          {collectedAngles.slice(-30).reverse().map((entry) => (
             <div key={entry.id} style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "8px 12px", marginBottom: 6, borderRadius: 10,
+              padding: "10px 12px", marginBottom: 6, borderRadius: 10,
               background: theme.card, border: `1px solid ${theme.border}`,
             }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: entry.recognized ? PASTEL.mint : PASTEL.coral }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: entry.recognized ? PASTEL.mint : PASTEL.coral }}>
                   {entry.recognized ? `${entry.recognized.toFixed(1)}°` : "실패"}
                 </span>
                 <span style={{ fontSize: 10, color: theme.textSec }}>{entry.pointCount}pts</span>
+                <span style={{ fontSize: 9, color: theme.textSec }}>{new Date(entry.timestamp).toLocaleTimeString()}</span>
               </div>
-              <button onClick={() => deleteEntry(entry.id)} style={{
+              <button onClick={() => {
+                const updated = collectedAngles.filter(e => e.id !== entry.id);
+                setCollectedAngles(updated);
+                localStorage.setItem("ar_angle_data", JSON.stringify(updated));
+              }} style={{
                 background: "none", border: "none", color: PASTEL.coral,
                 fontSize: 12, cursor: "pointer", padding: "4px 8px",
               }}>✕</button>
             </div>
           ))}
-          {collectedAngles.length > 20 && (
-            <p style={{ fontSize: 10, color: theme.textSec, textAlign: "center" }}>
-              최근 20건만 표시 (전체: {collectedAngles.length}건)
-            </p>
-          )}
           <div style={{ height: 60 }} />
         </div>
       </ScreenWrap>
