@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v3.6)
+// ashrain.out — Interactive Geometry Education App (v3.8)
 // ============================================================
 
 // --- Constants & Config ---
@@ -744,6 +744,10 @@ function AppInner() {
 
   // Jakdo (작도) state
   const [jakdoTool, setJakdoTool] = useState(null); // "compass" | "ruler"
+  // Guided construction state
+  const [guideGoal, setGuideGoal] = useState(null); // "circumcenter" | "incenter" | null (free)
+  const [guideStep, setGuideStep] = useState(0);
+  const [guideSubStep, setGuideSubStep] = useState(0); // 0=center, 1=radius, 2=arc for compass; 0=start,1=end for ruler
   const [jakdoArcs, setJakdoArcs] = useState([]); // {center, radius, startAngle, endAngle, intersections[]}
   const [jakdoRulerLines, setJakdoRulerLines] = useState([]);
   const [compassPhase, setCompassPhase] = useState("idle"); // "idle"|"radiusSet"|"drawingArc"
@@ -781,6 +785,62 @@ function AppInner() {
   // Compass sub-step (for 3-button UI)
   // compassPhase: "idle" → "centerSet" → "radiusSet" → "drawingArc"
   const compassStep = compassPhase === "idle" ? 0 : compassPhase === "centerSet" ? 0 : compassPhase === "radiusSet" ? 1 : 2;
+
+  // Guide construction step definitions
+  const guideSteps = useMemo(() => {
+    if (!triangle || !guideGoal) return [];
+    const { A, B, C } = triangle;
+    const edges = [
+      { name: "AB", p1: A, p2: B, label1: "A", label2: "B" },
+      { name: "BC", p1: B, p2: C, label1: "B", label2: "C" },
+    ];
+    const vertices = [
+      { name: "A", pt: A, p1: B, p2: C },
+      { name: "B", pt: B, p1: A, p2: C },
+    ];
+
+    if (guideGoal === "circumcenter") {
+      const steps = [];
+      for (let ei = 0; ei < 2; ei++) {
+        const e = edges[ei];
+        const halfLen = dist(e.p1, e.p2) / 2;
+        steps.push(
+          { type: "info", msg: `변 ${e.name}의 수직이등분선을 만들어봅시다!`, highlight: e.name, tool: null },
+          { type: "compass_center", msg: `컴퍼스를 점 ${e.label1}에 놓으세요`, target: e.p1, targetLabel: e.label1, tool: "compass", highlight: e.name },
+          { type: "compass_radius", msg: `${e.name}의 절반(${(halfLen/triangle.scale).toFixed(1)})보다 길게 벌리세요`, minRadius: halfLen * 1.05, tool: "compass", highlight: e.name },
+          { type: "compass_arc", msg: "호를 그려주세요", tool: "compass", highlight: e.name },
+          { type: "compass_center", msg: `같은 반지름으로 점 ${e.label2}에서!`, target: e.p2, targetLabel: e.label2, tool: "compass", sameRadius: true, highlight: e.name },
+          { type: "compass_arc", msg: "호를 그려주세요", tool: "compass", highlight: e.name },
+          { type: "ruler", msg: "두 교차점을 자로 연결하세요", tool: "ruler", highlight: e.name },
+          { type: "done_bisector", msg: `변 ${e.name} 수직이등분선 완성! ✨` },
+        );
+      }
+      steps.push({ type: "complete", msg: "두 선이 만나는 점이 외심이에요! 🎉" });
+      return steps;
+    } else if (guideGoal === "incenter") {
+      const steps = [];
+      for (let vi = 0; vi < 2; vi++) {
+        const v = vertices[vi];
+        steps.push(
+          { type: "info", msg: `꼭지점 ${v.name}의 각의 이등분선!`, highlight: `vertex_${v.name}`, tool: null },
+          { type: "compass_center", msg: `컴퍼스를 점 ${v.name}에 놓으세요`, target: v.pt, targetLabel: v.name, tool: "compass", highlight: `vertex_${v.name}` },
+          { type: "compass_radius", msg: "적당히 벌리세요", minRadius: 20, tool: "compass", highlight: `vertex_${v.name}` },
+          { type: "compass_arc", msg: "호를 그려서 두 변과 교차시키세요", tool: "compass", highlight: `vertex_${v.name}` },
+          { type: "compass_center_inter", msg: "교차점 하나에 컴퍼스를 놓으세요", tool: "compass", highlight: `vertex_${v.name}` },
+          { type: "compass_arc", msg: "호를 그려주세요", tool: "compass" },
+          { type: "compass_center_inter", msg: "다른 교차점에서도!", tool: "compass", sameRadius: true },
+          { type: "compass_arc", msg: "호를 그려주세요", tool: "compass" },
+          { type: "ruler", msg: `점 ${v.name}과 안쪽 교차점을 연결하세요`, tool: "ruler" },
+          { type: "done_bisector", msg: `꼭지점 ${v.name} 각의 이등분선 완성! ✨` },
+        );
+      }
+      steps.push({ type: "complete", msg: "두 선이 만나는 점이 내심이에요! 🎉" });
+      return steps;
+    }
+    return [];
+  }, [triangle, guideGoal]);
+
+  const currentGuide = guideSteps[guideStep] || null;
 
   // Undo history — must be before deleteArc/deleteRulerLine
   const [undoStack, setUndoStack] = useState([]);
@@ -907,8 +967,19 @@ function AppInner() {
           setCompassPhase("radiusSet");
           setCompassDragPt(p);
           playSfx("click");
-          // Clear press after short delay
           setTimeout(() => setPressedSnap(null), 400);
+          // Guide: advance if correct center was picked
+          if (currentGuide && (currentGuide.type === "compass_center" || currentGuide.type === "compass_center_inter")) {
+            if (currentGuide.target) {
+              if (dist(nearest, currentGuide.target) < 20) {
+                setGuideStep(s => s + 1);
+              } else {
+                showMsg(`점 ${currentGuide.targetLabel}에 놓아주세요!`, 1500);
+              }
+            } else {
+              setGuideStep(s => s + 1); // no specific target required
+            }
+          }
         }
       } else if (compassPhase === "radiusSet") {
         setCompassDragPt(p);
@@ -932,7 +1003,7 @@ function AppInner() {
         setTimeout(() => setPressedSnap(null), 400);
       }
     }
-  }, [triangle, buildPhase, jakdoTool, compassPhase, jakdoSnaps, jakdoArcs, jakdoRulerLines, svgCoords, playSfx, showMsg]);
+  }, [triangle, buildPhase, jakdoTool, compassPhase, jakdoSnaps, jakdoArcs, jakdoRulerLines, svgCoords, playSfx, showMsg, currentGuide, guideStep, guideSteps]);
 
   const handleJakdoMove = useCallback((e) => {
     if (!triangle || buildPhase !== "jakdo") return;
@@ -963,10 +1034,21 @@ function AppInner() {
 
     if (jakdoTool === "compass") {
       if (compassPhase === "radiusSet" && compassCenter && compassRadius > 8) {
-        // Radius drag released — just lock radius, DON'T auto-transition
-        // User must press "호 돌리기" button to enter arc drawing
         setCompassDragPt(null);
-        showMsg("반지름 고정! '호 돌리기' 버튼을 눌러주세요.", 2000);
+        // Guide mode: auto-advance radius step + auto-enter arc drawing
+        if (currentGuide && currentGuide.type === "compass_radius") {
+          if (currentGuide.minRadius && compassRadius < currentGuide.minRadius) {
+            showMsg("더 길게 벌려주세요!", 1500);
+            setCompassPhase("idle"); setCompassCenter(null); setCompassRadius(0);
+            return;
+          }
+          setGuideStep(s => s + 1);
+          setCompassPhase("drawingArc");
+          setArcDrawPoints([]);
+          showMsg("호를 그려주세요!", 1500);
+        } else {
+          showMsg("반지름 고정! '호 돌리기' 버튼을 눌러주세요.", 2000);
+        }
         playSfx("pop");
       } else if (compassPhase === "radiusSet") {
         // Too short — reset
@@ -1015,6 +1097,18 @@ function AppInner() {
         setJakdoArcs(prev => [...prev, newArc]);
         playSfx("draw");
 
+        // Guide auto-advance after arc
+        if (currentGuide && (currentGuide.type === "compass_arc")) {
+          setGuideStep(s => s + 1);
+          const next = guideSteps[guideStep + 1];
+          if (next?.tool === "compass" && next?.sameRadius) {
+            // Keep same radius, set new center target
+            setCompassPhase("idle"); setCompassCenter(null);
+          } else if (next?.tool === "ruler") {
+            setTimeout(() => { setJakdoTool("ruler"); setRulerPhase("idle"); setRulerStart(null); }, 300);
+          }
+        }
+
         // Reset compass fully after arc creation
         setCompassPhase("idle"); setCompassCenter(null); setCompassRadius(0);
         setArcDrawPoints([]); setCrossedEdges(0); setCompassDragPt(null);
@@ -1036,10 +1130,15 @@ function AppInner() {
         pushUndo();
         setJakdoRulerLines(prev => [...prev, { start: rulerStart, end: { x: nearest.x, y: nearest.y } }]);
         playSfx("draw");
+
+        // Guide auto-advance after ruler line
+        if (currentGuide && currentGuide.type === "ruler") {
+          setGuideStep(s => s + 1);
+        }
       }
       setRulerStart(null);
     }
-  }, [triangle, buildPhase, jakdoTool, compassPhase, compassCenter, compassRadius, arcDrawPoints, crossedEdges, rulerStart, jakdoSnaps, jakdoArcs, svgCoords, playSfx, pushUndo, showMsg, activeTone, circleSegIntersect]);
+  }, [triangle, buildPhase, jakdoTool, compassPhase, compassCenter, compassRadius, arcDrawPoints, crossedEdges, rulerStart, jakdoSnaps, jakdoArcs, svgCoords, playSfx, pushUndo, showMsg, activeTone, circleSegIntersect, currentGuide, guideStep, guideSteps]);
 
   // Random idle dialogue
   const [idleMsg, setIdleMsg] = useState("");
@@ -1523,7 +1622,7 @@ function AppInner() {
     setJedoType(null);
     setShowProperties(false);
     setSelectedProp(null);
-    setCanvasCollapsed(false);
+    setCanvasHeight(null);
     setViewBox(null);
     setManualView(null);
     setSssInput({ a: "", b: "", c: "" });
@@ -1543,6 +1642,7 @@ function AppInner() {
     setDrawStrokes([]); setDrawAngles([]); setCurrentStroke([]); setDrawStep(0);
     setDrawPreview(null);
     setIsDrawing(false);
+    setGuideGoal(null); setGuideStep(0); setGuideSubStep(0);
   };
 
   // --- Properties Data with highlight info ---
@@ -3764,6 +3864,45 @@ function AppInner() {
               />
             )}
 
+            {/* Guide highlight — highlight active edge or vertex */}
+            {currentGuide?.highlight && triangle && (() => {
+              const { A, B, C } = triangle;
+              const hl = currentGuide.highlight;
+              const edgeMap = { AB: [A, B], BC: [B, C], AC: [A, C] };
+              if (edgeMap[hl]) {
+                const [p1, p2] = edgeMap[hl];
+                return (
+                  <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                    stroke={PASTEL.coral} strokeWidth={6} opacity={0.35}
+                    strokeLinecap="round">
+                    <animate attributeName="opacity" values="0.2;0.5;0.2" dur="2s" repeatCount="indefinite" />
+                  </line>
+                );
+              }
+              const vertexMap = { vertex_A: A, vertex_B: B, vertex_C: C };
+              if (vertexMap[hl]) {
+                const p = vertexMap[hl];
+                return (
+                  <circle cx={p.x} cy={p.y} r={16} fill="none"
+                    stroke={PASTEL.coral} strokeWidth={3} opacity={0.4}>
+                    <animate attributeName="r" values="12;20;12" dur="1.5s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="0.2;0.5;0.2" dur="1.5s" repeatCount="indefinite" />
+                  </circle>
+                );
+              }
+              return null;
+            })()}
+
+            {/* Guide: target point indicator */}
+            {currentGuide?.target && buildPhase === "jakdo" && (
+              <FixedG x={currentGuide.target.x} y={currentGuide.target.y}>
+                <circle cx={currentGuide.target.x} cy={currentGuide.target.y} r={14}
+                  fill="none" stroke={PASTEL.mint} strokeWidth={2} strokeDasharray="4 3" opacity={0.7}>
+                  <animate attributeName="r" values="10;18;10" dur="1.5s" repeatCount="indefinite" />
+                </circle>
+              </FixedG>
+            )}
+
             {/* Property highlight overlay */}
             {showProperties && renderHighlight()}
 
@@ -4312,52 +4451,167 @@ function AppInner() {
             padding: "20px", borderTop: `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.5s ease",
           }}>
-            <p style={{ fontSize: 13, color: theme.textSec, textAlign: "center", marginBottom: 14 }}>
-              삼각형이 완성되었어요! 모드를 선택하세요.
-            </p>
-            <div style={{ display: "flex", gap: 12 }}>
-              <button onClick={() => {
-                setBuildPhase("jedo");
-                showMsg(activeTone.guide.selectEdge, 3000);
-              }} style={{
-                flex: 1, padding: "16px", borderRadius: 16,
-                border: `2px solid ${PASTEL.sky}`, background: theme.card,
-                color: theme.text, fontSize: 15, cursor: "pointer",
-                fontFamily: "'Noto Serif KR', serif", fontWeight: 700,
-                transition: "all 0.3s ease",
-              }}
-                onMouseOver={e => e.target.style.background = theme.accentSoft}
-                onMouseOut={e => e.target.style.background = theme.card}
-              >
-                📐 제도
-                <br /><span style={{ fontSize: 11, fontWeight: 400, color: theme.textSec }}>터치로 자동 작도</span>
-              </button>
-              <button onClick={() => {
-                setBuildPhase("jakdo");
-                showMsg(activeTone.guide.compassStart, 2500);
-              }} style={{
-                flex: 1, padding: "16px", borderRadius: 16,
-                border: `2px solid ${PASTEL.lavender}`, background: theme.card,
-                color: theme.text, fontSize: 15, cursor: "pointer",
-                fontFamily: "'Noto Serif KR', serif", fontWeight: 700,
-                transition: "all 0.3s ease",
-              }}
-                onMouseOver={e => e.target.style.background = theme.accentSoft}
-                onMouseOut={e => e.target.style.background = theme.card}
-              >
-                🔵 작도
-                <br /><span style={{ fontSize: 11, fontWeight: 400, color: theme.textSec }}>컴퍼스 + 자</span>
-              </button>
-            </div>
+            {!guideGoal ? (
+              <>
+                <p style={{ fontSize: 13, color: theme.textSec, textAlign: "center", marginBottom: 14 }}>
+                  삼각형이 완성되었어요! 모드를 선택하세요.
+                </p>
+                <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+                  <button onClick={() => {
+                    setBuildPhase("jedo");
+                    showMsg(activeTone.guide.selectEdge, 3000);
+                  }} style={{
+                    flex: 1, padding: "16px", borderRadius: 16,
+                    border: `2px solid ${PASTEL.sky}`, background: theme.card,
+                    color: theme.text, fontSize: 15, cursor: "pointer",
+                    fontFamily: "'Noto Serif KR', serif", fontWeight: 700,
+                  }}>
+                    📐 제도
+                    <br /><span style={{ fontSize: 11, fontWeight: 400, color: theme.textSec }}>터치로 자동 작도</span>
+                  </button>
+                  <button onClick={() => setGuideGoal("select")} style={{
+                    flex: 1, padding: "16px", borderRadius: 16,
+                    border: `2px solid ${PASTEL.lavender}`, background: theme.card,
+                    color: theme.text, fontSize: 15, cursor: "pointer",
+                    fontFamily: "'Noto Serif KR', serif", fontWeight: 700,
+                  }}>
+                    ✏️ 가이드 작도
+                    <br /><span style={{ fontSize: 11, fontWeight: 400, color: theme.textSec }}>단계별 안내</span>
+                  </button>
+                </div>
+              </>
+            ) : guideGoal === "select" ? (
+              <>
+                <p style={{ fontSize: 13, color: theme.textSec, textAlign: "center", marginBottom: 14 }}>
+                  무엇을 찾아볼까요?
+                </p>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <button onClick={() => {
+                    setGuideGoal("circumcenter"); setGuideStep(0);
+                    setBuildPhase("jakdo"); setJakdoTool(null);
+                    setJakdoArcs([]); setJakdoRulerLines([]);
+                  }} style={{
+                    flex: 1, padding: "16px", borderRadius: 16,
+                    border: `2px solid ${PASTEL.coral}`, background: theme.card,
+                    color: theme.text, fontSize: 15, cursor: "pointer",
+                    fontFamily: "'Noto Serif KR', serif", fontWeight: 700,
+                  }}>
+                    ⊙ 외심
+                    <br /><span style={{ fontSize: 11, fontWeight: 400, color: theme.textSec }}>수직이등분선의 교점</span>
+                  </button>
+                  <button onClick={() => {
+                    setGuideGoal("incenter"); setGuideStep(0);
+                    setBuildPhase("jakdo"); setJakdoTool(null);
+                    setJakdoArcs([]); setJakdoRulerLines([]);
+                  }} style={{
+                    flex: 1, padding: "16px", borderRadius: 16,
+                    border: `2px solid ${PASTEL.mint}`, background: theme.card,
+                    color: theme.text, fontSize: 15, cursor: "pointer",
+                    fontFamily: "'Noto Serif KR', serif", fontWeight: 700,
+                  }}>
+                    ⊙ 내심
+                    <br /><span style={{ fontSize: 11, fontWeight: 400, color: theme.textSec }}>각의 이등분선의 교점</span>
+                  </button>
+                </div>
+                <button onClick={() => setGuideGoal(null)} style={{
+                  width: "100%", marginTop: 10, padding: "10px", borderRadius: 10,
+                  border: `1px solid ${theme.border}`, background: "transparent",
+                  color: theme.textSec, fontSize: 12, cursor: "pointer",
+                }}>← 돌아가기</button>
+              </>
+            ) : null}
           </div>
         )}
 
-        {/* Jakdo placeholder */}
+        {/* Jakdo panel */}
         {buildPhase === "jakdo" && (
           <div style={{
             padding: "14px 16px", borderTop: `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.5s ease",
           }}>
+            {/* Guide instruction banner */}
+            {currentGuide && (
+              <div style={{
+                padding: "12px 16px", marginBottom: 12, borderRadius: 12,
+                background: `linear-gradient(135deg, ${PASTEL.lavender}15, ${PASTEL.mint}15)`,
+                border: `1.5px solid ${PASTEL.lavender}40`,
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 10, color: PASTEL.lavender, fontWeight: 700 }}>
+                    단계 {guideStep + 1}/{guideSteps.length}
+                  </span>
+                  {guideGoal === "circumcenter" && <span style={{ fontSize: 10, color: PASTEL.coral }}>⊙ 외심 찾기</span>}
+                  {guideGoal === "incenter" && <span style={{ fontSize: 10, color: PASTEL.mint }}>⊙ 내심 찾기</span>}
+                </div>
+                <p style={{ fontSize: 14, color: theme.text, fontWeight: 700, margin: "6px 0 0 0", fontFamily: "'Noto Serif KR', serif" }}>
+                  {currentGuide.msg}
+                </p>
+                {(currentGuide.type === "info" || currentGuide.type === "done_bisector") && (
+                  <button onClick={() => {
+                    setGuideStep(s => s + 1);
+                    const next = guideSteps[guideStep + 1];
+                    if (next?.tool === "compass") { setJakdoTool("compass"); setCompassPhase("idle"); setCompassCenter(null); setCompassRadius(0); }
+                    if (next?.tool === "ruler") { setJakdoTool("ruler"); setRulerPhase("idle"); setRulerStart(null); }
+                    playSfx("click");
+                  }} style={{
+                    marginTop: 8, padding: "8px 20px", borderRadius: 8, border: "none",
+                    background: PASTEL.lavender, color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  }}>다음 →</button>
+                )}
+                {currentGuide.type === "complete" && (
+                  <button onClick={() => {
+                    // Complete: show result via jedo system
+                    if (guideGoal === "circumcenter") {
+                      // Find circumcenter from ruler line intersections
+                      if (jakdoRulerLines.length >= 2) {
+                        const l1 = jakdoRulerLines[0], l2 = jakdoRulerLines[1];
+                        // Line intersection
+                        const dx1 = l1.end.x - l1.start.x, dy1 = l1.end.y - l1.start.y;
+                        const dx2 = l2.end.x - l2.start.x, dy2 = l2.end.y - l2.start.y;
+                        const det = dx1 * dy2 - dy1 * dx2;
+                        if (Math.abs(det) > 0.01) {
+                          const t = ((l2.start.x - l1.start.x) * dy2 - (l2.start.y - l1.start.y) * dx2) / det;
+                          const cx = l1.start.x + t * dx1, cy = l1.start.y + t * dy1;
+                          const r = dist({ x: cx, y: cy }, triangle.A);
+                          setJedoCenter({ x: cx, y: cy });
+                          setJedoCircle(r);
+                          setJedoType("circum");
+                          setShowProperties(true);
+                        }
+                      }
+                    } else if (guideGoal === "incenter") {
+                      if (jakdoRulerLines.length >= 2) {
+                        const l1 = jakdoRulerLines[0], l2 = jakdoRulerLines[1];
+                        const dx1 = l1.end.x - l1.start.x, dy1 = l1.end.y - l1.start.y;
+                        const dx2 = l2.end.x - l2.start.x, dy2 = l2.end.y - l2.start.y;
+                        const det = dx1 * dy2 - dy1 * dx2;
+                        if (Math.abs(det) > 0.01) {
+                          const t = ((l2.start.x - l1.start.x) * dy2 - (l2.start.y - l1.start.y) * dx2) / det;
+                          const cx = l1.start.x + t * dx1, cy = l1.start.y + t * dy1;
+                          // Incircle radius = distance to nearest edge
+                          const { A, B, C } = triangle;
+                          const distToEdge = (p, e1, e2) => {
+                            const dx = e2.x-e1.x, dy = e2.y-e1.y, len = Math.sqrt(dx*dx+dy*dy);
+                            return Math.abs((p.x-e1.x)*dy - (p.y-e1.y)*dx) / len;
+                          };
+                          const r = Math.min(distToEdge({x:cx,y:cy},A,B), distToEdge({x:cx,y:cy},B,C), distToEdge({x:cx,y:cy},A,C));
+                          setJedoCenter({ x: cx, y: cy });
+                          setJedoCircle(r);
+                          setJedoType("in");
+                          setShowProperties(true);
+                        }
+                      }
+                    }
+                    setBuildPhase("properties");
+                    playSfx("complete");
+                  }} style={{
+                    marginTop: 8, padding: "10px 24px", borderRadius: 10, border: "none",
+                    background: `linear-gradient(135deg, ${PASTEL.mint}, ${PASTEL.sage})`,
+                    color: "white", fontSize: 14, fontWeight: 700, cursor: "pointer",
+                  }}>✨ 결과 확인!</button>
+                )}
+              </div>
+            )}
             <style>{`
               @keyframes compassSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
               @keyframes compassPoke { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
@@ -4366,7 +4620,8 @@ function AppInner() {
               @keyframes rulerDraw { 0% { width: 0; } 100% { width: 100%; } }
             `}</style>
 
-            {/* Tool selector row */}
+            {/* Tool selector row — only in free mode */}
+            {!guideGoal && (<>
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
               <button onClick={() => {
                 if (jakdoTool !== "compass") {
@@ -4514,16 +4769,23 @@ function AppInner() {
               </div>
             )}
 
+            {/* end free-mode tools */}
+            </>)}
+
             {/* Guide text */}
             <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center", margin: 0 }}>
-              {jakdoTool === "compass" && compassStep === 0 && "꼭지점이나 교점을 터치하세요"}
-              {jakdoTool === "compass" && compassStep === 1 && compassDragPt && "드래그해서 반지름을 정해주세요"}
-              {jakdoTool === "compass" && compassStep === 1 && !compassDragPt && compassRadius > 0 && "'호 돌리기' 버튼을 눌러주세요"}
-              {jakdoTool === "compass" && compassStep === 1 && !compassDragPt && compassRadius === 0 && "드래그해서 반지름을 정해주세요"}
-              {jakdoTool === "compass" && compassStep === 2 && "손가락으로 호를 그려주세요"}
-              {jakdoTool === "ruler" && !rulerStart && "시작점을 터치하세요"}
-              {jakdoTool === "ruler" && rulerStart && "끝점을 터치하세요"}
-              {!jakdoTool && "도구를 선택해주세요"}
+              {guideGoal && currentGuide ? currentGuide.msg : (
+                <>
+                  {jakdoTool === "compass" && compassStep === 0 && "꼭지점이나 교점을 터치하세요"}
+                  {jakdoTool === "compass" && compassStep === 1 && compassDragPt && "드래그해서 반지름을 정해주세요"}
+                  {jakdoTool === "compass" && compassStep === 1 && !compassDragPt && compassRadius > 0 && "'호 돌리기' 버튼을 눌러주세요"}
+                  {jakdoTool === "compass" && compassStep === 1 && !compassDragPt && compassRadius === 0 && "드래그해서 반지름을 정해주세요"}
+                  {jakdoTool === "compass" && compassStep === 2 && "손가락으로 호를 그려주세요"}
+                  {jakdoTool === "ruler" && !rulerStart && "시작점을 터치하세요"}
+                  {jakdoTool === "ruler" && rulerStart && "끝점을 터치하세요"}
+                  {!jakdoTool && "도구를 선택해주세요"}
+                </>
+              )}
             </p>
           </div>
         )}
