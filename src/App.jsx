@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v3.5)
+// ashrain.out — Interactive Geometry Education App (v3.6)
 // ============================================================
 
 // --- Constants & Config ---
@@ -411,7 +411,8 @@ function AppInner() {
   const [floatingMsg, setFloatingMsg] = useState(null);
   const [showProperties, setShowProperties] = useState(false);
   const [selectedProp, setSelectedProp] = useState(null);
-  const [canvasCollapsed, setCanvasCollapsed] = useState(false);
+  const [canvasHeight, setCanvasHeight] = useState(null); // null = auto (svgSize.h), number = manual
+  const canvasDragRef = useRef(null);
   const [viewBox, setViewBox] = useState(null); // null = default, or {x,y,w,h}
   const [manualView, setManualView] = useState(null); // user pinch/pan override
   const touchRef = useRef({ startDist: 0, startVB: null, startMid: null, panning: false });
@@ -3602,7 +3603,7 @@ function AppInner() {
         }}>
 
         {/* Left section: mode tabs + SVG + properties */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+        <div style={{ flex: isPC ? 1 : "0 0 auto", display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
 
         {/* Mode tabs - A/B toggle + sub-modes */}
         {buildPhase === "input" && !triangle && (
@@ -3659,26 +3660,14 @@ function AppInner() {
           </div>
         )}
 
-        {/* Fixed SVG Canvas Container */}
+        {/* Resizable SVG Canvas Container */}
         <div ref={svgContainerRef} style={{
           display: "flex", flexDirection: "column", alignItems: "center",
-          padding: "8px 16px", position: "relative",
-          flex: "0 0 auto",
+          padding: "8px 16px 0", position: "relative",
+          flexShrink: 0,
           background: theme.bg,
         }}>
           <FloatingMsg msg={floatingMsg} theme={theme} />
-
-          {/* Canvas collapse/expand toggle */}
-          {triangle && buildPhase !== "animating" && buildPhase !== "input" && (
-            <button onClick={() => setCanvasCollapsed(prev => !prev)} style={{
-              alignSelf: "flex-end", background: "none", border: `1px solid ${theme.border}`,
-              borderRadius: 8, padding: "4px 10px", fontSize: 11, color: theme.textSec,
-              cursor: "pointer", fontFamily: "'Noto Serif KR', serif",
-              marginBottom: 4, transition: "all 0.3s ease",
-            }}>
-              {canvasCollapsed ? "캔버스 펼치기 ▼" : "캔버스 접기 ▲"}
-            </button>
-          )}
 
           {/* View reset button */}
           {manualView && (
@@ -3693,15 +3682,15 @@ function AppInner() {
           )}
 
           <svg ref={svgRef} width={svgSize.w}
-            height={canvasCollapsed ? Math.max(svgSize.h * 0.45, 180) : svgSize.h}
+            height={canvasHeight || svgSize.h}
             viewBox={`${getActiveVB().x} ${getActiveVB().y} ${getActiveVB().w} ${getActiveVB().h}`}
             preserveAspectRatio="xMidYMid meet"
             style={{
-              background: theme.svgBg, borderRadius: canvasCollapsed ? 12 : 20,
+              background: theme.svgBg, borderRadius: 16,
               border: `1.5px solid ${showProperties && selectedProp ? getProperties().find(p=>p.id===selectedProp)?.color || theme.border : theme.border}`,
               boxShadow: `0 4px 20px rgba(0,0,0,${themeKey === "dark" ? "0.2" : "0.05"})`,
               cursor: buildPhase === "jedo" ? "crosshair" : buildPhase === "jakdo" ? getJakdoCursor() : inputMode === "B" && buildPhase === "input" && !triangle ? "crosshair" : "default",
-              transition: "height 0.4s ease, border-color 0.3s ease, border-radius 0.3s ease",
+              transition: "border-color 0.3s ease",
               width: "100%", maxWidth: svgSize.w,
               touchAction: "none",
             }}
@@ -3888,7 +3877,42 @@ function AppInner() {
             )}
           </svg>
 
-          {/* Jedo guide message */}
+          {/* Drag handle to resize canvas */}
+          {triangle && buildPhase !== "animating" && buildPhase !== "input" && (
+            <div
+              onTouchStart={(e) => {
+                e.preventDefault();
+                const startY = e.touches[0].clientY;
+                const startH = canvasHeight || svgSize.h;
+                canvasDragRef.current = { startY, startH };
+              }}
+              onTouchMove={(e) => {
+                if (!canvasDragRef.current) return;
+                e.preventDefault();
+                const dy = e.touches[0].clientY - canvasDragRef.current.startY;
+                const newH = Math.max(120, Math.min(svgSize.h, canvasDragRef.current.startH + dy));
+                setCanvasHeight(newH);
+              }}
+              onTouchEnd={() => { canvasDragRef.current = null; }}
+              onMouseDown={(e) => {
+                const startY = e.clientY;
+                const startH = canvasHeight || svgSize.h;
+                const onMove = (ev) => {
+                  const dy = ev.clientY - startY;
+                  setCanvasHeight(Math.max(120, Math.min(svgSize.h, startH + dy)));
+                };
+                const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+                window.addEventListener("mousemove", onMove);
+                window.addEventListener("mouseup", onUp);
+              }}
+              style={{
+                width: "100%", display: "flex", justifyContent: "center", alignItems: "center",
+                padding: "6px 0", cursor: "ns-resize", touchAction: "none",
+              }}
+            >
+              <div style={{ width: 40, height: 4, borderRadius: 2, background: theme.border }} />
+            </div>
+          )}
           {buildPhase === "jedo" && !jedoCircle && jedoLines.length === 0 && (
             <div style={{
               marginTop: 12, padding: "10px 20px", borderRadius: 12,
@@ -4006,8 +4030,8 @@ function AppInner() {
             overflowY: "auto", background: theme.card,
             display: "flex", flexDirection: "column",
           } : {
+            flex: 1, minHeight: 0,
             overflowY: "auto", WebkitOverflowScrolling: "touch",
-            flexShrink: 1, minHeight: 0,
           }),
           display: (!isPC && showProperties && !showArchiveSave) ? "none" : undefined,
         }}>
