@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v2.6)
+// ashrain.out — Interactive Geometry Education App (v2.8)
 // ============================================================
 
 // --- Constants & Config ---
@@ -657,6 +657,39 @@ function AppInner() {
   useEffect(() => { localStorage.setItem("ar_members", JSON.stringify(members)); }, [members]);
   useEffect(() => { localStorage.setItem("ar_signups", JSON.stringify(signupRequests)); }, [signupRequests]);
   useEffect(() => { localStorage.setItem("ar_autoapprove", autoApprove ? "true" : "false"); }, [autoApprove]);
+
+  // Register touch events on angle collection SVG with { passive: false }
+  const isAngleDrawingRef = useRef(false);
+  useEffect(() => {
+    const svg = angleCollectRef.current;
+    if (!svg || screen !== "admin-angles") return;
+    const down = (e) => {
+      e.preventDefault();
+      const pt = svg.createSVGPoint();
+      pt.x = e.touches[0].clientX; pt.y = e.touches[0].clientY;
+      const sp = pt.matrixTransform(svg.getScreenCTM().inverse());
+      isAngleDrawingRef.current = true;
+      setIsAngleDrawing(true);
+      setAngleCollectStroke([{ x: sp.x, y: sp.y, t: Date.now() }]);
+    };
+    const move = (e) => {
+      if (!isAngleDrawingRef.current) return;
+      e.preventDefault();
+      const pt = svg.createSVGPoint();
+      pt.x = e.touches[0].clientX; pt.y = e.touches[0].clientY;
+      const sp = pt.matrixTransform(svg.getScreenCTM().inverse());
+      setAngleCollectStroke(prev => [...prev, { x: sp.x, y: sp.y, t: Date.now() }]);
+    };
+    const up = (e) => { e.preventDefault(); isAngleDrawingRef.current = false; setIsAngleDrawing(false); };
+    svg.addEventListener("touchstart", down, { passive: false });
+    svg.addEventListener("touchmove", move, { passive: false });
+    svg.addEventListener("touchend", up, { passive: false });
+    return () => {
+      svg.removeEventListener("touchstart", down);
+      svg.removeEventListener("touchmove", move);
+      svg.removeEventListener("touchend", up);
+    };
+  }, [screen]);
 
   // Permission helpers
   const userRole = user?.role || "external";
@@ -3140,6 +3173,7 @@ function AppInner() {
     const svgW = 400, svgH = 300;
 
     const onAngleDown = (e) => {
+      e.preventDefault();
       const svg = angleCollectRef.current;
       if (!svg) return;
       const pt = svg.createSVGPoint();
@@ -3150,6 +3184,7 @@ function AppInner() {
       setAngleCollectStroke([{ x: sp.x, y: sp.y, t: Date.now() }]);
     };
     const onAngleMove = (e) => {
+      e.preventDefault();
       if (!isAngleDrawing) return;
       const svg = angleCollectRef.current;
       if (!svg) return;
@@ -3159,7 +3194,8 @@ function AppInner() {
       const sp = pt.matrixTransform(svg.getScreenCTM().inverse());
       setAngleCollectStroke(prev => [...prev, { x: sp.x, y: sp.y, t: Date.now() }]);
     };
-    const onAngleUp = () => {
+    const onAngleUp = (e) => {
+      if (e) e.preventDefault();
       if (!isAngleDrawing) return;
       setIsAngleDrawing(false);
     };
@@ -3210,6 +3246,41 @@ function AppInner() {
 
     return (
       <ScreenWrap title="앵글 데이터 수집" back="관리자" backTo="admin">
+        {/* Stats bar — always visible at top */}
+        <div style={{
+          display: "flex", gap: 8, padding: "10px 16px",
+          background: theme.card, borderBottom: `1px solid ${theme.border}`,
+          alignItems: "center", justifyContent: "space-between",
+        }}>
+          <div>
+            <span style={{ fontSize: 15, fontWeight: 700, color: theme.text }}>
+              {collectedAngles.length}
+            </span>
+            <span style={{ fontSize: 11, color: theme.textSec }}> 건 수집</span>
+            {collectedAngles.length > 0 && (
+              <span style={{ fontSize: 10, color: theme.textSec, marginLeft: 6 }}>
+                ({(JSON.stringify(collectedAngles).length / 1024).toFixed(1)}KB)
+              </span>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {collectedAngles.length > 0 && (
+              <>
+                <button onClick={exportData} style={{
+                  padding: "7px 14px", borderRadius: 8, border: "none",
+                  background: PASTEL.sky, color: "white", fontSize: 12,
+                  fontWeight: 700, cursor: "pointer",
+                }}>📥 JSON 내보내기</button>
+                <button onClick={clearAll} style={{
+                  padding: "7px 10px", borderRadius: 8,
+                  border: `1px solid ${PASTEL.coral}`, background: "transparent",
+                  color: PASTEL.coral, fontSize: 11, cursor: "pointer",
+                }}>🗑</button>
+              </>
+            )}
+          </div>
+        </div>
+
         <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", WebkitOverflowScrolling: "touch" }}>
 
           {/* Drawing Canvas */}
@@ -3219,7 +3290,7 @@ function AppInner() {
           }}>
             <svg ref={angleCollectRef} width="100%" height={svgH}
               viewBox={`0 0 ${svgW} ${svgH}`}
-              style={{ display: "block", cursor: "crosshair" }}
+              style={{ display: "block", cursor: "crosshair", touchAction: "none" }}
               onMouseDown={onAngleDown} onMouseMove={onAngleMove} onMouseUp={onAngleUp}
               onTouchStart={onAngleDown} onTouchMove={onAngleMove} onTouchEnd={onAngleUp}
             >
@@ -3285,41 +3356,6 @@ function AppInner() {
               </div>
             </div>
           )}
-
-          {/* Stats + Export */}
-          <div style={{
-            display: "flex", gap: 8, marginBottom: 12, padding: 12,
-            background: theme.bg, borderRadius: 12, border: `1px solid ${theme.border}`,
-            alignItems: "center", justifyContent: "space-between",
-          }}>
-            <div>
-              <span style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>
-                {collectedAngles.length}
-              </span>
-              <span style={{ fontSize: 11, color: theme.textSec }}> 건 수집됨</span>
-              {collectedAngles.length > 0 && (
-                <span style={{ fontSize: 10, color: theme.textSec, marginLeft: 8 }}>
-                  ({(JSON.stringify(collectedAngles).length / 1024).toFixed(1)} KB)
-                </span>
-              )}
-            </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              {collectedAngles.length > 0 && (
-                <>
-                  <button onClick={exportData} style={{
-                    padding: "8px 14px", borderRadius: 8, border: "none",
-                    background: PASTEL.sky, color: "white", fontSize: 11,
-                    fontWeight: 700, cursor: "pointer",
-                  }}>📥 내보내기</button>
-                  <button onClick={clearAll} style={{
-                    padding: "8px 14px", borderRadius: 8,
-                    border: `1px solid ${PASTEL.coral}`, background: "transparent",
-                    color: PASTEL.coral, fontSize: 11, cursor: "pointer",
-                  }}>전체 삭제</button>
-                </>
-              )}
-            </div>
-          </div>
 
           {/* Data list */}
           {collectedAngles.slice(-20).reverse().map((entry) => (
