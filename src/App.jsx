@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v4.1)
+// ashrain.out — Interactive Geometry Education App (v4.3)
 // ============================================================
 
 // --- Constants & Config ---
@@ -907,11 +907,13 @@ function AppInner() {
       
       const arc1 = { center: { ...v }, radius: r1, startAngle: startA - 0.15, endAngle: endA + 0.15, intersections: [eInt1, eInt2], id: Date.now(), sweepCW: true };
 
-      // Arcs 2 & 3: from each edge intersection
+      // Arcs 2 & 3: from each edge intersection, sweeping AWAY from vertex (into angle interior)
       const r2 = dist(eInt1, eInt2) * 0.65;
-      const mid12 = Math.atan2(v.y - (eInt1.y + eInt2.y) / 2, v.x - (eInt1.x + eInt2.x) / 2);
-      const arc2 = { center: { ...eInt1 }, radius: r2, startAngle: mid12 - 0.5, endAngle: mid12 + 0.5, intersections: [], id: Date.now() + 1, sweepCW: true };
-      const arc3 = { center: { ...eInt2 }, radius: r2, startAngle: mid12 - 0.5, endAngle: mid12 + 0.5, intersections: [], id: Date.now() + 2, sweepCW: true };
+      // Direction from vertex through midpoint of edge intersections = angle bisector direction
+      const midE = { x: (eInt1.x + eInt2.x) / 2, y: (eInt1.y + eInt2.y) / 2 };
+      const bisAngle = Math.atan2(midE.y - v.y, midE.x - v.x); // AWAY from vertex
+      const arc2 = { center: { ...eInt1 }, radius: r2, startAngle: bisAngle - 0.6, endAngle: bisAngle + 0.6, intersections: [], id: Date.now() + 1, sweepCW: true };
+      const arc3 = { center: { ...eInt2 }, radius: r2, startAngle: bisAngle - 0.6, endAngle: bisAngle + 0.6, intersections: [], id: Date.now() + 2, sweepCW: true };
 
       // Calculate arc2-arc3 intersection (the angle bisector point)
       const d23 = dist(eInt1, eInt2);
@@ -2610,14 +2612,36 @@ function AppInner() {
           </g>
           );
         })()}
-        {/* Circle */}
-        {jedoCircle && (
-          <circle cx={jedoCircle.cx} cy={jedoCircle.cy} r={jedoCircle.r}
-            fill="none" stroke={jedoType === "circum" ? PASTEL.sky : PASTEL.lavender}
-            strokeWidth={2} opacity={0.8}>
-            <animate attributeName="r" from="0" to={jedoCircle.r} dur="0.8s" fill="freeze" />
-          </circle>
-        )}
+        {/* Circle with radar sweep animation */}
+        {jedoCircle && (() => {
+          const { cx, cy, r } = jedoCircle;
+          const color = jedoType === "circum" ? PASTEL.sky : PASTEL.lavender;
+          return (
+            <g>
+              {/* Radar sweep fill - rotating wedge */}
+              <circle cx={cx} cy={cy} r={r} fill={`${color}12`} stroke="none">
+                <animate attributeName="r" from="0" to={r} dur="1s" fill="freeze" />
+              </circle>
+              {/* Sweeping radius line */}
+              <line x1={cx} y1={cy} x2={cx + r} y2={cy}
+                stroke={color} strokeWidth={1.5} opacity={0.6}>
+                <animateTransform attributeName="transform" type="rotate"
+                  from={`0 ${cx} ${cy}`} to={`360 ${cx} ${cy}`}
+                  dur="1.5s" fill="freeze" />
+              </line>
+              {/* Semi-transparent fill that fades out after animation */}
+              <circle cx={cx} cy={cy} r={r} fill={`${color}15`} stroke="none">
+                <animate attributeName="opacity" values="0.3;0.3;0" begin="1.5s" dur="0.5s" fill="freeze" />
+              </circle>
+              {/* Final circle outline */}
+              <circle cx={cx} cy={cy} r={r}
+                fill="none" stroke={color} strokeWidth={2.5} opacity={0}>
+                <animate attributeName="opacity" values="0;0;1" begin="0s" dur="1.5s" fill="freeze" />
+                <animate attributeName="r" from="0" to={r} dur="1s" fill="freeze" />
+              </circle>
+            </g>
+          );
+        })()}
       </g>
     );
   };
@@ -4751,29 +4775,64 @@ function AppInner() {
                 )}
                 {currentGuide.type === "complete" && (
                   <button onClick={() => {
-                    // Find center from ruler line intersections
-                    if (jakdoRulerLines.length >= 2) {
-                      const l1 = jakdoRulerLines[0], l2 = jakdoRulerLines[1];
-                      const dx1 = l1.end.x - l1.start.x, dy1 = l1.end.y - l1.start.y;
-                      const dx2 = l2.end.x - l2.start.x, dy2 = l2.end.y - l2.start.y;
-                      const det = dx1 * dy2 - dy1 * dx2;
-                      if (Math.abs(det) > 0.01) {
-                        const t = ((l2.start.x - l1.start.x) * dy2 - (l2.start.y - l1.start.y) * dx2) / det;
-                        const cx = l1.start.x + t * dx1, cy = l1.start.y + t * dy1;
-                        if (guideGoal === "circumcenter") {
-                          setJedoCenter({ x: cx, y: cy });
-                          setJedoCircle(dist({ x: cx, y: cy }, triangle.A));
-                          setJedoType("circum");
-                        } else {
-                          const { A, B, C } = triangle;
-                          const dToEdge = (p, e1, e2) => { const dx=e2.x-e1.x,dy=e2.y-e1.y; return Math.abs((p.x-e1.x)*dy-(p.y-e1.y)*dx)/Math.sqrt(dx*dx+dy*dy); };
-                          setJedoCenter({ x: cx, y: cy });
-                          setJedoCircle(Math.min(dToEdge({x:cx,y:cy},A,B), dToEdge({x:cx,y:cy},B,C), dToEdge({x:cx,y:cy},A,C)));
-                          setJedoType("in");
+                    const { A, B, C } = triangle;
+                    let cx, cy, r;
+
+                    if (guideGoal === "circumcenter") {
+                      // Try ruler line intersection first
+                      if (jakdoRulerLines.length >= 2) {
+                        const l1 = jakdoRulerLines[0], l2 = jakdoRulerLines[1];
+                        const dx1=l1.end.x-l1.start.x, dy1=l1.end.y-l1.start.y;
+                        const dx2=l2.end.x-l2.start.x, dy2=l2.end.y-l2.start.y;
+                        const det = dx1*dy2 - dy1*dx2;
+                        if (Math.abs(det) > 0.01) {
+                          const t = ((l2.start.x-l1.start.x)*dy2 - (l2.start.y-l1.start.y)*dx2) / det;
+                          cx = l1.start.x + t*dx1; cy = l1.start.y + t*dy1;
                         }
-                        setShowProperties(true);
+                      }
+                      // Fallback: calculate circumcenter mathematically
+                      if (cx === undefined) {
+                        const D = 2 * (A.x*(B.y-C.y) + B.x*(C.y-A.y) + C.x*(A.y-B.y));
+                        if (Math.abs(D) > 0.01) {
+                          cx = ((A.x*A.x+A.y*A.y)*(B.y-C.y) + (B.x*B.x+B.y*B.y)*(C.y-A.y) + (C.x*C.x+C.y*C.y)*(A.y-B.y)) / D;
+                          cy = ((A.x*A.x+A.y*A.y)*(C.x-B.x) + (B.x*B.x+B.y*B.y)*(A.x-C.x) + (C.x*C.x+C.y*C.y)*(B.x-A.x)) / D;
+                        }
+                      }
+                      if (cx !== undefined) {
+                        r = dist({x:cx,y:cy}, A);
+                        setJedoCenter({x:cx, y:cy});
+                        setJedoCircle({cx, cy, r});
+                        setJedoType("circum");
+                      }
+                    } else if (guideGoal === "incenter") {
+                      // Try ruler line intersection first
+                      if (jakdoRulerLines.length >= 2) {
+                        const l1 = jakdoRulerLines[0], l2 = jakdoRulerLines[1];
+                        const dx1=l1.end.x-l1.start.x, dy1=l1.end.y-l1.start.y;
+                        const dx2=l2.end.x-l2.start.x, dy2=l2.end.y-l2.start.y;
+                        const det = dx1*dy2 - dy1*dx2;
+                        if (Math.abs(det) > 0.01) {
+                          const t = ((l2.start.x-l1.start.x)*dy2 - (l2.start.y-l1.start.y)*dx2) / det;
+                          cx = l1.start.x + t*dx1; cy = l1.start.y + t*dy1;
+                        }
+                      }
+                      // Fallback: calculate incenter mathematically
+                      if (cx === undefined) {
+                        const a = dist(B, C), b = dist(A, C), c = dist(A, B);
+                        const sum = a + b + c;
+                        cx = (a*A.x + b*B.x + c*C.x) / sum;
+                        cy = (a*A.y + b*B.y + c*C.y) / sum;
+                      }
+                      if (cx !== undefined) {
+                        const dToEdge = (p,e1,e2) => { const dx=e2.x-e1.x,dy=e2.y-e1.y; return Math.abs((p.x-e1.x)*dy-(p.y-e1.y)*dx)/Math.sqrt(dx*dx+dy*dy); };
+                        r = Math.min(dToEdge({x:cx,y:cy},A,B), dToEdge({x:cx,y:cy},B,C), dToEdge({x:cx,y:cy},A,C));
+                        setJedoCenter({x:cx, y:cy});
+                        setJedoCircle({cx, cy, r});
+                        setJedoType("in");
                       }
                     }
+
+                    setShowProperties(true);
                     setBuildPhase("properties");
                     playSfx("complete");
                   }} style={{
