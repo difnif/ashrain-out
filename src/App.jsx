@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v4.9)
+// ashrain.out — Interactive Geometry Education App (v5.0)
 // ============================================================
 
 // --- Constants & Config ---
@@ -682,21 +682,96 @@ function AppInner() {
     };
   }, [screen, user]);
 
+  // Teacher call notification listener — admin only, checks every 5s
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+    let lastCallTime = 0;
+    const check = () => {
+      try {
+        const call = JSON.parse(localStorage.getItem("ar_teacher_call") || "null");
+        if (call && call.time > lastCallTime) {
+          lastCallTime = call.time;
+          // Browser notification
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("선생님 호출!", { body: `${call.from}님이 호출했어요`, icon: "📢" });
+          }
+          showMsg(`📢 ${call.from}님이 호출했어요!`, 4000);
+          playSfx("success");
+        }
+      } catch {}
+    };
+    // Request notification permission
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+    const iv = setInterval(check, 5000);
+    return () => clearInterval(iv);
+  }, [user, showMsg, playSfx]);
+
   // Register touch+mouse events on angle collection SVG with { passive: false }
   // Angle data collection state
   const angleDrawingRef = useRef(false);
   const [angleOverlay, setAngleOverlay] = useState(false);
 
 
+  // Permission system — role-based access control
+  const DEFAULT_PERMS = {
+    assistant: { study: true, draw: true, jedo: true, guide: true, plaza_read: true, plaza_write: true, plaza_call: true, archive_save: true, admin_members: true, admin_signups: true, admin_angles: false, admin_scripts: false },
+    student: { study: true, draw: true, jedo: true, guide: true, plaza_read: true, plaza_write: true, plaza_call: true, archive_save: true, admin_members: false, admin_signups: false, admin_angles: false, admin_scripts: false },
+    external: { study: true, draw: true, jedo: false, guide: false, plaza_read: true, plaza_write: false, plaza_call: false, archive_save: false, admin_members: false, admin_signups: false, admin_angles: false, admin_scripts: false },
+  };
+  const PERM_LABELS = {
+    study: "복습하기 접근", draw: "삼각형 그리기", jedo: "제도 모드", guide: "가이드 작도",
+    plaza_read: "광장 보기", plaza_write: "광장 채팅", plaza_call: "호출 기능",
+    archive_save: "아카이브 저장", admin_members: "회원 관리", admin_signups: "가입 신청 관리",
+    admin_angles: "앵글 데이터", admin_scripts: "대사 스크립트",
+  };
+  const PERM_GROUPS = [
+    { label: "복습하기", keys: ["study", "draw", "jedo", "guide"] },
+    { label: "광장", keys: ["plaza_read", "plaza_write", "plaza_call"] },
+    { label: "저장", keys: ["archive_save"] },
+    { label: "관리자", keys: ["admin_members", "admin_signups", "admin_angles", "admin_scripts"] },
+  ];
+  const [rolePerms, setRolePerms] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ar_perms")) || {}; } catch { return {}; }
+  });
+  useEffect(() => { localStorage.setItem("ar_perms", JSON.stringify(rolePerms)); }, [rolePerms]);
+
+  const hasPerm = useCallback((perm) => {
+    if (userRole === "admin") return true;
+    const custom = rolePerms[userRole];
+    if (custom && custom[perm] !== undefined) return custom[perm];
+    return DEFAULT_PERMS[userRole]?.[perm] ?? false;
+  }, [userRole, rolePerms]);
+
   // Permission helpers
-  const userRole = user?.role || "external";
   const canAdmin = userRole === "admin" || userRole === "assistant";
-  const canArchive = userRole !== "external";
+  const canArchive = hasPerm("archive_save");
   const canEditMember = useCallback((targetRole) => {
     if (userRole === "admin") return true;
-    if (userRole === "assistant") return targetRole === "student" || targetRole === "external";
+    if (userRole === "assistant" && hasPerm("admin_members")) return targetRole === "student" || targetRole === "external";
     return false;
-  }, [userRole]);
+  }, [userRole, hasPerm]);
+
+  // Plaza call/mention system
+  const [plazaCalls, setPlazaCalls] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ar_calls")) || []; } catch { return []; }
+  });
+  useEffect(() => { localStorage.setItem("ar_calls", JSON.stringify(plazaCalls)); }, [plazaCalls]);
+
+  const callUser = useCallback((targetName) => {
+    const myName = user?.nickname || user?.name || "익명";
+    const call = { from: myName, to: targetName, time: Date.now() };
+    setPlazaCalls(prev => [...prev.slice(-9), call]); // max 10
+    playSfx("click");
+
+    // Teacher call: trigger notification
+    if (targetName === "선생님" || members.find(m => m.role === "admin" && (m.nickname || m.name) === targetName)) {
+      try {
+        localStorage.setItem("ar_teacher_call", JSON.stringify({ from: myName, time: Date.now() }));
+      } catch {}
+    }
+  }, [user, members, playSfx]);
 
   const handleLogin = useCallback(() => {
     const found = members.find(s => s.id === loginId && s.pw === loginPw);
@@ -3034,6 +3109,14 @@ function AppInner() {
       localStorage.setItem("ar_chat", JSON.stringify(updated));
     };
 
+    // Check if teacher is online
+    const teacherMember = members.find(m => m.role === "admin");
+    const teacherName = teacherMember ? (teacherMember.nickname || teacherMember.name) : "선생님";
+    const teacherOnline = onlineUsers.some(u => u.role === "admin");
+
+    // Recent calls (max 10, last 10 min)
+    const recentCalls = plazaCalls.filter(c => now - c.time < 10 * 60 * 1000).slice(-10);
+
     const roleColors = { admin: PASTEL.coral, assistant: PASTEL.lavender, student: PASTEL.sky, external: PASTEL.sage };
 
     return (
@@ -3048,21 +3131,58 @@ function AppInner() {
           </span>
         </div>
 
-        {/* Online users bar */}
-        {onlineUsers.length > 0 && (
-          <div style={{ flexShrink: 0, display: "flex", gap: 8, padding: "6px 16px", borderBottom: `1px solid ${theme.border}`, overflowX: "auto" }}>
-            {onlineUsers.map((u, i) => (
-              <span key={i} style={{
-                fontSize: 10, padding: "3px 8px", borderRadius: 10, whiteSpace: "nowrap",
+        {/* Online users bar — clickable to call */}
+        <div style={{ flexShrink: 0, padding: "8px 16px", borderBottom: `1px solid ${theme.border}` }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: recentCalls.length > 0 ? 6 : 0 }}>
+            {/* Teacher status */}
+            {teacherOnline ? (
+              <span style={{ fontSize: 10, padding: "4px 10px", borderRadius: 10, background: `${PASTEL.coral}15`, color: PASTEL.coral, fontWeight: 700 }}>
+                <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 3, background: PASTEL.mint, marginRight: 3 }} />
+                선생님
+              </span>
+            ) : (
+              <button onClick={() => {
+                if (!hasPerm("plaza_call")) { showMsg("호출 권한이 없어요", 1500); return; }
+                callUser(teacherName);
+                showMsg(`${teacherName}을(를) 호출했어요!`, 2000);
+                // Request notification permission + trigger
+                if ("Notification" in window && Notification.permission === "default") {
+                  Notification.requestPermission();
+                }
+              }} style={{
+                fontSize: 10, padding: "4px 10px", borderRadius: 10, border: `1px dashed ${PASTEL.coral}`,
+                background: `${PASTEL.coral}08`, color: PASTEL.coral, fontWeight: 700, cursor: "pointer",
+              }}>
+                📢 선생님 호출
+              </button>
+            )}
+            {/* Other online users */}
+            {onlineUsers.filter(u => u.role !== "admin").map((u, i) => (
+              <button key={i} onClick={() => {
+                if (!hasPerm("plaza_call")) return;
+                callUser(u.name);
+                showMsg(`${u.name}님을 호출했어요!`, 1500);
+              }} style={{
+                fontSize: 10, padding: "4px 10px", borderRadius: 10, border: "none", cursor: hasPerm("plaza_call") ? "pointer" : "default",
                 background: `${roleColors[u.role] || theme.textSec}15`,
                 color: roleColors[u.role] || theme.textSec, fontWeight: 600,
               }}>
                 <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 3, background: PASTEL.mint, marginRight: 3 }} />
                 {u.name}
-              </span>
+              </button>
             ))}
           </div>
-        )}
+          {/* Call stack */}
+          {recentCalls.length > 0 && (
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {recentCalls.map((c, i) => (
+                <span key={i} style={{ fontSize: 9, color: PASTEL.coral, background: `${PASTEL.coral}08`, padding: "2px 6px", borderRadius: 6 }}>
+                  {c.from} → {c.to}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
         
         <style>{`
           .plaza-content { position: relative; }
@@ -3222,6 +3342,7 @@ function AppInner() {
       { icon: "💬", label: "대사 스크립트", desc: "말투별 대사 수정", action: () => setScreen("admin-scripts") },
       { icon: "🔊", label: "효과음 관리", desc: "모드별 효과음 설정", disabled: true },
       { icon: "👤", label: "회원 관리", desc: "권한 · 계정 · 비밀번호", action: () => setScreen("admin-students") },
+      { icon: "🔐", label: "권한 설정", desc: "등급별 접근 권한 관리", action: () => setScreen("admin-perms") },
       { icon: signupRequests.length > 0 ? "🔔" : "📋", label: "가입 신청", desc: signupRequests.length > 0 ? `${signupRequests.length}건 대기 중` : "신청 관리 · 자동승인", action: () => setScreen("admin-signups") },
       { icon: "📊", label: "통계/랭킹", desc: "진행 현황 확인", disabled: true },
       { icon: "📐", label: "앵글 데이터", desc: "스트로크 수집 · 내보내기", action: () => setScreen("admin-angles") },
@@ -3391,6 +3512,74 @@ function AppInner() {
   }
 
   // --- Admin Signup Management ---
+  // --- Admin Permissions Screen ---
+  if (screen === "admin-perms") {
+    const roleColors = { assistant: PASTEL.lavender, student: PASTEL.sky, external: PASTEL.sage };
+    const editRoles = ["assistant", "student", "external"];
+    const getVal = (role, key) => {
+      const custom = rolePerms[role];
+      if (custom && custom[key] !== undefined) return custom[key];
+      return DEFAULT_PERMS[role]?.[key] ?? false;
+    };
+    const togglePerm = (role, key) => {
+      setRolePerms(prev => ({
+        ...prev,
+        [role]: { ...(prev[role] || {}), [key]: !getVal(role, key) },
+      }));
+    };
+    const resetRole = (role) => {
+      setRolePerms(prev => { const n = { ...prev }; delete n[role]; return n; });
+      playSfx("pop");
+    };
+
+    return (
+      <div style={{ height: "100vh", maxHeight: "100dvh", display: "flex", flexDirection: "column", background: theme.bg, fontFamily: "'Noto Serif KR', serif" }}>
+        <div style={{ flexShrink: 0, display: "flex", alignItems: "center", padding: "16px 20px", borderBottom: `1px solid ${theme.border}` }}>
+          <button onClick={() => { playSfx("click"); setScreen("admin"); }} style={{ background: "none", border: "none", color: theme.textSec, fontSize: 13, cursor: "pointer" }}>← 관리자</button>
+          <span style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 700, color: theme.text, fontFamily: "'Playfair Display', serif" }}>권한 설정</span>
+          <span style={{ width: 40 }} />
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px", WebkitOverflowScrolling: "touch" }}>
+          <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center", marginBottom: 16 }}>
+            관리자는 항상 모든 권한을 가집니다
+          </p>
+          {editRoles.map(role => (
+            <div key={role} style={{ background: theme.card, borderRadius: 16, border: `1.5px solid ${roleColors[role]}`, padding: 14, marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: roleColors[role] }}>{ROLES[role]}</span>
+                <button onClick={() => resetRole(role)} style={{
+                  padding: "4px 10px", borderRadius: 6, border: `1px solid ${theme.border}`,
+                  background: "transparent", color: theme.textSec, fontSize: 10, cursor: "pointer",
+                }}>기본값 복원</button>
+              </div>
+              {PERM_GROUPS.map(group => (
+                <div key={group.label} style={{ marginBottom: 10 }}>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: theme.textSec, marginBottom: 6 }}>{group.label}</p>
+                  {group.keys.map(key => {
+                    const on = getVal(role, key);
+                    const isCustom = rolePerms[role]?.[key] !== undefined;
+                    return (
+                      <label key={key} style={{
+                        display: "flex", alignItems: "center", gap: 10, padding: "6px 8px", marginBottom: 2,
+                        borderRadius: 8, cursor: "pointer", background: on ? `${roleColors[role]}08` : "transparent",
+                      }}>
+                        <input type="checkbox" checked={on} onChange={() => togglePerm(role, key)}
+                          style={{ width: 16, height: 16, accentColor: roleColors[role] }} />
+                        <span style={{ fontSize: 12, color: theme.text, flex: 1 }}>{PERM_LABELS[key]}</span>
+                        {isCustom && <span style={{ fontSize: 8, color: roleColors[role] }}>커스텀</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          ))}
+          <div style={{ height: 60 }} />
+        </div>
+      </div>
+    );
+  }
+
   if (screen === "admin-signups") {
     return (
       <ScreenWrap title="가입 신청 관리" back="관리자" backTo="admin">
