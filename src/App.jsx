@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v4.8)
+// ashrain.out — Interactive Geometry Education App (v4.9)
 // ============================================================
 
 // --- Constants & Config ---
@@ -3239,7 +3239,7 @@ function AppInner() {
   if (screen === "admin-students") {
 
     const roleColors = { admin: PASTEL.coral, assistant: PASTEL.lavender, student: PASTEL.sky, external: PASTEL.sage };
-    const inputStyle = { flex: "1 1 70px", padding: "9px", borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 12, fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box" };
+    const inputStyle = { flex: "1 1 70px", padding: "9px", borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 12, fontFamily: "'Noto Serif KR', serif", boxSizing: "border-box", WebkitUserSelect: "text", userSelect: "text" };
 
     const addMember = () => {
       if (!newMemberForm.id || !newMemberForm.name) return;
@@ -3249,12 +3249,31 @@ function AppInner() {
       playSfx("success");
     };
 
+    const changeId = (oldId, newId) => {
+      if (!newId.trim()) return;
+      if (newId !== oldId && members.find(m => m.id === newId)) { showMsg("이미 존재하는 아이디!", 2000); return; }
+      setMembers(prev => prev.map(m => m.id === oldId ? { ...m, id: newId } : m));
+      setEditingMemberId(newId);
+      // If changing own ID, update user too
+      if (user?.id === oldId) {
+        const u = { ...user, id: newId };
+        localStorage.setItem("ar_user", JSON.stringify(u));
+      }
+    };
+
     const filtered = memberFilter === "all" ? members : members.filter(m => m.role === memberFilter);
     const isSelf = (m) => m.id === user?.id;
 
     return (
-      <ScreenWrap title="회원 관리" back="관리자" backTo="admin">
-        <div style={{ flex:1, overflowY:"auto", padding:"16px", WebkitOverflowScrolling:"touch" }}>
+      <div style={{ height: "100vh", maxHeight: "100dvh", display: "flex", flexDirection: "column", background: theme.bg, fontFamily: "'Noto Serif KR', serif" }}>
+        {/* Header */}
+        <div style={{ flexShrink: 0, display: "flex", alignItems: "center", padding: "16px 20px", borderBottom: `1px solid ${theme.border}` }}>
+          <button onClick={() => { playSfx("click"); setScreen("admin"); }} style={{ background: "none", border: "none", color: theme.textSec, fontSize: 13, cursor: "pointer" }}>← 관리자</button>
+          <span style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 700, color: theme.text, fontFamily: "'Playfair Display', serif" }}>회원 관리</span>
+          <span style={{ width: 40 }} />
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px", WebkitOverflowScrolling: "touch" }}>
           {/* Add new member */}
           {userRole === "admin" && (
             <div style={{ background: theme.card, borderRadius: 16, border: `1.5px solid ${PASTEL.mint}`, padding: 14, marginBottom: 16, animation: "fadeIn 0.3s ease" }}>
@@ -3309,7 +3328,9 @@ function AppInner() {
                       </div>
                       <div style={{ flex: 1 }}>
                         <label style={{ fontSize: 10, color: theme.textSec }}>아이디</label>
-                        <input value={m.id} disabled style={{ ...inputStyle, width: "100%", opacity: 0.5 }} />
+                        <input value={m.id}
+                          onChange={e => changeId(m.id, e.target.value)}
+                          style={{ ...inputStyle, width: "100%" }} />
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
@@ -3323,7 +3344,6 @@ function AppInner() {
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      {/* Role change — only admin can change roles, not self-demote */}
                       {userRole === "admin" && !isSelf(m) && (
                         <select value={m.role} onChange={e => updateMember(m.id, { role: e.target.value })}
                           style={{ ...inputStyle, flex: "0 0 90px" }}>
@@ -3366,7 +3386,7 @@ function AppInner() {
           {filtered.length === 0 && <p style={{ textAlign: "center", color: theme.textSec, fontSize: 13, marginTop: 40 }}>해당 회원이 없어요.</p>}
           <div style={{ height: 60 }} />
         </div>
-      </ScreenWrap>
+      </div>
     );
   }
 
