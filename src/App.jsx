@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v4.6)
+// ashrain.out — Interactive Geometry Education App (v4.7)
 // ============================================================
 
 // --- Constants & Config ---
@@ -1095,14 +1095,20 @@ function AppInner() {
   }, []);
 
   // --- Jakdo Compass Interaction (3 phases) ---
+  const guideLastTapRef = useRef(0); // debounce guard
+
   const handleJakdoDown = useCallback((e) => {
     if (!triangle || buildPhase !== "jakdo") return;
     if (e.button === 1) return;
     const p = svgCoords(e);
     if (!p) return;
 
-    // Guide mode: only accept point taps
+    // Guide mode: only accept point taps with debounce
     if (guideGoal && currentGuide) {
+      const now = Date.now();
+      if (now - guideLastTapRef.current < 400) return; // debounce 400ms
+      guideLastTapRef.current = now;
+      if (e.preventDefault) e.preventDefault(); // prevent mousedown after touchstart
       guideHandleTap(p);
       return;
     }
