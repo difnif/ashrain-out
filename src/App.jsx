@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 
 // ============================================================
-// ashrain.out — Interactive Geometry Education App (v4.7)
+// ashrain.out — Interactive Geometry Education App (v4.8)
 // ============================================================
 
 // --- Constants & Config ---
@@ -852,6 +852,49 @@ function AppInner() {
   const guideDataRef = useRef({}); // store intermediate data between steps
 
   // Guide tap handler
+  // Undo history — must be before deleteArc/deleteRulerLine
+  const [undoStack, setUndoStack] = useState([]);
+  const pushUndo = useCallback(() => {
+    setUndoStack(prev => [...prev.slice(-30), {
+      jedoLines: [...jedoLines], jedoCenter, jedoCircle, jedoType,
+      jakdoArcs: [...jakdoArcs], jakdoRulerLines: [...jakdoRulerLines],
+      guideStep, guideIntersections: [...guideIntersections],
+      guideData: { ...guideDataRef.current },
+    }]);
+  }, [jedoLines, jedoCenter, jedoCircle, jedoType, jakdoArcs, jakdoRulerLines, guideStep, guideIntersections]);
+
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0) return;
+    const last = undoStack[undoStack.length - 1];
+    setUndoStack(prev => prev.slice(0, -1));
+    setJedoLines(last.jedoLines); setJedoCenter(last.jedoCenter);
+    setJedoCircle(last.jedoCircle); setJedoType(last.jedoType);
+    setJakdoArcs(last.jakdoArcs); setJakdoRulerLines(last.jakdoRulerLines);
+    if (last.guideStep !== undefined) {
+      setGuideStep(last.guideStep);
+      setGuideIntersections(last.guideIntersections || []);
+      guideDataRef.current = last.guideData || {};
+    }
+    // If we're in properties and circle is being removed, go back to jakdo/jedo
+    if (buildPhase === "properties" && !last.jedoCircle) {
+      setBuildPhase(guideGoal ? "jakdo" : "jedo");
+      setShowProperties(false);
+    }
+    playSfx("pop");
+  }, [undoStack, playSfx, buildPhase, guideGoal]);
+
+  // Delete arc/line by index
+  const deleteArc = useCallback((idx) => {
+    pushUndo();
+    setJakdoArcs(prev => prev.filter((_, i) => i !== idx));
+    playSfx("pop");
+  }, [pushUndo, playSfx]);
+
+  const deleteRulerLine = useCallback((idx) => {
+    pushUndo();
+    setJakdoRulerLines(prev => prev.filter((_, i) => i !== idx));
+    playSfx("pop");
+  }, [pushUndo, playSfx]);
   const guideHandleTap = useCallback((tapPt) => {
     if (!currentGuide || !triangle) return false;
     const { A, B, C } = triangle;
@@ -859,6 +902,7 @@ function AppInner() {
     // --- Circumcenter: tap vertex to draw arc ---
     if (currentGuide.type === "tap" && currentGuide.target) {
       if (dist(tapPt, currentGuide.target) > 30) return false;
+      pushUndo();
       const [p1, p2] = currentGuide.edge;
       const r = dist(p1, p2) * 0.7;
       const center = currentGuide.target;
@@ -888,6 +932,7 @@ function AppInner() {
       let nearest = null, minD = 35;
       for (const ip of guideIntersections) { const d = dist(tapPt, ip); if (d < minD) { minD = d; nearest = ip; } }
       if (!nearest) return false;
+      pushUndo();
       if (guideIntersections.length >= 2) {
         const [ip1, ip2] = guideIntersections;
         const dx = ip2.x - ip1.x, dy = ip2.y - ip1.y;
@@ -904,6 +949,7 @@ function AppInner() {
     // --- Incenter: tap vertex -> draw arc1 only ---
     if (currentGuide.type === "tap_vertex" && currentGuide.target) {
       if (dist(tapPt, currentGuide.target) > 30) return false;
+      pushUndo();
       const v = currentGuide.vertex, [arm1, arm2] = currentGuide.arms;
       const r1 = Math.min(dist(v, arm1), dist(v, arm2)) * 0.45;
       const a1 = Math.atan2(arm1.y - v.y, arm1.x - v.x);
@@ -926,6 +972,7 @@ function AppInner() {
       let nearest = null, minD = 35;
       for (const ip of guideIntersections) { const d = dist(tapPt, ip); if (d < minD) { minD = d; nearest = ip; } }
       if (!nearest) return false;
+      pushUndo();
       const { eInt1, eInt2, vertex } = guideDataRef.current;
       const other = dist(nearest, eInt1) < 5 ? eInt2 : eInt1;
       const d23 = dist(eInt1, eInt2), r2 = d23 * 0.75;
@@ -952,6 +999,7 @@ function AppInner() {
       let nearest = null, minD = 35;
       for (const ip of guideIntersections) { const d = dist(tapPt, ip); if (d < minD) { minD = d; nearest = ip; } }
       if (!nearest) return false;
+      pushUndo();
       const v = currentGuide.bisectFrom;
       if (v) {
         const dx = nearest.x - v.x, dy = nearest.y - v.y, len = Math.sqrt(dx*dx+dy*dy) || 1;
@@ -981,6 +1029,7 @@ function AppInner() {
         r = Math.min(dToEdge({x:cx,y:cy},A,B), dToEdge({x:cx,y:cy},B,C), dToEdge({x:cx,y:cy},A,C));
         setJedoType("in");
       }
+      pushUndo();
       setJedoCenter({x:cx, y:cy});
       setTimeout(() => setJedoCircle({cx, cy, r}), 300);
       setTimeout(() => { setShowProperties(true); setBuildPhase("properties"); }, 2500);
@@ -990,41 +1039,10 @@ function AppInner() {
     }
 
     return false;
-  }, [currentGuide, triangle, guideGoal, guideStep, guideSteps, jakdoArcs, guideIntersections, playSfx]);
+  }, [currentGuide, triangle, guideGoal, guideStep, guideSteps, jakdoArcs, guideIntersections, playSfx, pushUndo]);
 
 
 
-  // Undo history — must be before deleteArc/deleteRulerLine
-  const [undoStack, setUndoStack] = useState([]);
-  const pushUndo = useCallback(() => {
-    setUndoStack(prev => [...prev.slice(-20), {
-      jedoLines: [...jedoLines], jedoCenter, jedoCircle, jedoType,
-      jakdoArcs: [...jakdoArcs], jakdoRulerLines: [...jakdoRulerLines],
-    }]);
-  }, [jedoLines, jedoCenter, jedoCircle, jedoType, jakdoArcs, jakdoRulerLines]);
-
-  const handleUndo = useCallback(() => {
-    if (undoStack.length === 0) return;
-    const last = undoStack[undoStack.length - 1];
-    setUndoStack(prev => prev.slice(0, -1));
-    setJedoLines(last.jedoLines); setJedoCenter(last.jedoCenter);
-    setJedoCircle(last.jedoCircle); setJedoType(last.jedoType);
-    setJakdoArcs(last.jakdoArcs); setJakdoRulerLines(last.jakdoRulerLines);
-    playSfx("pop");
-  }, [undoStack, playSfx]);
-
-  // Delete arc/line by index
-  const deleteArc = useCallback((idx) => {
-    pushUndo();
-    setJakdoArcs(prev => prev.filter((_, i) => i !== idx));
-    playSfx("pop");
-  }, [pushUndo, playSfx]);
-
-  const deleteRulerLine = useCallback((idx) => {
-    pushUndo();
-    setJakdoRulerLines(prev => prev.filter((_, i) => i !== idx));
-    playSfx("pop");
-  }, [pushUndo, playSfx]);
 
   // Auto-save work in progress
   useEffect(() => {
@@ -3875,7 +3893,7 @@ function AppInner() {
           }}>← 목록</button>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             {/* Undo button */}
-            {(buildPhase === "jedo" || buildPhase === "jakdo") && (
+            {(buildPhase === "jedo" || buildPhase === "jakdo" || buildPhase === "modeSelect" || buildPhase === "properties") && (
               <button onClick={() => { handleUndo(); }} disabled={undoStack.length === 0} style={{
                 background: "none", border: `1px solid ${undoStack.length > 0 ? theme.border : "transparent"}`,
                 borderRadius: 8, padding: "4px 10px", fontSize: 12, cursor: undoStack.length > 0 ? "pointer" : "default",
@@ -4777,7 +4795,7 @@ function AppInner() {
                 </div>
                 {/* Done/Next buttons */}
                 {currentGuide.type === "done_line" && (
-                  <button onClick={() => { setGuideStep(s => s + 1); playSfx("click"); }} style={{
+                  <button onClick={() => { pushUndo(); setGuideStep(s => s + 1); playSfx("click"); }} style={{
                     marginTop: 10, padding: "10px 24px", borderRadius: 10, border: "none",
                     background: PASTEL.lavender, color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer", width: "100%",
                   }}>다음 →</button>
