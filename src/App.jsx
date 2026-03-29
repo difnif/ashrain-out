@@ -2488,7 +2488,7 @@ function AppInner() {
     signupName, setSignupName, signupId, setSignupId, signupPw, setSignupPw,
     signupPwConfirm, setSignupPwConfirm, signupMsg, setSignupMsg, signupDone, setSignupDone,
     handleSignupRequest, autoApprove, setAutoApprove,
-    members, setMembers, ROLES, students, isSelf,
+    members, setMembers, ROLES, students,
     editingMemberId, setEditingMemberId, newMemberForm, setNewMemberForm, memberFilter, setMemberFilter,
     canAdmin, canArchive, canEditMember, updateMember, deleteMember,
     signupRequests, setSignupRequests, approveSignup, rejectSignup,
