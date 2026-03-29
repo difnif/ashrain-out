@@ -159,6 +159,7 @@ function AppInner() {
   const [drawGoal, setDrawGoal] = useState("construct"); // "construct" | "compare" | "combined"
   const [chatMsg, setChatMsg] = useState("");
   const [chatLog, setChatLog] = useState(() => { try { return JSON.parse(localStorage.getItem("ar_chat")) || []; } catch { return []; } });
+  useFirestoreSync("plaza", "chat", chatLog, setChatLog, []);
   const [chatNotif, setChatNotif] = useState(true);
   const chatEndRef = useRef(null);
   const [editingMemberId, setEditingMemberId] = useState(null);
