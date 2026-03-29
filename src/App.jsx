@@ -15,6 +15,7 @@ import {
   renderAdminScreen, renderAdminStudentsScreen, renderAdminPermsScreen,
   renderAdminSignupsScreen, renderAdminAnglesScreen, renderAdminScriptsScreen,
 } from "./screens/AdminScreens";
+import { renderCompareScreen } from "./screens/CompareScreen";
 import { renderSettingsScreen } from "./screens/SettingsScreen";
 import { renderDrawScreen } from "./screens/DrawScreen";
 import { getProperties as getPropertiesFn, renderHighlight as renderHighlightFn, renderTriangleAnim as renderTriangleAnimFn } from "./rendering/TriangleRenderer";
@@ -619,6 +620,10 @@ function AppInner() {
   }
 
 
+  // --- Compare Circles Screen ---
+  if (screen === "compare-circles") return renderCompareScreen(ctx, "compare");
+  if (screen === "combined-circles") return renderCompareScreen(ctx, "combined");
+
   // --- Plaza (광장) Screen ---
   if (screen === "plaza") return renderPlazaScreen(ctx);
 
@@ -645,8 +650,8 @@ function AppInner() {
       { icon: "📏", label: "거리", desc: "점과 직선 사이의 거리", compact: true, disabled: true },
       { icon: "△", label: "삼각형에서 원까지", desc: hasSavedWork ? "이전 작업 있음 ✦" : "SSS · SAS · ASA",
         action: () => { if (hasSavedWork) setShowLoadDialog(true); else enterDraw(false); } },
-      { icon: "⊙⊙", label: "외접원 옆에 내접원", desc: "두 원의 관계", compact: true, disabled: true },
-      { icon: "O · I", label: "외심 옆에 내심", desc: "두 중심의 비교", compact: true, disabled: true },
+      { icon: "⊙⊙", label: "외접원 옆에 내접원", desc: "두 원의 관계", compact: true, action: () => setScreen("compare-circles") },
+      { icon: "O · I", label: "외심 옆에 내심", desc: "두 중심의 비교", compact: true, action: () => setScreen("combined-circles") },
       { icon: "∟≅", label: "직각삼각형의 합동 조건", desc: "RHA · RHS", compact: true, disabled: true },
     ];
     return (
