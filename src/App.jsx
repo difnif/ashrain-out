@@ -372,6 +372,8 @@ function AppInner() {
     triangle, buildPhase, setBuildPhase, jedoLines, setJedoLines, jedoCenter, setJedoCenter,
     jedoCircle, setJedoCircle, jedoType, setJedoType, selectedProp, setSelectedProp,
     svgSize, activeTone, theme,
+    triMode, setTriMode, setTriangle, sssInput, setSssInput,
+    showProperties, setShowProperties, viewBox,
   });
   const {
     ROLES, members, setMembers, signupRequests, setSignupRequests,
