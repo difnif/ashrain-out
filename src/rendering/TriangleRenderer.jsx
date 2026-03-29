@@ -1,5 +1,5 @@
 import {
-  PASTEL, dist, midpoint, perpBisector, angleBisector,
+  PASTEL, dist, midpoint, lerp, perpBisector, angleBisector,
   lineIntersection, circumcenter, incenter,
   pointToSegDist, triangleType, angleAtVertex,
 } from "../config";
