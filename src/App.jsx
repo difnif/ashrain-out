@@ -1650,7 +1650,7 @@ function AppInner() {
   // Context object for extracted screen render functions
   const ctx = {
     theme, themeKey, setThemeKey, toneKey, setToneKey, PASTEL,
-    user, userRole, isAdmin, setScreen, setScreenRaw, playSfx, showMsg, activeTone, isPC,
+    user, userRole, isAdmin, setScreen, playSfx, showMsg, activeTone, isPC,
     loginId, setLoginId, loginPw, setLoginPw, loginError, setLoginError, handleLogin,
     signupName, setSignupName, signupId, setSignupId, signupPw, setSignupPw,
     signupPwConfirm, setSignupPwConfirm, signupMsg, setSignupMsg, signupDone, setSignupDone,
@@ -1684,7 +1684,7 @@ function AppInner() {
     handleTouchStart, handleTouchMove, handleTouchEnd,
     handleMouseDown, handleMouseMove, handleMouseUp, handleWheel,
     resetView, pushUndo, deleteArc, deleteRulerLine,
-    drawStep, setDrawStep, drawStrokes, setDrawStrokes, draw          Angles, setDrawAngles,
+    drawStep, setDrawStep, drawStrokes, setDrawStrokes, drawAngles, setDrawAngles,
     currentStroke, setCurrentStroke, isDrawing, drawPreview,
     handleDrawStart, handleDrawMove, handleDrawEnd, handleSSSSubmit,
     showProperties, setShowProperties, selectedProp, setSelectedProp, floatingMsg,
@@ -1742,7 +1742,8 @@ function AppInner() {
   // --- Study Screen (복습하기) ---
   if (screen === "study") {
     const categories = [
-      { icon: "⬡", label: "삼각형의 외심과 내심", desc: "삼각형, 외심, 내심", action: () => setScreen("polygons") },
+      { icon: "⬡", label: "그려서 공부하기", desc: "삼각형, 외심, 내심", action: () => setScreen("polygons") },
+      { icon: "📝", label: "문제의 문장 이해하기", desc: "수학 문제 독해 연습", action: () => setScreen("sentence") },
     ];
     return (
       <ScreenWrap title="복습하기" back="메뉴" backTo="menu">
@@ -1754,11 +1755,29 @@ function AppInner() {
   }
 
 
+  // --- Sentence Understanding Screen (문제의 문장 이해하기) ---
+  if (screen === "sentence") {
+    return (
+      <ScreenWrap title="문제의 문장 이해하기" back="복습하기" backTo="study">
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ textAlign: "center", animation: "fadeIn 0.5s ease" }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>📝</div>
+            <p style={{ fontSize: 15, color: theme.text, fontWeight: 700, marginBottom: 8 }}>준비 중이에요!</p>
+            <p style={{ fontSize: 12, color: theme.textSec, lineHeight: 1.8 }}>
+              수학 문제의 문장을 분석하고<br/>핵심 조건을 찾아내는 연습을 할 수 있어요.
+            </p>
+          </div>
+        </div>
+      </ScreenWrap>
+    );
+  }
+
+
   // --- Plaza (광장) Screen ---
   if (screen === "plaza") return renderPlazaScreen(ctx);
 
 
-  // --- Polygons & Circles Screen (삼각형의 외심과 내심) ---
+  // --- 그려서 공부하기 Screen ---
   if (screen === "polygons") {
     const hasSavedWork = (() => { try { return !!JSON.parse(sessionStorage.getItem("ar_work"))?.triangle; } catch { return false; } })();
 
@@ -1785,7 +1804,7 @@ function AppInner() {
       { icon: "∟≅", label: "직각삼각형의 합동 조건", desc: "RHA · RHS", compact: true, disabled: true },
     ];
     return (
-      <ScreenWrap title="삼각형의 외심과 내심" back="복습하기" backTo="study">
+      <ScreenWrap title="그려서 공부하기" back="복습하기" backTo="study">
         <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16, position:"relative" }}>
           <p style={{ fontSize:12, color:theme.textSec, textAlign:"center", margin:"20px 0 0 0" }}>중1-2 · 중2-2 기하 단원</p>
           <MenuGrid items={topics} cols={2} />
