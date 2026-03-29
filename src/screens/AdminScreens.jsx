@@ -76,6 +76,7 @@ export function renderAdminStudentsScreen(ctx) {
                   <option value="student">수강생</option>
                   <option value="external">외부생</option>
                   <option value="assistant">조교</option>
+                  <option value="admin">관리자</option>
                 </select>
                 <button onClick={addMember} style={{ padding: "9px 16px", borderRadius: 10, border: "none", background: PASTEL.mint, color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>추가</button>
               </div>
