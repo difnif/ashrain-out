@@ -2,7 +2,7 @@ import { PASTEL } from "../config";
 
 export function renderLoginScreen(ctx) {
   const { theme, loginId, setLoginId, loginPw, setLoginPw, loginError, setLoginError,
-    handleLogin, setScreen, playSfx } = ctx;
+    handleLogin, setScreen, setScreenRaw, playSfx } = ctx;
     return (
       <div style={{
         minHeight: "100vh", display: "flex", flexDirection: "column",
@@ -131,7 +131,7 @@ export function renderLoginScreen(ctx) {
 export function renderSignupScreen(ctx) {
   const { theme, signupName, setSignupName, signupId, setSignupId, signupPw, setSignupPw,
     signupPwConfirm, setSignupPwConfirm, signupMsg, setSignupMsg, signupDone, setSignupDone,
-    handleSignupRequest, setScreen, playSfx, autoApprove } = ctx;
+    handleSignupRequest, setScreen, setScreenRaw, playSfx, autoApprove } = ctx;
 
     const doSignup = () => {
       if (signupPw !== signupPwConfirm) { setSignupMsg("비밀번호가 일치하지 않아요."); return; }
