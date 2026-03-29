@@ -21,7 +21,12 @@ export function useJakdoCanvas(deps) {
     guideGoal, setGuideGoal, guideStep, setGuideStep, guideSteps,
     currentGuide, guideHandleTap, guideDataRef,
     circleSegIntersect, pushUndo, deleteArc, deleteRulerLine,
-    compassStep, MAX_ARCS, MAX_RULER_LINES } = deps;
+    compassStep, MAX_ARCS, MAX_RULER_LINES,
+    // Additional from useUserSystem
+    setCrossedEdges, setGuideIntersections, setGuideSubStep,
+    setPressedSnap, setRulerStart, setUndoStack,
+    // Additional from App.jsx
+    setManualView, setSelectedProp, setShowProperties, setViewBox, toneKey } = deps;
 
   // --- Jakdo SVG coord helper ---
   const svgCoords = useCallback((e) => {
