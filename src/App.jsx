@@ -15,7 +15,6 @@ import {
   renderAdminScreen, renderAdminStudentsScreen, renderAdminPermsScreen,
   renderAdminSignupsScreen, renderAdminAnglesScreen, renderAdminScriptsScreen,
 } from "./screens/AdminScreens";
-import { renderCompareScreen } from "./screens/CompareScreen";
 import { renderSettingsScreen } from "./screens/SettingsScreen";
 import { renderDrawScreen } from "./screens/DrawScreen";
 import { getProperties as getPropertiesFn, renderHighlight as renderHighlightFn, renderTriangleAnim as renderTriangleAnimFn } from "./rendering/TriangleRenderer";
@@ -157,6 +156,7 @@ function AppInner() {
   const [signupMsg, setSignupMsg] = useState("");
   const [signupDone, setSignupDone] = useState(false);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
+  const [drawGoal, setDrawGoal] = useState("construct"); // "construct" | "compare" | "combined"
   const [chatMsg, setChatMsg] = useState("");
   const [chatLog, setChatLog] = useState(() => { try { return JSON.parse(localStorage.getItem("ar_chat")) || []; } catch { return []; } });
   const [chatNotif, setChatNotif] = useState(true);
@@ -419,7 +419,7 @@ function AppInner() {
     guideGoal, setGuideGoal, guideStep, setGuideStep, guideSteps,
     currentGuide, guideHandleTap, guideDataRef,
     circleSegIntersect, pushUndo, deleteArc, deleteRulerLine,
-    compassStep, MAX_ARCS, MAX_RULER_LINES,
+    compassStep, MAX_ARCS, MAX_RULER_LINES, drawGoal,
     // Additional from useUserSystem
     setCrossedEdges, setGuideIntersections, setGuideSubStep,
     setPressedSnap, setRulerStart, setUndoStack,
@@ -514,6 +514,7 @@ function AppInner() {
     collectedAngles, setCollectedAngles, angleCollectStroke, setAngleCollectStroke,
     angleOverlay, setAngleOverlay, angleCollectRef, recognizeAngle,
     editToneKey, setEditToneKey, customScripts, setCustomScripts,
+    drawGoal, setDrawGoal,
     triangle, setTriangle, triMode, setTriMode, inputMode, setInputMode,
     buildPhase, setBuildPhase, sssInput, setSssInput, animPhase, animProgress,
     jedoLines, jedoCenter, jedoCircle, jedoType,
@@ -620,10 +621,6 @@ function AppInner() {
   }
 
 
-  // --- Compare Circles Screen ---
-  if (screen === "compare-circles") return renderCompareScreen(ctx, "compare");
-  if (screen === "combined-circles") return renderCompareScreen(ctx, "combined");
-
   // --- Plaza (광장) Screen ---
   if (screen === "plaza") return renderPlazaScreen(ctx);
 
@@ -649,9 +646,9 @@ function AppInner() {
     const topics = [
       { icon: "📏", label: "거리", desc: "점과 직선 사이의 거리", compact: true, disabled: true },
       { icon: "△", label: "삼각형에서 원까지", desc: hasSavedWork ? "이전 작업 있음 ✦" : "SSS · SAS · ASA",
-        action: () => { if (hasSavedWork) setShowLoadDialog(true); else enterDraw(false); } },
-      { icon: "⊙⊙", label: "외접원 옆에 내접원", desc: "두 원의 관계", compact: true, action: () => setScreen("compare-circles") },
-      { icon: "O · I", label: "외심 옆에 내심", desc: "두 중심의 비교", compact: true, action: () => setScreen("combined-circles") },
+        action: () => { if (hasSavedWork) setShowLoadDialog(true); else { setDrawGoal("construct"); enterDraw(false); } } },
+      { icon: "⊙⊙", label: "외접원 옆에 내접원", desc: "두 원의 관계", compact: true, action: () => { setDrawGoal("compare"); resetAll(); setBuildPhase("input"); setTriMode("sss"); setScreen("draw"); } },
+      { icon: "O · I", label: "외심 옆에 내심", desc: "예각삼각형 전용", compact: true, action: () => { setDrawGoal("combined"); resetAll(); setBuildPhase("input"); setTriMode("sss"); setScreen("draw"); } },
       { icon: "∟≅", label: "직각삼각형의 합동 조건", desc: "RHA · RHS", compact: true, disabled: true },
     ];
     return (
@@ -680,13 +677,13 @@ function AppInner() {
                   저장된 작업을 이어서 하시겠어요?
                 </p>
                 <div style={{ display:"flex", gap:10 }}>
-                  <button onClick={() => { setShowLoadDialog(false); enterDraw(true); }} style={{
+                  <button onClick={() => { setDrawGoal("construct"); setShowLoadDialog(false); enterDraw(true); }} style={{
                     flex:1, padding:"14px", borderRadius:14, border:"none",
                     background:`linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
                     color:"white", fontSize:14, fontWeight:700, cursor:"pointer",
                     fontFamily:"'Noto Serif KR', serif",
                   }}>이어서 하기</button>
-                  <button onClick={() => { setShowLoadDialog(false); enterDraw(false); }} style={{
+                  <button onClick={() => { setDrawGoal("construct"); setShowLoadDialog(false); enterDraw(false); }} style={{
                     flex:1, padding:"14px", borderRadius:14,
                     border:`1.5px solid ${theme.border}`, background:theme.card,
                     color:theme.textSec, fontSize:13, cursor:"pointer",
