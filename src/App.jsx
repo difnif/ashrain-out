@@ -400,6 +400,7 @@ function AppInner() {
     MAX_ARCS, MAX_RULER_LINES,
     setCrossedEdges, setGuideIntersections, setGuideSubStep,
     setPressedSnap, setRulerStart, setUndoStack,
+    undoStack, pressedSnap, guideIntersections, guideSubStep,
   } = userSystem;
 
   // --- Jakdo/Canvas Logic (custom hook) ---
@@ -544,6 +545,7 @@ function AppInner() {
     handleJedoClick, handleJakdoDown, handleJakdoMove, handleJakdoUp, handleUndo,
     resetAll, generateTriangleWithBase,
     failAnim, idleMsg, retryDraw,
+    undoStack, pressedSnap, guideIntersections, guideSubStep,
     ScreenWrap, MenuGrid,
   };
 
