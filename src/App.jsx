@@ -432,6 +432,7 @@ function AppInner() {
     handleDrawStart, handleDrawMove, handleDrawEnd,
     handleJedoClick, resetAll, recognizeAngle, recognizeLine,
     saveToArchive, showArchiveSave, setShowArchiveSave, archivePublic, setArchivePublic,
+    failAnim, idleMsg, retryDraw,
   } = jakdoCanvas;
 
   // --- Properties Data with highlight info ---
@@ -540,6 +541,7 @@ function AppInner() {
     renderTriangleAnim, renderHighlight, getProperties,
     handleJedoClick, handleJakdoDown, handleJakdoMove, handleJakdoUp, handleUndo,
     resetAll, generateTriangleWithBase,
+    failAnim, idleMsg, retryDraw,
     ScreenWrap, MenuGrid,
   };
 
