@@ -1650,7 +1650,7 @@ function AppInner() {
   // Context object for extracted screen render functions
   const ctx = {
     theme, themeKey, setThemeKey, toneKey, setToneKey, PASTEL,
-    user, userRole, isAdmin, setScreen, playSfx, showMsg, activeTone, isPC,
+    user, userRole, isAdmin, setScreen, setScreenRaw, playSfx, showMsg, activeTone, isPC,
     loginId, setLoginId, loginPw, setLoginPw, loginError, setLoginError, handleLogin,
     signupName, setSignupName, signupId, setSignupId, signupPw, setSignupPw,
     signupPwConfirm, setSignupPwConfirm, signupMsg, setSignupMsg, signupDone, setSignupDone,
@@ -1684,7 +1684,7 @@ function AppInner() {
     handleTouchStart, handleTouchMove, handleTouchEnd,
     handleMouseDown, handleMouseMove, handleMouseUp, handleWheel,
     resetView, pushUndo, deleteArc, deleteRulerLine,
-    drawStep, setDrawStep, drawStrokes, setDrawStrokes, drawAngles, setDrawAngles,
+    drawStep, setDrawStep, drawStrokes, setDrawStrokes, draw          Angles, setDrawAngles,
     currentStroke, setCurrentStroke, isDrawing, drawPreview,
     handleDrawStart, handleDrawMove, handleDrawEnd, handleSSSSubmit,
     showProperties, setShowProperties, selectedProp, setSelectedProp, floatingMsg,
