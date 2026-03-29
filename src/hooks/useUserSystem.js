@@ -5,7 +5,9 @@ export function useUserSystem(deps) {
   const { user, setUser, screen, setScreen, setScreenRaw, setIsAdmin, playSfx, showMsg,
     triangle, buildPhase, setBuildPhase, jedoLines, setJedoLines, jedoCenter, setJedoCenter,
     jedoCircle, setJedoCircle, jedoType, setJedoType, selectedProp, setSelectedProp,
-    svgSize, activeTone, theme } = deps;
+    svgSize, activeTone, theme,
+    triMode, setTriMode, setTriangle, sssInput, setSssInput,
+    showProperties, setShowProperties, viewBox } = deps;
 
   // --- User & Role System ---
   // Roles: admin(관리자), assistant(조교), student(수강생), external(외부생)
