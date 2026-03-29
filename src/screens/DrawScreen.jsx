@@ -31,6 +31,7 @@ export function renderDrawScreen(ctx) {
     handleJedoClick, handleJakdoDown, handleJakdoMove, handleJakdoUp, handleUndo,
     resetAll, generateTriangleWithBase, drawGoal,
     failAnim, idleMsg, retryDraw,
+    undoStack, pressedSnap, guideIntersections, guideSubStep, user,
     ScreenWrap, MenuGrid,
   } = ctx;
     return (
