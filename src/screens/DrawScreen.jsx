@@ -30,6 +30,7 @@ export function renderDrawScreen(ctx) {
     renderTriangleAnim, renderHighlight, getProperties,
     handleJedoClick, handleJakdoDown, handleJakdoMove, handleJakdoUp, handleUndo,
     resetAll, generateTriangleWithBase, drawGoal,
+    failAnim, idleMsg, retryDraw,
     ScreenWrap, MenuGrid,
   } = ctx;
     return (
