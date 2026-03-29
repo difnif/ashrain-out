@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useFirestoreSync } from "./useFirestoreSync";
+import { fbSet } from "../firebase";
 import { PASTEL, dist, perpBisector, angleBisector, lineIntersection, circumcenter, incenter, pointToSegDist, angleAtVertex } from "../config";
 
 export function useUserSystem(deps) {
@@ -32,6 +34,11 @@ export function useUserSystem(deps) {
   useEffect(() => { localStorage.setItem("ar_members", JSON.stringify(members)); }, [members]);
   useEffect(() => { localStorage.setItem("ar_signups", JSON.stringify(signupRequests)); }, [signupRequests]);
   useEffect(() => { localStorage.setItem("ar_autoapprove", autoApprove ? "true" : "false"); }, [autoApprove]);
+
+  // === Firestore Sync (real-time, cross-device) ===
+  useFirestoreSync("data", "members", members, setMembers, []);
+  useFirestoreSync("data", "signups", signupRequests, setSignupRequests, []);
+  useFirestoreSync("settings", "autoApprove", autoApprove, setAutoApprove, false);
 
   // Online presence heartbeat for plaza
   useEffect(() => {
@@ -114,6 +121,7 @@ export function useUserSystem(deps) {
     try { return JSON.parse(localStorage.getItem("ar_perms")) || {}; } catch { return {}; }
   });
   useEffect(() => { localStorage.setItem("ar_perms", JSON.stringify(rolePerms)); }, [rolePerms]);
+  useFirestoreSync("settings", "rolePerms", rolePerms, setRolePerms, {});
 
   const hasPerm = useCallback((perm) => {
     if (userRole === "admin") return true;
@@ -136,6 +144,7 @@ export function useUserSystem(deps) {
     try { return JSON.parse(localStorage.getItem("ar_calls")) || []; } catch { return []; }
   });
   useEffect(() => { localStorage.setItem("ar_calls", JSON.stringify(plazaCalls)); }, [plazaCalls]);
+  useFirestoreSync("plaza", "calls", plazaCalls, setPlazaCalls, []);
 
   const callUser = useCallback((targetName) => {
     const myName = user?.nickname || user?.name || "익명";
