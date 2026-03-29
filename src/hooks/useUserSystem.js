@@ -209,7 +209,11 @@ export function useUserSystem(deps) {
   // Update member (admin/assistant can edit based on permissions)
   const updateMember = useCallback((targetId, updates) => {
     setMembers(prev => prev.map(m => m.id === targetId ? { ...m, ...updates } : m));
-  }, []);
+    // If editing self, also update login session
+    if (user && user.id === targetId) {
+      setUser(prev => ({ ...prev, ...updates }));
+    }
+  }, [user, setUser]);
 
   const deleteMember = useCallback((targetId) => {
     setMembers(prev => prev.filter(m => m.id !== targetId));
