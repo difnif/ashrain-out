@@ -1,4 +1,5 @@
 import { PASTEL } from "../config";
+import { fbGet, fbSet } from "../firebase";
 
 // --- Profanity Filter (Smart Detection) ---
 
@@ -699,10 +700,22 @@ export function renderPlazaScreen(ctx) {
     const isFrozen = (() => {
       try { return localStorage.getItem("ar_chat_frozen") === "true"; } catch { return false; }
     })();
+    // Also load from Firestore on first render
+    if (!window._frozenSynced) {
+      window._frozenSynced = true;
+      fbGet("settings").then(d => {
+        if (d && d.chatFrozen !== undefined) {
+          const remote = d.chatFrozen === true || d.chatFrozen === "true";
+          localStorage.setItem("ar_chat_frozen", remote ? "true" : "false");
+          if (remote !== isFrozen) setChatLog(prev => [...prev]); // trigger re-render
+        }
+      });
+    }
 
     const toggleFreeze = () => {
       const next = !isFrozen;
       localStorage.setItem("ar_chat_frozen", next ? "true" : "false");
+      fbSet("settings", { chatFrozen: next });
       showMsg(next ? "🧊 광장이 얼었습니다" : "🔥 광장이 녹았습니다", 2000);
       playSfx(next ? "click" : "success");
       setChatLog(prev => [...prev]);
@@ -719,6 +732,7 @@ export function renderPlazaScreen(ctx) {
       const updated = [...chatLog, newMsg].slice(-100);
       setChatLog(updated);
       localStorage.setItem("ar_chat", JSON.stringify(updated));
+      fbSet("plaza", { chat: updated });
       setChatMsg("");
       setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     };
@@ -738,11 +752,18 @@ export function renderPlazaScreen(ctx) {
         return Object.entries(online).filter(([, v]) => Date.now() - v.time < 30000).map(([name, v]) => ({ name, role: v.role }));
       } catch { return []; }
     })();
+    // Sync online presence to Firestore
+    if (user && !window._presenceSynced) {
+      window._presenceSynced = true;
+      const myN = user.nickname || user.name || "익명";
+      fbSet("plaza", { [`online_${myN}`]: { time: Date.now(), role: userRole } });
+    }
 
     const deleteChat = (time) => {
       const updated = chatLog.filter(m => m.time !== time);
       setChatLog(updated);
       localStorage.setItem("ar_chat", JSON.stringify(updated));
+      fbSet("plaza", { chat: updated });
     };
 
     const teacherMember = members.find(m => m.role === "admin");
