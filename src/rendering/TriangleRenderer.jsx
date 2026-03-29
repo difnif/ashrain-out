@@ -469,7 +469,7 @@ export function renderTriangleAnim(ctx) {
     svgSize, floatingMsg, showProperties, selectedProp,
     compassCenter, compassRadius, compassPhase, compassDragPt,
     arcDrawPoints, rulerStart, crossedEdges, currentStroke,
-    zs, FixedG, theme, getActiveVB } = ctx;
+    zs, FixedG, theme, themeKey, getActiveVB } = ctx;
     if (!triangle) return null;
     const { A, B, C, sides, scale } = triangle;
     const s = sides.map(v => v * scale);
