@@ -1,3 +1,4 @@
+import { useFirestoreSync } from "./hooks/useFirestoreSync";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   PASTEL, THEMES, TONES,
