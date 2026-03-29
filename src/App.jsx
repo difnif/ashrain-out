@@ -496,7 +496,7 @@ function AppInner() {
   // Context object for extracted screen render functions
   const ctx = {
     theme, themeKey, setThemeKey, toneKey, setToneKey, PASTEL,
-    user, userRole, isAdmin, setScreen, playSfx, showMsg, activeTone, isPC,
+    user, userRole, isAdmin, setScreen, setScreenRaw, playSfx, showMsg, activeTone, isPC,
     loginId, setLoginId, loginPw, setLoginPw, loginError, setLoginError, handleLogin,
     signupName, setSignupName, signupId, setSignupId, signupPw, setSignupPw,
     signupPwConfirm, setSignupPwConfirm, signupMsg, setSignupMsg, signupDone, setSignupDone,
