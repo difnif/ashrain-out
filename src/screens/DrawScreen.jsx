@@ -94,7 +94,8 @@ export function renderDrawScreen(ctx) {
                 <button key={key} onClick={() => {
                   setInputMode(key);
                   if (!triMode) setTriMode("sss");
-                  setDrawStrokes([]); setDrawAngles([]); setCurrentStroke([]); setDrawStep(0);
+                  setDrawStrokes([]); setDrawAngles([]); setCurrentStroke([]);
+                  setDrawStep(key === "B" && triMode ? 1 : 0);
                 }} style={{
                   flex: 1, padding: "8px", borderRadius: 10, fontSize: 12,
                   border: `2px solid ${inputMode === key ? PASTEL.coral : theme.border}`,
