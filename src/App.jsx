@@ -14,7 +14,7 @@ import { renderLoginScreen, renderSignupScreen } from "./screens/AuthScreens";
 import { renderPlazaScreen } from "./screens/PlazaScreen";
 import {
   renderAdminScreen, renderAdminStudentsScreen, renderAdminPermsScreen,
-  renderAdminSignupsScreen, renderAdminAnglesScreen, renderAdminScriptsScreen,
+  renderAdminSignupsScreen, renderAdminScriptsScreen,
 } from "./screens/AdminScreens";
 import { renderSettingsScreen } from "./screens/SettingsScreen";
 import { renderDrawScreen } from "./screens/DrawScreen";
@@ -167,11 +167,7 @@ function AppInner() {
   const [newMemberForm, setNewMemberForm] = useState({ id: "", name: "", pw: "1234", role: "student" });
   const [memberFilter, setMemberFilter] = useState("all");
   const [editToneKey, setEditToneKey] = useState("default");
-  const [collectedAngles, setCollectedAngles] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("ar_angle_data")) || []; } catch { return []; }
-  });
-  const [angleCollectStroke, setAngleCollectStroke] = useState([]); // current drawing
-  const angleCollectRef = useRef(null);
+  // [Angle data removed]
 
   // SVG sizing
   const svgRef = useRef(null);
@@ -442,7 +438,7 @@ function AppInner() {
   // Properties, Highlight, Animation — see rendering/TriangleRenderer.jsx
   const getProperties = () => getPropertiesFn({ triangle, jedoCenter, jedoCircle, jedoType });
   const renderHighlight = () => renderHighlightFn({ triangle, jedoCenter, jedoCircle, jedoType, selectedProp, zs, FixedG, jedoLines, jakdoArcs, jakdoRulerLines });
-  const renderTriangleAnim = () => renderTriangleAnimFn({ triangle, animPhase, animProgress, buildPhase, jedoLines, jedoCenter, jedoCircle, jedoType, jakdoArcs, jakdoRulerLines, jakdoSnaps, svgSize, floatingMsg, showProperties, selectedProp, compassCenter, compassRadius, compassPhase, compassDragPt, arcDrawPoints, rulerStart, crossedEdges, currentStroke, zs, FixedG, theme, getActiveVB });
+  const renderTriangleAnim = () => renderTriangleAnimFn({ triangle, animPhase, animProgress, buildPhase, jedoLines, jedoCenter, jedoCircle, jedoType, jakdoArcs, jakdoRulerLines, jakdoSnaps, svgSize, floatingMsg, showProperties, selectedProp, compassCenter, compassRadius, compassPhase, compassDragPt, arcDrawPoints, rulerStart, crossedEdges, currentStroke, zs, FixedG, theme, themeKey, getActiveVB });
 
 
   // --- SVG Highlight Rendering ---
@@ -515,8 +511,6 @@ function AppInner() {
     plazaCalls, callUser,
     bgmOn, setBgmOn, sfxOn, setSfxOn, bgmVol, setBgmVol, sfxVol, setSfxVol,
     handleLogout,
-    collectedAngles, setCollectedAngles, angleCollectStroke, setAngleCollectStroke,
-    angleOverlay, setAngleOverlay, angleCollectRef, recognizeAngle,
     editToneKey, setEditToneKey, customScripts, setCustomScripts,
     drawGoal, setDrawGoal,
     triangle, setTriangle, triMode, setTriMode, inputMode, setInputMode,
@@ -717,9 +711,6 @@ function AppInner() {
 
   if (screen === "admin-signups") return renderAdminSignupsScreen(ctx);
 
-  // --- Admin Angle Data Collection ---
-  // --- Admin Angle Data Collection (touch via ref + useEffect) ---
-  if (screen === "admin-angles") return renderAdminAnglesScreen(ctx);
 
   // --- Admin Script Editor ---
   if (screen === "admin-scripts") return renderAdminScriptsScreen(ctx);
