@@ -21,7 +21,7 @@ export function useJakdoCanvas(deps) {
     guideGoal, setGuideGoal, guideStep, setGuideStep, guideSteps,
     currentGuide, guideHandleTap, guideDataRef,
     circleSegIntersect, pushUndo, deleteArc, deleteRulerLine,
-    compassStep, MAX_ARCS, MAX_RULER_LINES,
+    compassStep, MAX_ARCS, MAX_RULER_LINES, drawGoal,
     // Additional from useUserSystem
     setCrossedEdges, setGuideIntersections, setGuideSubStep,
     setPressedSnap, setRulerStart, setUndoStack,
@@ -339,7 +339,26 @@ export function useJakdoCanvas(deps) {
       if (progress < 1) {
         animRef.current = requestAnimationFrame(animate);
       } else {
-        setBuildPhase("modeSelect");
+        if (drawGoal === "combined") {
+          // Check acute triangle
+          const { A, B, C } = triangle || {};
+          if (A && B && C) {
+            const ab = Math.sqrt((A.x-B.x)**2+(A.y-B.y)**2);
+            const bc = Math.sqrt((B.x-C.x)**2+(B.y-C.y)**2);
+            const ac = Math.sqrt((A.x-C.x)**2+(A.y-C.y)**2);
+            const ss = [ab,bc,ac].sort((x,y)=>x-y);
+            if (ss[0]**2 + ss[1]**2 <= ss[2]**2) {
+              showMsg("예각삼각형만 가능해요!\n다시 입력해주세요.", 3000);
+              setBuildPhase("input");
+              return;
+            }
+          }
+          setBuildPhase("combined");
+        } else if (drawGoal === "compare") {
+          setBuildPhase("compare");
+        } else {
+          setBuildPhase("modeSelect");
+        }
       }
     };
     animRef.current = requestAnimationFrame(animate);
