@@ -395,6 +395,8 @@ function AppInner() {
     rulerPhase, setRulerPhase, rulerStart,
     guideGoal, setGuideGoal, guideStep, setGuideStep,
     MAX_ARCS, MAX_RULER_LINES,
+    setCrossedEdges, setGuideIntersections, setGuideSubStep,
+    setPressedSnap, setRulerStart, setUndoStack,
   } = userSystem;
 
   // --- Jakdo/Canvas Logic (custom hook) ---
@@ -417,6 +419,11 @@ function AppInner() {
     currentGuide, guideHandleTap, guideDataRef,
     circleSegIntersect, pushUndo, deleteArc, deleteRulerLine,
     compassStep, MAX_ARCS, MAX_RULER_LINES,
+    // Additional from useUserSystem
+    setCrossedEdges, setGuideIntersections, setGuideSubStep,
+    setPressedSnap, setRulerStart, setUndoStack,
+    // Additional from App.jsx
+    setManualView, setSelectedProp, setShowProperties, setViewBox, toneKey,
   });
   const {
     svgCoords, handleJakdoDown, handleJakdoMove, handleJakdoUp,
