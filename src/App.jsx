@@ -655,7 +655,7 @@ function AppInner() {
         action: () => { if (hasSavedWork) setShowLoadDialog(true); else { setDrawGoal("construct"); enterDraw(false); } } },
       { icon: "⊙⊙", label: "외접원 옆에 내접원", desc: "두 원의 관계", compact: true, action: () => { setDrawGoal("compare"); resetAll(); setBuildPhase("input"); setTriMode("sss"); setScreen("draw"); } },
       { icon: "O · I", label: "외심 옆에 내심", desc: "예각삼각형 전용", compact: true, action: () => { setDrawGoal("combined"); resetAll(); setBuildPhase("input"); setTriMode("sss"); setScreen("draw"); } },
-      { icon: "∟≅", label: "직각삼각형의 합동 조건", desc: "RHA · RHS", compact: true, action: () => { setDrawGoal("congruence"); resetAll(); setBuildPhase("input"); setTriMode("rha"); setScreen("draw"); setProofStep(0); } },
+      { icon: "∟≅", label: "직각삼각형의 합동 조건", desc: "RHA · RHS", compact: true, action: () => setScreen("congruence") },
     ];
     return (
       <ScreenWrap title="그려서 공부하기" back="복습하기" backTo="study">
