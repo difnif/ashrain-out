@@ -7,7 +7,7 @@ import {
   circumcenter, incenter, pointToSegDist, closestPointOnLine,
   triangleType, angleAtVertex, detectTriangleFromStroke,
 } from "./config";
-import ErrorBoundary from "./components/ErrorBoundary";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import FloatingMsg from "./components/FloatingMsg";
 import InfoPanel from "./components/InfoPanel";
 import { renderLoginScreen, renderSignupScreen } from "./screens/AuthScreens";
@@ -26,6 +26,27 @@ import { useJakdoCanvas } from "./hooks/useJakdoCanvas";
 // ============================================================
 // ashrain.out — Interactive Geometry Education App (v5.1)
 // ============================================================
+
+// Extracted outside AppInner to prevent remount on state change (fixes input bouncing)
+function ScreenWrapOuter({ children, title, back, backTo, theme, playSfx, setScreen, themeKey }) {
+  return (
+    <div style={{ height: "100vh", maxHeight: "100dvh", display: "flex", flexDirection: "column", background: theme.bg, fontFamily: "'Noto Serif KR', serif", overflow: "hidden" }}>
+      <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Noto+Serif+KR:wght@400;700&display=swap" rel="stylesheet" />
+      <style>{`@keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes float { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-6px); } }`}</style>
+      {title && (
+        <div style={{ flexShrink: 0, display:"flex", alignItems:"center", padding:"16px 20px", borderBottom:`1px solid ${theme.border}` }}>
+          {back && <button onClick={() => { playSfx("click"); setScreen(backTo||"menu"); }} style={{ background:"none", border:"none", color:theme.textSec, fontSize:13, cursor:"pointer", fontFamily:"'Noto Serif KR', serif" }}>← {back}</button>}
+          <span style={{ flex:1, textAlign:"center", fontSize:14, fontWeight:700, color:theme.text, fontFamily:"'Playfair Display', serif" }}>{title}</span>
+          {back && <span style={{width:40}} />}
+        </div>
+      )}
+      <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch", display: "flex", flexDirection: "column" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 function AppInner() {
   // Session persistence
@@ -454,25 +475,12 @@ function AppInner() {
   // ============ SCREENS ============
 
   // --- Shared UI Helpers ---
-  const ScreenWrap = useMemo(() => ({ children, title, back, backTo }) => (
-    <div style={{ height: "100vh", maxHeight: "100dvh", display: "flex", flexDirection: "column", background: theme.bg, fontFamily: "'Noto Serif KR', serif", overflow: "hidden" }}>
-      <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Noto+Serif+KR:wght@400;700&display=swap" rel="stylesheet" />
-      <style>{`@keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
-        @keyframes float { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-6px); } }`}</style>
-      {title && (
-        <div style={{ flexShrink: 0, display:"flex", alignItems:"center", padding:"16px 20px", borderBottom:`1px solid ${theme.border}` }}>
-          {back && <button onClick={() => { playSfx("click"); setScreen(backTo||"menu"); }} style={{ background:"none", border:"none", color:theme.textSec, fontSize:13, cursor:"pointer", fontFamily:"'Noto Serif KR', serif" }}>← {back}</button>}
-          <span style={{ flex:1, textAlign:"center", fontSize:14, fontWeight:700, color:theme.text, fontFamily:"'Playfair Display', serif" }}>{title}</span>
-          {back && <span style={{width:40}} />}
-        </div>
-      )}
-      <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch", display: "flex", flexDirection: "column" }}>
-        {children}
-      </div>
-    </div>
-  ), [theme, themeKey, playSfx, setScreen, PASTEL]);
+  const ScreenWrap = useCallback(({ children, title, back, backTo }) => (
+    <ScreenWrapOuter theme={theme} playSfx={playSfx} setScreen={setScreen} themeKey={themeKey}
+      title={title} back={back} backTo={backTo}>{children}</ScreenWrapOuter>
+  ), [theme, themeKey, playSfx, setScreen]);
 
-  const MenuGrid = useMemo(() => ({ items, cols = 2 }) => (
+  const MenuGrid = ({ items, cols = 2 }) => (
     <div style={{ display:"grid", gridTemplateColumns:`repeat(${cols},1fr)`, gap:14, width:"min(440px,90vw)", padding:"0 16px", margin:"0 auto" }}>
       {items.map((item, i) => (
         <button key={i} onClick={() => { playSfx("click"); item.action?.(); }} disabled={item.disabled} style={{
@@ -493,7 +501,7 @@ function AppInner() {
         </button>
       ))}
     </div>
-  ), [theme, themeKey, playSfx, PASTEL]);
+  );
 
 
   // Context object for extracted screen render functions
