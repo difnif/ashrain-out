@@ -356,6 +356,16 @@ export function useJakdoCanvas(deps) {
           setBuildPhase("combined");
         } else if (drawGoal === "compare") {
           setBuildPhase("compare");
+          // Widen viewBox for side-by-side
+          if (triangle) {
+            const {A,B,C} = triangle;
+            const triW = Math.max(Math.abs(A.x-B.x),Math.abs(A.x-C.x),Math.abs(B.x-C.x));
+            const minX = Math.min(A.x,B.x,C.x) - triW*0.3;
+            const maxX = Math.max(A.x,B.x,C.x) + triW*1.8;
+            const minY = Math.min(A.y,B.y,C.y) - triW*0.5;
+            const maxY = Math.max(A.y,B.y,C.y) + triW*0.3;
+            setManualView({x:minX, y:minY, w:maxX-minX, h:maxY-minY});
+          }
         } else {
           setBuildPhase("modeSelect");
         }
