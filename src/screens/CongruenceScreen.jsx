@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import { PASTEL, dist } from "../config";
 
@@ -55,7 +56,7 @@ function HText({x,y,children,fill,fontSize=11,anchor="middle",fw=700}) {
   </g>;
 }
 
-export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg}) {
+export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPCProp}) {
   const [mode,setMode]=useState(null);
   const [inputMode,setInputMode]=useState("A");
   const [v1,setV1]=useState("");const [v2,setV2]=useState("");
@@ -74,11 +75,21 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg}) {
   const [drawStroke,setDrawStroke]=useState([]);
   const [drawnHyp,setDrawnHyp]=useState(null);
 
-  const baseW=Math.min(typeof window!=="undefined"?window.innerWidth-16:380,420);
+  // Landscape / PC detection
+  const [landscape, setLandscape] = useState(() => typeof window !== "undefined" && window.innerWidth > window.innerHeight);
+  useEffect(() => {
+    const check = () => setLandscape(window.innerWidth > window.innerHeight);
+    window.addEventListener("resize", check);
+    window.addEventListener("orientationchange", () => setTimeout(check, 200));
+    return () => { window.removeEventListener("resize", check); window.removeEventListener("orientationchange", check); };
+  }, []);
+  const isPC = isPCProp || landscape;
+
+  const baseW = Math.min(typeof window !== "undefined" ? window.innerWidth - 16 : 380, isPC ? 600 : 420);
   const [canvasW,setCanvasW]=useState(null);
   const [canvasH,setCanvasH]=useState(null);
   const W=canvasW||baseW;
-  const H=canvasH||300;
+  const H=canvasH||(isPC?Math.min(window.innerHeight-120,400):300);
   const dragRef=useRef(null);
   const defVb={x:0,y:0,w:W,h:H};
   const curVb=vb||defVb;
@@ -499,17 +510,18 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg}) {
         )}
 
         {phase!=="input"&&triData&&(
-          <div style={{animation:"fadeIn 0.4s ease"}}>
-            <div style={{padding:"10px 8px 6px",textAlign:"center",position:"relative"}}>
+          <div style={{animation:"fadeIn 0.4s ease", display: isPC ? "flex" : "block", flexDirection: isPC ? "row" : undefined, flex: 1, overflow: "hidden"}}>
+            {/* Canvas section */}
+            <div style={{padding:"10px 8px 6px",textAlign:"center",position:"relative", flex: isPC ? 1 : undefined, minWidth: isPC ? 0 : undefined}}>
               {renderCanvas()}
               {/* Bottom resize handle */}
-              <div onTouchStart={e=>{e.preventDefault();dragRef.current={axis:"h",startY:e.touches[0].clientY,startH:H};}}
+              {!isPC && <div onTouchStart={e=>{e.preventDefault();dragRef.current={axis:"h",startY:e.touches[0].clientY,startH:H};}}
                 onMouseDown={e=>{dragRef.current={axis:"h",startY:e.clientY,startH:H};}}
                 style={{height:12,cursor:"ns-resize",display:"flex",justifyContent:"center",alignItems:"center",marginTop:-2}}>
                 <div style={{width:40,height:4,borderRadius:2,background:theme.border}}/>
-              </div>
+              </div>}
             </div>
-            {phase==="proof"&&<>
+            {phase==="proof"&&<div style={{ flex: isPC ? 1 : undefined, overflowY: isPC ? "auto" : undefined, padding: isPC ? "10px 4px" : undefined }}>
               <div style={{margin:"0 12px 10px",padding:"18px 16px",borderRadius:16,
                 background:curHi.includes("proven")?`${C.proven}08`:theme.card,
                 border:`2px solid ${curHi.includes("proven")?C.proven:curHi.includes("asa")||curHi.includes("sas")?C.match:theme.border}`}}>
@@ -531,7 +543,7 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg}) {
               <div style={{display:"flex",justifyContent:"center",gap:4,paddingBottom:12}}>
                 {steps.map((_,i)=><div key={i} style={{width:i===proofStep?16:6,height:6,borderRadius:3,background:i<=proofStep?(curHi.includes("proven")?C.proven:PASTEL.coral):`${theme.textSec}30`,transition:"all 0.3s"}}/>)}
               </div>
-            </>}
+            </div>}
           </div>
         )}
       </div>
@@ -540,6 +552,6 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg}) {
 }
 
 export function renderCongruenceScreen(ctx) {
-  const {theme,setScreen,playSfx,showMsg}=ctx;
-  return <CongruenceScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg}/>;
+  const {theme,setScreen,playSfx,showMsg,isPC}=ctx;
+  return <CongruenceScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} isPC={isPC}/>;
 }
