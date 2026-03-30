@@ -16,6 +16,7 @@ import {
   renderAdminScreen, renderAdminStudentsScreen, renderAdminPermsScreen,
   renderAdminSignupsScreen, renderAdminScriptsScreen,
 } from "./screens/AdminScreens";
+import { renderCongruenceScreen } from "./screens/CongruenceScreen";
 import { renderSettingsScreen } from "./screens/SettingsScreen";
 import { renderDrawScreen } from "./screens/DrawScreen";
 import { getProperties as getPropertiesFn, renderHighlight as renderHighlightFn, renderTriangleAnim as renderTriangleAnimFn } from "./rendering/TriangleRenderer";
@@ -157,7 +158,8 @@ function AppInner() {
   const [signupMsg, setSignupMsg] = useState("");
   const [signupDone, setSignupDone] = useState(false);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
-  const [drawGoal, setDrawGoal] = useState("construct"); // "construct" | "compare" | "combined"
+  const [drawGoal, setDrawGoal] = useState("construct");
+  const [proofStep, setProofStep] = useState(0); // "construct" | "compare" | "combined"
   const [chatMsg, setChatMsg] = useState("");
   const [chatLog, setChatLog] = useState(() => { try { return JSON.parse(localStorage.getItem("ar_chat")) || []; } catch { return []; } });
   useFirestoreSync("plaza", "chat", chatLog, setChatLog, []);
@@ -431,7 +433,7 @@ function AppInner() {
     handleDrawStart, handleDrawMove, handleDrawEnd,
     handleJedoClick, resetAll, recognizeAngle, recognizeLine,
     saveToArchive, showArchiveSave, setShowArchiveSave, archivePublic, setArchivePublic,
-    failAnim, idleMsg, retryDraw,
+    failAnim, idleMsg, retryDraw, generateTriangle,
   } = jakdoCanvas;
 
   // --- Properties Data with highlight info ---
@@ -538,7 +540,8 @@ function AppInner() {
     renderTriangleAnim, renderHighlight, getProperties,
     handleJedoClick, handleJakdoDown, handleJakdoMove, handleJakdoUp, handleUndo,
     resetAll, generateTriangleWithBase,
-    failAnim, idleMsg, retryDraw,
+    failAnim, idleMsg, retryDraw, generateTriangle,
+    proofStep, setProofStep,
     undoStack, pressedSnap, guideIntersections, guideSubStep,
     ScreenWrap, MenuGrid,
   };
@@ -621,6 +624,9 @@ function AppInner() {
   }
 
 
+  // --- Congruence Screen ---
+  if (screen === "congruence") return renderCongruenceScreen(ctx);
+
   // --- Plaza (광장) Screen ---
   if (screen === "plaza") return renderPlazaScreen(ctx);
 
@@ -649,7 +655,7 @@ function AppInner() {
         action: () => { if (hasSavedWork) setShowLoadDialog(true); else { setDrawGoal("construct"); enterDraw(false); } } },
       { icon: "⊙⊙", label: "외접원 옆에 내접원", desc: "두 원의 관계", compact: true, action: () => { setDrawGoal("compare"); resetAll(); setBuildPhase("input"); setTriMode("sss"); setScreen("draw"); } },
       { icon: "O · I", label: "외심 옆에 내심", desc: "예각삼각형 전용", compact: true, action: () => { setDrawGoal("combined"); resetAll(); setBuildPhase("input"); setTriMode("sss"); setScreen("draw"); } },
-      { icon: "∟≅", label: "직각삼각형의 합동 조건", desc: "RHA · RHS", compact: true, disabled: true },
+      { icon: "∟≅", label: "직각삼각형의 합동 조건", desc: "RHA · RHS", compact: true, action: () => { setDrawGoal("congruence"); resetAll(); setBuildPhase("input"); setTriMode("rha"); setScreen("draw"); setProofStep(0); } },
     ];
     return (
       <ScreenWrap title="그려서 공부하기" back="복습하기" backTo="study">
