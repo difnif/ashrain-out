@@ -533,19 +533,19 @@ export function renderDrawScreen(ctx) {
             })()}
 
                         {/* Compare/Combined circle overlays on canvas */}
-            {(buildPhase === "compare" || buildPhase === "combined" || buildPhase === "congruence-proof") && triangle && (() => {
+            {(buildPhase === "compare" || buildPhase === "combined") && triangle && (() => {
               const { A, B, C } = triangle;
-              const skyC = "#3B82F6", mintC = "#10B981"; // vivid blue & green for visibility
+              const skyC = "#3B82F6", mintC = "#10B981";
 
-              // Circumcenter
-              const D = 2 * (A.x*(B.y-C.y) + B.x*(C.y-A.y) + C.x*(A.y-B.y));
-              const circumO = Math.abs(D) < 0.001 ? null : {
-                x: ((A.x*A.x+A.y*A.y)*(B.y-C.y) + (B.x*B.x+B.y*B.y)*(C.y-A.y) + (C.x*C.x+C.y*C.y)*(A.y-B.y)) / D,
-                y: ((A.x*A.x+A.y*A.y)*(C.x-B.x) + (B.x*B.x+B.y*B.y)*(A.x-C.x) + (C.x*C.x+C.y*C.y)*(B.x-A.x)) / D,
+              // Circumcenter & radius
+              const D2 = 2 * (A.x*(B.y-C.y) + B.x*(C.y-A.y) + C.x*(A.y-B.y));
+              const circumO = Math.abs(D2) < 0.001 ? null : {
+                x: ((A.x*A.x+A.y*A.y)*(B.y-C.y) + (B.x*B.x+B.y*B.y)*(C.y-A.y) + (C.x*C.x+C.y*C.y)*(A.y-B.y)) / D2,
+                y: ((A.x*A.x+A.y*A.y)*(C.x-B.x) + (B.x*B.x+B.y*B.y)*(A.x-C.x) + (C.x*C.x+C.y*C.y)*(B.x-A.x)) / D2,
               };
               const R = circumO ? Math.sqrt((circumO.x-A.x)**2 + (circumO.y-A.y)**2) : 0;
 
-              // Incenter
+              // Incenter & inradius
               const da = Math.sqrt((B.x-C.x)**2+(B.y-C.y)**2);
               const db = Math.sqrt((A.x-C.x)**2+(A.y-C.y)**2);
               const dc = Math.sqrt((A.x-B.x)**2+(A.y-B.y)**2);
@@ -557,70 +557,102 @@ export function renderDrawScreen(ctx) {
 
               // Foot of perpendicular
               const foot = (p, s1, s2) => {
-                const ddx = s2.x-s1.x, ddy = s2.y-s1.y, lenSq = ddx*ddx+ddy*ddy;
-                if (lenSq === 0) return s1;
-                const t = Math.max(0, Math.min(1, ((p.x-s1.x)*ddx+(p.y-s1.y)*ddy)/lenSq));
-                return { x: s1.x+t*ddx, y: s1.y+t*ddy };
+                const ddx=s2.x-s1.x, ddy=s2.y-s1.y, lenSq=ddx*ddx+ddy*ddy;
+                if (lenSq===0) return s1;
+                const t=Math.max(0,Math.min(1,((p.x-s1.x)*ddx+(p.y-s1.y)*ddy)/lenSq));
+                return { x:s1.x+t*ddx, y:s1.y+t*ddy };
               };
-              const fBC = foot(inI,B,C), fAC = foot(inI,A,C), fAB = foot(inI,A,B);
+              const fBC=foot(inI,B,C), fAC=foot(inI,A,C), fAB=foot(inI,A,B);
 
-              // Tick marks
-              const ticks = (p1, p2, n, color) => {
+              // Tick helper
+              const ticks = (p1,p2,n,color) => {
                 const mx=(p1.x+p2.x)/2, my=(p1.y+p2.y)/2;
                 const ddx=p2.x-p1.x, ddy=p2.y-p1.y, len=Math.sqrt(ddx*ddx+ddy*ddy);
-                if (len<1) return null;
+                if(len<1) return null;
                 const nx=-ddy/len*5*zs, ny=ddx/len*5*zs;
                 return Array.from({length:n},(_,i)=>{
                   const off=(i-(n-1)/2)*4*zs;
                   const bx=mx+(ddx/len)*off, by=my+(ddy/len)*off;
-                  return <line key={i} x1={bx-nx} y1={by-ny} x2={bx+nx} y2={by+ny} stroke={color} strokeWidth={1.5} />;
+                  return <line key={i} x1={bx-nx} y1={by-ny} x2={bx+nx} y2={by+ny} stroke={color} strokeWidth={1.5}/>;
                 });
               };
 
               // Right angle mark
-              const rightAngle = (ft, ctr, color) => {
+              const rightAngle = (ft,ctr,color) => {
                 const ddx=ctr.x-ft.x, ddy=ctr.y-ft.y, len=Math.sqrt(ddx*ddx+ddy*ddy);
-                if (len<1) return null;
-                const s = 5*zs;
+                if(len<1) return null;
+                const s=5*zs;
                 const nx=-ddy/len*s, ny=ddx/len*s, ux=ddx/len*s, uy=ddy/len*s;
-                return <path d={`M ${ft.x+nx} ${ft.y+ny} L ${ft.x+nx+ux} ${ft.y+ny+uy} L ${ft.x+ux} ${ft.y+uy}`} fill="none" stroke={color} strokeWidth={1} />;
+                return <path d={`M ${ft.x+nx} ${ft.y+ny} L ${ft.x+nx+ux} ${ft.y+ny+uy} L ${ft.x+ux} ${ft.y+uy}`} fill="none" stroke={color} strokeWidth={1}/>;
               };
 
               if (!circumO) return null;
 
-              const showCircum = buildPhase === "compare" || buildPhase === "combined";
-              const showIn = buildPhase === "compare" || buildPhase === "combined";
+              if (buildPhase === "combined") {
+                // === Combined: both circles on ONE triangle ===
+                return (
+                  <g style={{animation:"fadeIn 0.5s ease"}}>
+                    <circle cx={circumO.x} cy={circumO.y} r={R} fill="none" stroke={skyC} strokeWidth={2.5} opacity={0.9}/>
+                    <circle cx={circumO.x} cy={circumO.y} r={4*zs} fill={skyC}/>
+                    <text x={circumO.x+8*zs} y={circumO.y-8*zs} fontSize={11*zs} fill={skyC} fontWeight={700}>O</text>
+                    <line x1={circumO.x} y1={circumO.y} x2={A.x} y2={A.y} stroke={skyC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
+                    <line x1={circumO.x} y1={circumO.y} x2={B.x} y2={B.y} stroke={skyC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
+                    <line x1={circumO.x} y1={circumO.y} x2={C.x} y2={C.y} stroke={skyC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
+                    {ticks(circumO,A,1,skyC)}{ticks(circumO,B,1,skyC)}{ticks(circumO,C,1,skyC)}
+
+                    <circle cx={inI.x} cy={inI.y} r={rr} fill="none" stroke={mintC} strokeWidth={2.5} opacity={0.9}/>
+                    <circle cx={inI.x} cy={inI.y} r={4*zs} fill={mintC}/>
+                    <text x={inI.x-12*zs} y={inI.y+14*zs} fontSize={11*zs} fill={mintC} fontWeight={700}>I</text>
+                    <line x1={inI.x} y1={inI.y} x2={fBC.x} y2={fBC.y} stroke={mintC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
+                    <line x1={inI.x} y1={inI.y} x2={fAC.x} y2={fAC.y} stroke={mintC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
+                    <line x1={inI.x} y1={inI.y} x2={fAB.x} y2={fAB.y} stroke={mintC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
+                    {rightAngle(fBC,inI,mintC)}{rightAngle(fAC,inI,mintC)}{rightAngle(fAB,inI,mintC)}
+                    {ticks(inI,fBC,2,mintC)}{ticks(inI,fAC,2,mintC)}{ticks(inI,fAB,2,mintC)}
+                  </g>
+                );
+              }
+
+              // === Compare: TWO triangles side by side ===
+              // Shift original triangle left, clone right
+              const vb = getActiveVB();
+              const cx = (A.x+B.x+C.x)/3, cy = (A.y+B.y+C.y)/3;
+              const shift = vb.w * 0.28;
+
+              // Cloned triangle (shifted right for inscribed)
+              const A2={x:A.x+shift*2,y:A.y}, B2={x:B.x+shift*2,y:B.y}, C2={x:C.x+shift*2,y:C.y};
+              const inI2 = {x:inI.x+shift*2, y:inI.y};
+              const fBC2={x:fBC.x+shift*2,y:fBC.y}, fAC2={x:fAC.x+shift*2,y:fAC.y}, fAB2={x:fAB.x+shift*2,y:fAB.y};
+              const circumO2 = {x:circumO.x-shift, y:circumO.y};
+              // Shift original left
+              const oA={x:A.x-shift,y:A.y}, oB={x:B.x-shift,y:B.y}, oC={x:C.x-shift,y:C.y};
+              const oCircumO={x:circumO.x-shift, y:circumO.y};
 
               return (
-                <g style={{ animation: "fadeIn 0.5s ease" }}>
-                  {/* Circumscribed circle */}
-                  {showCircum && <>
-                    <circle cx={circumO.x} cy={circumO.y} r={R} fill="none" stroke={skyC} strokeWidth={2.5} opacity={0.9} />
-                    <circle cx={circumO.x} cy={circumO.y} r={4*zs} fill={skyC} />
-                    <text x={circumO.x+8*zs} y={circumO.y-8*zs} fontSize={11*zs} fill={skyC} fontWeight={700} fontFamily="'Playfair Display', serif">O</text>
-                    <line x1={circumO.x} y1={circumO.y} x2={A.x} y2={A.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="5,3" opacity={0.7} />
-                    <line x1={circumO.x} y1={circumO.y} x2={B.x} y2={B.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="5,3" opacity={0.7} />
-                    <line x1={circumO.x} y1={circumO.y} x2={C.x} y2={C.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="5,3" opacity={0.7} />
-                    {ticks(circumO, A, 1, skyC)}
-                    {ticks(circumO, B, 1, skyC)}
-                    {ticks(circumO, C, 1, skyC)}
-                  </>}
+                <g style={{animation:"fadeIn 0.5s ease"}}>
+                  {/* Left: original triangle shifted left + circumscribed circle */}
+                  <polygon points={`${oA.x},${oA.y} ${oB.x},${oB.y} ${oC.x},${oC.y}`} fill="none" stroke={theme.text} strokeWidth={2} strokeLinejoin="round"/>
+                  <circle cx={oCircumO.x} cy={oCircumO.y} r={R} fill="none" stroke={skyC} strokeWidth={2.5} opacity={0.9}/>
+                  <circle cx={oCircumO.x} cy={oCircumO.y} r={4*zs} fill={skyC}/>
+                  <text x={oCircumO.x+8*zs} y={oCircumO.y-8*zs} fontSize={11*zs} fill={skyC} fontWeight={700}>O</text>
+                  <line x1={oCircumO.x} y1={oCircumO.y} x2={oA.x} y2={oA.y} stroke={skyC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
+                  <line x1={oCircumO.x} y1={oCircumO.y} x2={oB.x} y2={oB.y} stroke={skyC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
+                  <line x1={oCircumO.x} y1={oCircumO.y} x2={oC.x} y2={oC.y} stroke={skyC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
+                  {ticks(oCircumO,oA,1,skyC)}{ticks(oCircumO,oB,1,skyC)}{ticks(oCircumO,oC,1,skyC)}
+                  <text x={(oA.x+oB.x+oC.x)/3} y={Math.min(oA.y,oB.y,oC.y)-12*zs} textAnchor="middle" fontSize={10*zs} fill={skyC} fontWeight={700}>외접원</text>
 
-                  {/* Inscribed circle */}
-                  {showIn && <>
-                    <circle cx={inI.x} cy={inI.y} r={rr} fill="none" stroke={mintC} strokeWidth={2.5} opacity={0.9} />
-                    <circle cx={inI.x} cy={inI.y} r={4*zs} fill={mintC} />
-                    <text x={inI.x-12*zs} y={inI.y+14*zs} fontSize={11*zs} fill={mintC} fontWeight={700} fontFamily="'Playfair Display', serif">I</text>
-                    <line x1={inI.x} y1={inI.y} x2={fBC.x} y2={fBC.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="5,3" opacity={0.7} />
-                    <line x1={inI.x} y1={inI.y} x2={fAC.x} y2={fAC.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="5,3" opacity={0.7} />
-                    <line x1={inI.x} y1={inI.y} x2={fAB.x} y2={fAB.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="5,3" opacity={0.7} />
-                    {rightAngle(fBC, inI, mintC)}
-                    {rightAngle(fAC, inI, mintC)}
-                    {rightAngle(fAB, inI, mintC)}
-                    {ticks(inI, fBC, 2, mintC)}
-                    {ticks(inI, fAC, 2, mintC)}
-                    {ticks(inI, fAB, 2, mintC)}
-                  </>}
+                  {/* Right: clone triangle + inscribed circle */}
+                  <polygon points={`${A2.x},${A2.y} ${B2.x},${B2.y} ${C2.x},${C2.y}`} fill="none" stroke={theme.text} strokeWidth={2} strokeLinejoin="round"/>
+                  <circle cx={inI2.x} cy={inI2.y} r={rr} fill="none" stroke={mintC} strokeWidth={2.5} opacity={0.9}/>
+                  <circle cx={inI2.x} cy={inI2.y} r={4*zs} fill={mintC}/>
+                  <text x={inI2.x-12*zs} y={inI2.y+14*zs} fontSize={11*zs} fill={mintC} fontWeight={700}>I</text>
+                  <line x1={inI2.x} y1={inI2.y} x2={fBC2.x} y2={fBC2.y} stroke={mintC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
+                  <line x1={inI2.x} y1={inI2.y} x2={fAC2.x} y2={fAC2.y} stroke={mintC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
+                  <line x1={inI2.x} y1={inI2.y} x2={fAB2.x} y2={fAB2.y} stroke={mintC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
+                  {rightAngle(fBC2,inI2,mintC)}{rightAngle(fAC2,inI2,mintC)}{rightAngle(fAB2,inI2,mintC)}
+                  {ticks(inI2,fBC2,2,mintC)}{ticks(inI2,fAC2,2,mintC)}{ticks(inI2,fAB2,2,mintC)}
+                  <text x={(A2.x+B2.x+C2.x)/3} y={Math.min(A2.y,B2.y,C2.y)-12*zs} textAnchor="middle" fontSize={10*zs} fill={mintC} fontWeight={700}>내접원</text>
+
+
                 </g>
               );
             })()}
