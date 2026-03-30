@@ -1,7 +1,7 @@
 import {
   PASTEL, dist, midpoint, lerp, perpBisector, angleBisector,
   lineIntersection, circumcenter, incenter,
-  pointToSegDist, triangleType, angleAtVertex,
+  pointToSegDist, closestPointOnLine, triangleType, angleAtVertex,
 } from "../config";
 
 export function getProperties(ctx) {
