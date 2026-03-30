@@ -30,7 +30,8 @@ export function renderDrawScreen(ctx) {
     renderTriangleAnim, renderHighlight, getProperties,
     handleJedoClick, handleJakdoDown, handleJakdoMove, handleJakdoUp, handleUndo,
     resetAll, generateTriangleWithBase, drawGoal,
-    failAnim, idleMsg, retryDraw,
+    failAnim, idleMsg, retryDraw, generateTriangle,
+    proofStep, setProofStep,
     undoStack, pressedSnap, guideIntersections, guideSubStep, user,
     ScreenWrap, MenuGrid,
   } = ctx;
@@ -58,7 +59,7 @@ export function renderDrawScreen(ctx) {
           }}>← 목록</button>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             {/* Undo button */}
-            {(buildPhase === "jedo" || buildPhase === "jakdo" || buildPhase === "modeSelect" || buildPhase === "properties" || buildPhase === "compare" || buildPhase === "combined") && (
+            {(buildPhase === "jedo" || buildPhase === "jakdo" || buildPhase === "modeSelect" || buildPhase === "properties" || buildPhase === "compare" || buildPhase === "combined" || buildPhase === "congruence-proof") && (
               <button onClick={() => { handleUndo(); }} disabled={undoStack.length === 0} style={{
                 background: "none", border: `1px solid ${undoStack.length > 0 ? theme.border : "transparent"}`,
                 borderRadius: 8, padding: "4px 10px", fontSize: 12, cursor: undoStack.length > 0 ? "pointer" : "default",
@@ -108,9 +109,9 @@ export function renderDrawScreen(ctx) {
                 </button>
               ))}
             </div>
-            {/* SSS/SAS/ASA sub-tabs (both modes) */}
+            {/* Mode sub-tabs */}
             <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-              {[["sss", "SSS"], ["sas", "SAS"], ["asa", "ASA"]].map(([key, label]) => (
+              {(drawGoal === "congruence" ? [["rha", "RHA"], ["rhs", "RHS"]] : [["sss", "SSS"], ["sas", "SAS"], ["asa", "ASA"]]).map(([key, label]) => (
                 <button key={key} onClick={() => {
                   setTriMode(key);
                   setDrawStrokes([]); setDrawAngles([]); setCurrentStroke([]);
@@ -124,7 +125,67 @@ export function renderDrawScreen(ctx) {
                 }}>{label}</button>
               ))}
             </div>
-            {/* B-mode drawing guide */}
+
+            {/* RHA/RHS input (congruence mode) */}
+            {drawGoal === "congruence" && inputMode === "A" && triMode === "rha" && (
+              <div style={{ display: "flex", gap: 6, marginBottom: 8, animation: "fadeIn 0.3s ease" }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 10, color: theme.textSec }}>빗변</label>
+                  <input type="number" placeholder="c" value={sssInput.c || ""} 
+                    onChange={e => setSssInput(p => ({ ...p, c: e.target.value }))}
+                    style={{ width: "100%", padding: "10px", borderRadius: 10, border: `1.5px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 14, textAlign: "center", fontFamily: "'Noto Serif KR', serif" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 10, color: theme.textSec }}>예각 (°)</label>
+                  <input type="number" placeholder="α" value={sssInput.a || ""}
+                    onChange={e => setSssInput(p => ({ ...p, a: e.target.value }))}
+                    style={{ width: "100%", padding: "10px", borderRadius: 10, border: `1.5px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 14, textAlign: "center", fontFamily: "'Noto Serif KR', serif" }} />
+                </div>
+                <button onClick={() => {
+                  const hyp = parseFloat(sssInput.c), ang = parseFloat(sssInput.a);
+                  if (!hyp || !ang || ang <= 0 || ang >= 90) { showMsg("빗변과 예각(0°~90°)을 입력하세요", 2000); return; }
+                  const rad = ang * Math.PI / 180;
+                  const adj = hyp * Math.cos(rad), opp = hyp * Math.sin(rad);
+                  const tri = generateTriangle(opp, adj, hyp);
+                  if (tri) { setTriangle({ ...tri, mode: "rha", rhAngle: ang }); setBuildPhase("animating"); setProofStep(0); }
+                  else showMsg("삼각형을 만들 수 없어요!", 2000);
+                }} style={{
+                  alignSelf: "flex-end", padding: "10px 16px", borderRadius: 10, border: "none",
+                  background: `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
+                  color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                }}>그리기</button>
+              </div>
+            )}
+            {drawGoal === "congruence" && inputMode === "A" && triMode === "rhs" && (
+              <div style={{ display: "flex", gap: 6, marginBottom: 8, animation: "fadeIn 0.3s ease" }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 10, color: theme.textSec }}>빗변</label>
+                  <input type="number" placeholder="c" value={sssInput.c || ""}
+                    onChange={e => setSssInput(p => ({ ...p, c: e.target.value }))}
+                    style={{ width: "100%", padding: "10px", borderRadius: 10, border: `1.5px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 14, textAlign: "center", fontFamily: "'Noto Serif KR', serif" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 10, color: theme.textSec }}>한 변</label>
+                  <input type="number" placeholder="a" value={sssInput.a || ""}
+                    onChange={e => setSssInput(p => ({ ...p, a: e.target.value }))}
+                    style={{ width: "100%", padding: "10px", borderRadius: 10, border: `1.5px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 14, textAlign: "center", fontFamily: "'Noto Serif KR', serif" }} />
+                </div>
+                <button onClick={() => {
+                  const hyp = parseFloat(sssInput.c), leg = parseFloat(sssInput.a);
+                  if (!hyp || !leg || leg >= hyp) { showMsg("빗변이 다른 한 변보다 길어야 해요!", 2000); return; }
+                  const other = Math.sqrt(hyp * hyp - leg * leg);
+                  const tri = generateTriangle(leg, other, hyp);
+                  if (tri) { setTriangle({ ...tri, mode: "rhs", rhLeg: leg }); setBuildPhase("animating"); setProofStep(0); }
+                  else showMsg("삼각형을 만들 수 없어요!", 2000);
+                }} style={{
+                  alignSelf: "flex-end", padding: "10px 16px", borderRadius: 10, border: "none",
+                  background: `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
+                  color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                }}>그리기</button>
+              </div>
+            )}
+
+                        {/* B-mode drawing guide */}
             {inputMode === "B" && drawStep > 0 && (
               <p style={{ fontSize: 12, color: PASTEL.coral, textAlign: "center", margin: 0, fontFamily: "'Noto Serif KR', serif", fontWeight: 700 }}>
                 {drawStep === 1 && triMode === "sss" && `세 변을 각각 그려주세요! (${drawStrokes.length}/3)`}
@@ -408,10 +469,73 @@ export function renderDrawScreen(ctx) {
             ))}
 
 
-            {/* Compare/Combined circle overlays on canvas */}
-            {(buildPhase === "compare" || buildPhase === "combined") && triangle && (() => {
+
+            {/* Congruence proof overlay */}
+            {buildPhase === "congruence-proof" && triangle && (() => {
               const { A, B, C } = triangle;
-              const skyC = PASTEL.sky, mintC = PASTEL.mint;
+              // Clone triangle shifted right
+              const dx = (Math.max(A.x,B.x,C.x) - Math.min(A.x,B.x,C.x)) * 0.15;
+              const dy = (Math.max(A.y,B.y,C.y) - Math.min(A.y,B.y,C.y)) * 0.3;
+              const A2 = { x: A.x + dx, y: A.y + dy };
+              const B2 = { x: B.x + dx, y: B.y + dy };
+              const C2 = { x: C.x + dx, y: C.y + dy };
+
+              // Find right angle vertex (closest to 90°)
+              const angA = Math.acos(((B.x-A.x)*(C.x-A.x)+(B.y-A.y)*(C.y-A.y)) / (Math.sqrt((B.x-A.x)**2+(B.y-A.y)**2)*Math.sqrt((C.x-A.x)**2+(C.y-A.y)**2))) * 180/Math.PI;
+              const angB = Math.acos(((A.x-B.x)*(C.x-B.x)+(A.y-B.y)*(C.y-B.y)) / (Math.sqrt((A.x-B.x)**2+(A.y-B.y)**2)*Math.sqrt((C.x-B.x)**2+(C.y-B.y)**2))) * 180/Math.PI;
+              const angC = 180 - angA - angB;
+
+              const hiColor = "#F59E0B"; // amber for highlight
+              const isRHA = triMode === "rha";
+
+              return (
+                <g>
+                  {/* Clone triangle */}
+                  <polygon points={`${A2.x},${A2.y} ${B2.x},${B2.y} ${C2.x},${C2.y}`}
+                    fill="none" stroke="#3B82F6" strokeWidth={2} strokeLinejoin="round" strokeDasharray="6,3" opacity={0.7} />
+                  <text x={A2.x} y={A2.y-6*zs} textAnchor="middle" fontSize={10*zs} fill="#3B82F6" fontWeight={700}>A'</text>
+                  <text x={B2.x} y={B2.y+14*zs} textAnchor="middle" fontSize={10*zs} fill="#3B82F6" fontWeight={700}>B'</text>
+                  <text x={C2.x} y={C2.y-6*zs} textAnchor="middle" fontSize={10*zs} fill="#3B82F6" fontWeight={700}>C'</text>
+
+                  {/* Right angle mark on original */}
+                  {(() => {
+                    // Mark right angle at vertex closest to 90°
+                    let rv, p1, p2;
+                    if (Math.abs(angA-90) < Math.abs(angB-90) && Math.abs(angA-90) < Math.abs(angC-90)) { rv=A; p1=B; p2=C; }
+                    else if (Math.abs(angB-90) < Math.abs(angC-90)) { rv=B; p1=A; p2=C; }
+                    else { rv=C; p1=A; p2=B; }
+                    const d1 = Math.sqrt((p1.x-rv.x)**2+(p1.y-rv.y)**2);
+                    const d2 = Math.sqrt((p2.x-rv.x)**2+(p2.y-rv.y)**2);
+                    const s = 10*zs;
+                    const u1x=(p1.x-rv.x)/d1*s, u1y=(p1.y-rv.y)/d1*s;
+                    const u2x=(p2.x-rv.x)/d2*s, u2y=(p2.y-rv.y)/d2*s;
+                    return <path d={`M ${rv.x+u1x} ${rv.y+u1y} L ${rv.x+u1x+u2x} ${rv.y+u1y+u2y} L ${rv.x+u2x} ${rv.y+u2y}`}
+                      fill="none" stroke={hiColor} strokeWidth={2} />;
+                  })()}
+
+                  {/* Proof step highlights */}
+                  {proofStep >= 2 && isRHA && (
+                    <g>
+                      {/* Highlight hypotenuse */}
+                      <line x1={B.x} y1={B.y} x2={C.x} y2={C.y} stroke={hiColor} strokeWidth={3.5} opacity={0.5} />
+                      <line x1={B2.x} y1={B2.y} x2={C2.x} y2={C2.y} stroke={hiColor} strokeWidth={3.5} opacity={0.5} />
+                    </g>
+                  )}
+                  {proofStep >= 2 && !isRHA && (
+                    <g>
+                      {/* Highlight hypotenuse + known leg */}
+                      <line x1={B.x} y1={B.y} x2={C.x} y2={C.y} stroke={hiColor} strokeWidth={3.5} opacity={0.5} />
+                      <line x1={B2.x} y1={B2.y} x2={C2.x} y2={C2.y} stroke={hiColor} strokeWidth={3.5} opacity={0.5} />
+                    </g>
+                  )}
+                </g>
+              );
+            })()}
+
+                        {/* Compare/Combined circle overlays on canvas */}
+            {(buildPhase === "compare" || buildPhase === "combined" || buildPhase === "congruence-proof") && triangle && (() => {
+              const { A, B, C } = triangle;
+              const skyC = "#3B82F6", mintC = "#10B981"; // vivid blue & green for visibility
 
               // Circumcenter
               const D = 2 * (A.x*(B.y-C.y) + B.x*(C.y-A.y) + C.x*(A.y-B.y));
@@ -471,12 +595,12 @@ export function renderDrawScreen(ctx) {
                 <g style={{ animation: "fadeIn 0.5s ease" }}>
                   {/* Circumscribed circle */}
                   {showCircum && <>
-                    <circle cx={circumO.x} cy={circumO.y} r={R} fill="none" stroke={skyC} strokeWidth={1.5} opacity={0.8} />
-                    <circle cx={circumO.x} cy={circumO.y} r={3*zs} fill={skyC} />
+                    <circle cx={circumO.x} cy={circumO.y} r={R} fill="none" stroke={skyC} strokeWidth={2.5} opacity={0.9} />
+                    <circle cx={circumO.x} cy={circumO.y} r={4*zs} fill={skyC} />
                     <text x={circumO.x+8*zs} y={circumO.y-8*zs} fontSize={11*zs} fill={skyC} fontWeight={700} fontFamily="'Playfair Display', serif">O</text>
-                    <line x1={circumO.x} y1={circumO.y} x2={A.x} y2={A.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="4,3" opacity={0.6} />
-                    <line x1={circumO.x} y1={circumO.y} x2={B.x} y2={B.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="4,3" opacity={0.6} />
-                    <line x1={circumO.x} y1={circumO.y} x2={C.x} y2={C.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="4,3" opacity={0.6} />
+                    <line x1={circumO.x} y1={circumO.y} x2={A.x} y2={A.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="5,3" opacity={0.7} />
+                    <line x1={circumO.x} y1={circumO.y} x2={B.x} y2={B.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="5,3" opacity={0.7} />
+                    <line x1={circumO.x} y1={circumO.y} x2={C.x} y2={C.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="5,3" opacity={0.7} />
                     {ticks(circumO, A, 1, skyC)}
                     {ticks(circumO, B, 1, skyC)}
                     {ticks(circumO, C, 1, skyC)}
@@ -484,12 +608,12 @@ export function renderDrawScreen(ctx) {
 
                   {/* Inscribed circle */}
                   {showIn && <>
-                    <circle cx={inI.x} cy={inI.y} r={rr} fill="none" stroke={mintC} strokeWidth={1.5} opacity={0.8} />
-                    <circle cx={inI.x} cy={inI.y} r={3*zs} fill={mintC} />
+                    <circle cx={inI.x} cy={inI.y} r={rr} fill="none" stroke={mintC} strokeWidth={2.5} opacity={0.9} />
+                    <circle cx={inI.x} cy={inI.y} r={4*zs} fill={mintC} />
                     <text x={inI.x-12*zs} y={inI.y+14*zs} fontSize={11*zs} fill={mintC} fontWeight={700} fontFamily="'Playfair Display', serif">I</text>
-                    <line x1={inI.x} y1={inI.y} x2={fBC.x} y2={fBC.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="4,3" opacity={0.6} />
-                    <line x1={inI.x} y1={inI.y} x2={fAC.x} y2={fAC.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="4,3" opacity={0.6} />
-                    <line x1={inI.x} y1={inI.y} x2={fAB.x} y2={fAB.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="4,3" opacity={0.6} />
+                    <line x1={inI.x} y1={inI.y} x2={fBC.x} y2={fBC.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="5,3" opacity={0.7} />
+                    <line x1={inI.x} y1={inI.y} x2={fAC.x} y2={fAC.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="5,3" opacity={0.7} />
+                    <line x1={inI.x} y1={inI.y} x2={fAB.x} y2={fAB.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="5,3" opacity={0.7} />
                     {rightAngle(fBC, inI, mintC)}
                     {rightAngle(fAC, inI, mintC)}
                     {rightAngle(fAB, inI, mintC)}
@@ -680,6 +804,7 @@ export function renderDrawScreen(ctx) {
                buildPhase === "modeSelect" ? "모드 선택" :
                buildPhase === "compare" ? "외접원 ↔ 내접원" :
                buildPhase === "combined" ? "외심 ↔ 내심" :
+               buildPhase === "congruence-proof" ? (triMode === "rha" ? "RHA 합동 증명" : "RHS 합동 증명") :
                buildPhase === "jedo" ? "제도 모드" :
                buildPhase === "jakdo" ? "작도 도구" : "도구"}
             </div>
@@ -771,7 +896,7 @@ export function renderDrawScreen(ctx) {
         )}
 
         {/* B-mode drawing status panel */}
-        {buildPhase === "input" && inputMode === "B" && drawStep > 0 && !triangle && (
+        {buildPhase === "input" && inputMode === "B" && drawStep > 0 && !triangle && drawGoal !== "congruence" && (
           <div style={{
             padding: "14px 20px", borderTop: `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.3s ease",
@@ -800,7 +925,7 @@ export function renderDrawScreen(ctx) {
         )}
 
         {/* B-mode initial guide (no mode selected or step 0) */}
-        {buildPhase === "input" && inputMode === "B" && drawStep === 0 && !triangle && (
+        {buildPhase === "input" && inputMode === "B" && drawStep === 0 && !triangle && drawGoal !== "congruence" && (
           <div style={{
             padding: "16px 20px", borderTop: `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.3s ease", textAlign: "center",
@@ -816,7 +941,7 @@ export function renderDrawScreen(ctx) {
         )}
 
         {/* Input Panel (original for non-PC or when PC properties not shown) */}
-        {buildPhase === "input" && !triangle && triMode === "sss" && (
+        {buildPhase === "input" && !triangle && triMode === "sss" && drawGoal !== "congruence" && (
           <div style={{
             padding: isPC ? "16px" : "20px", borderTop: isPC ? "none" : `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.4s ease",
@@ -850,7 +975,7 @@ export function renderDrawScreen(ctx) {
           </div>
         )}
 
-        {buildPhase === "input" && !triangle && triMode === "sas" && (
+        {buildPhase === "input" && !triangle && triMode === "sas" && drawGoal !== "congruence" && (
           <div style={{
             padding: isPC ? "16px" : "20px", borderTop: isPC ? "none" : `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.4s ease",
@@ -896,7 +1021,7 @@ export function renderDrawScreen(ctx) {
           </div>
         )}
 
-        {buildPhase === "input" && !triangle && triMode === "asa" && (
+        {buildPhase === "input" && !triangle && triMode === "asa" && drawGoal !== "congruence" && (
           <div style={{
             padding: isPC ? "16px" : "20px", borderTop: isPC ? "none" : `1px solid ${theme.border}`,
             background: theme.card, animation: "fadeIn 0.4s ease",
@@ -1023,8 +1148,95 @@ export function renderDrawScreen(ctx) {
         )}
 
 
-        {/* Compare/Combined formulas */}
-        {(buildPhase === "compare" || buildPhase === "combined") && triangle && (() => {
+
+        {/* Congruence proof panel */}
+        {buildPhase === "congruence-proof" && triangle && (() => {
+          const { A, B, C, sides, scale } = triangle;
+          const isRHA = triMode === "rha";
+          const sc = scale || 1;
+          
+          // Calculate angles
+          const ab = Math.sqrt((A.x-B.x)**2+(A.y-B.y)**2)/sc;
+          const bc = Math.sqrt((B.x-C.x)**2+(B.y-C.y)**2)/sc;
+          const ac = Math.sqrt((A.x-C.x)**2+(A.y-C.y)**2)/sc;
+          const angA = Math.acos(((B.x-A.x)*(C.x-A.x)+(B.y-A.y)*(C.y-A.y)) / (Math.sqrt((B.x-A.x)**2+(B.y-A.y)**2)*Math.sqrt((C.x-A.x)**2+(C.y-A.y)**2))) * 180/Math.PI;
+          const angB = Math.acos(((A.x-B.x)*(C.x-B.x)+(A.y-B.y)*(C.y-B.y)) / (Math.sqrt((A.x-B.x)**2+(A.y-B.y)**2)*Math.sqrt((C.x-B.x)**2+(C.y-B.y)**2))) * 180/Math.PI;
+          const angC = 180 - angA - angB;
+          const hyp = Math.max(ab,bc,ac);
+
+          const rhaSteps = [
+            { title: "RHA 조건 확인", text: "두 직각삼각형의 빗변과 한 예각이 같아요.", color: PASTEL.coral },
+            { title: "\u{1F914} 이건 ASA 합동?", text: "ASA 합동은 \'각-변-각\'이에요.\n빗변 양 끝의 두 각을 알아야 하는데,\n지금은 직각과 한 예각만 알고 있어요.", color: "#3B82F6" },
+            { title: "\u{1F4A1} 핵심: 삼각형 내각의 합", text: "삼각형 내각의 합은 180\u00B0이므로:\n세 번째 각 = 180\u00B0 - 90\u00B0 - \u03B1\n= (90\u00B0 - \u03B1)", color: "#F59E0B" },
+            { title: "\u2705 결론: ASA 합동!", text: "\u2220B = \u03B1, BC(빗변), \u2220C = 90\u00B0 - \u03B1\n\u2192 각-변-각을 모두 알게 됐어요!\n\n\u2234 RHA 합동 = ASA 합동 \u2713", color: "#10B981" },
+          ];
+          
+          const rhsSteps = [
+            { title: "RHS 조건 확인", text: "두 직각삼각형의 빗변과 한 변이 같아요.", color: PASTEL.coral },
+            { title: "\u{1F914} 이건 SSS 합동?", text: "SSS 합동은 세 변이 모두 같아야 해요.\n지금은 두 변만 알고 있어요.\n나머지 한 변을 구할 수 있을까요?", color: "#3B82F6" },
+            { title: "\u{1F4A1} 핵심: 피타고라스 정리", text: "직각삼각형이니까:\nc\u00B2 = a\u00B2 + b\u00B2\n\u2234 나머지 변 = \u221A(빗변\u00B2 - 알려진 변\u00B2)", color: "#F59E0B" },
+            { title: "\u{1F4D0} 계산", text: "두 삼각형 모두 같은 계산:\n나머지 변의 길이가 동일!", color: "#F59E0B" },
+            { title: "\u2705 결론: SSS 합동!", text: "세 변이 모두 같으므로:\nSSS 합동 조건 성립!\n\n\u2234 RHS 합동 = SSS 합동 \u2713", color: "#10B981" },
+          ];
+
+          const steps = isRHA ? rhaSteps : rhsSteps;
+          const step = steps[Math.min(proofStep, steps.length - 1)];
+
+          return (
+            <div style={{ padding: "12px 16px", borderTop: `1px solid ${theme.border}`, background: theme.card, animation: "fadeIn 0.3s ease" }}>
+              {/* Step indicator */}
+              <div style={{ display: "flex", gap: 4, marginBottom: 10, justifyContent: "center" }}>
+                {steps.map((s, i) => (
+                  <div key={i} style={{
+                    width: proofStep === i ? 20 : 8, height: 8, borderRadius: 4,
+                    background: proofStep >= i ? s.color : theme.border,
+                    transition: "all 0.3s ease",
+                  }} />
+                ))}
+              </div>
+
+              {/* Step content */}
+              <div style={{
+                padding: "16px", borderRadius: 14,
+                background: `${step.color}10`, border: `1.5px solid ${step.color}40`,
+                animation: "fadeIn 0.3s ease",
+              }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: step.color, marginBottom: 8 }}>{step.title}</div>
+                <div style={{ fontSize: 13, color: theme.text, lineHeight: 1.8, whiteSpace: "pre-line" }}>{step.text}</div>
+              </div>
+
+              {/* Navigation */}
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <button onClick={() => setProofStep(Math.max(0, proofStep - 1))}
+                  disabled={proofStep === 0}
+                  style={{
+                    flex: 1, padding: "10px", borderRadius: 10,
+                    border: `1px solid ${proofStep > 0 ? theme.border : "transparent"}`,
+                    background: theme.card, color: proofStep > 0 ? theme.text : theme.lineLight,
+                    fontSize: 12, cursor: proofStep > 0 ? "pointer" : "default",
+                  }}>← 이전</button>
+                {proofStep < steps.length - 1 ? (
+                  <button onClick={() => setProofStep(proofStep + 1)}
+                    style={{
+                      flex: 1, padding: "10px", borderRadius: 10, border: "none",
+                      background: `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
+                      color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    }}>다음 →</button>
+                ) : (
+                  <button onClick={() => { resetAll(); setBuildPhase("input"); setTriMode(triMode); setProofStep(0); }}
+                    style={{
+                      flex: 1, padding: "10px", borderRadius: 10, border: "none",
+                      background: `linear-gradient(135deg, ${PASTEL.mint}, #10B981)`,
+                      color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    }}>다른 삼각형으로 →</button>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+                {/* Compare/Combined formulas */}
+        {(buildPhase === "compare" || buildPhase === "combined" || buildPhase === "congruence-proof") && triangle && (() => {
           const { A, B, C, sides, scale } = triangle;
           const da = Math.sqrt((B.x-C.x)**2+(B.y-C.y)**2);
           const db = Math.sqrt((A.x-C.x)**2+(A.y-C.y)**2);
@@ -1034,7 +1246,7 @@ export function renderDrawScreen(ctx) {
           const areaVal = Math.sqrt(sp*(sp-da)*(sp-db)*(sp-dc));
           const R_val = (da*db*dc) / (4*areaVal);
           const r_val = areaVal / sp;
-          const skyC = PASTEL.sky, mintC = PASTEL.mint;
+          const skyC = "#3A8FC2", mintC = "#2E9E6B";
           const [a,b,cc2] = sides;
 
           return (
