@@ -1,4 +1,4 @@
-import { PASTEL } from "../config";
+import { PASTEL, dist } from "../config";
 import FloatingMsg from "../components/FloatingMsg";
 import InfoPanel from "../components/InfoPanel";
 
