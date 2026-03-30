@@ -5,6 +5,7 @@ import {
 } from "../config";
 
 export function getProperties(ctx) {
+  if (!ctx) return [];
   const { triangle, jedoCenter, jedoCircle, jedoType } = ctx;
     if (!triangle || !jedoCenter || !jedoCircle) return [];
     const { A, B, C } = triangle;
@@ -74,6 +75,7 @@ export function getProperties(ctx) {
   };
 
 export function renderHighlight(ctx) {
+  if (!ctx || !ctx.triangle) return null;
   const { triangle, jedoCenter, jedoCircle, jedoType, selectedProp, zs, FixedG,
     jedoLines, jakdoArcs, jakdoRulerLines } = ctx;
     if (!selectedProp || !triangle || !jedoCenter || !jedoCircle) return null;
@@ -464,6 +466,7 @@ export function renderHighlight(ctx) {
   };
 
 export function renderTriangleAnim(ctx) {
+  if (!ctx) return null;
   const { triangle, animPhase, animProgress, buildPhase, jedoLines, jedoCenter,
     jedoCircle, jedoType, jakdoArcs, jakdoRulerLines, jakdoSnaps,
     svgSize, floatingMsg, showProperties, selectedProp,
