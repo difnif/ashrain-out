@@ -454,7 +454,7 @@ function AppInner() {
   // ============ SCREENS ============
 
   // --- Shared UI Helpers ---
-  const ScreenWrap = ({ children, title, back, backTo }) => (
+  const ScreenWrap = useMemo(() => ({ children, title, back, backTo }) => (
     <div style={{ height: "100vh", maxHeight: "100dvh", display: "flex", flexDirection: "column", background: theme.bg, fontFamily: "'Noto Serif KR', serif", overflow: "hidden" }}>
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Noto+Serif+KR:wght@400;700&display=swap" rel="stylesheet" />
       <style>{`@keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
@@ -470,9 +470,9 @@ function AppInner() {
         {children}
       </div>
     </div>
-  );
+  ), [theme, themeKey, playSfx, setScreen, PASTEL]);
 
-  const MenuGrid = ({ items, cols = 2 }) => (
+  const MenuGrid = useMemo(() => ({ items, cols = 2 }) => (
     <div style={{ display:"grid", gridTemplateColumns:`repeat(${cols},1fr)`, gap:14, width:"min(440px,90vw)", padding:"0 16px", margin:"0 auto" }}>
       {items.map((item, i) => (
         <button key={i} onClick={() => { playSfx("click"); item.action?.(); }} disabled={item.disabled} style={{
@@ -493,7 +493,7 @@ function AppInner() {
         </button>
       ))}
     </div>
-  );
+  ), [theme, themeKey, playSfx, PASTEL]);
 
 
   // Context object for extracted screen render functions
