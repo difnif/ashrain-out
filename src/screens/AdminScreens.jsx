@@ -66,11 +66,11 @@ export function renderAdminStudentsScreen(ctx) {
                   <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{req.name}</div>
                   <div style={{ fontSize: 10, color: theme.textSec }}>@{req.id} · {ROLES[req.role || "student"]}</div>
                 </div>
-                <button onClick={() => { approveSignup(i); playSfx("success"); showMsg(`${req.name} 승인!`, 1500); }} style={{
+                <button onClick={() => { approveSignup(req.id); playSfx("success"); showMsg(`${req.name} 승인!`, 1500); }} style={{
                   padding: "6px 14px", borderRadius: 8, border: "none",
                   background: PASTEL.mint, color: "white", fontSize: 11, fontWeight: 700, cursor: "pointer",
                 }}>승인</button>
-                <button onClick={() => { rejectSignup(i); playSfx("pop"); }} style={{
+                <button onClick={() => { rejectSignup(req.id); playSfx("pop"); }} style={{
                   padding: "6px 10px", borderRadius: 8, border: `1px solid ${PASTEL.coral}`,
                   background: "transparent", color: PASTEL.coral, fontSize: 11, cursor: "pointer",
                 }}>거절</button>
