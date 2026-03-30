@@ -407,6 +407,100 @@ export function renderDrawScreen(ctx) {
               </FixedG>
             ))}
 
+
+            {/* Compare/Combined circle overlays on canvas */}
+            {(buildPhase === "compare" || buildPhase === "combined") && triangle && (() => {
+              const { A, B, C } = triangle;
+              const skyC = PASTEL.sky, mintC = PASTEL.mint;
+
+              // Circumcenter
+              const D = 2 * (A.x*(B.y-C.y) + B.x*(C.y-A.y) + C.x*(A.y-B.y));
+              const circumO = Math.abs(D) < 0.001 ? null : {
+                x: ((A.x*A.x+A.y*A.y)*(B.y-C.y) + (B.x*B.x+B.y*B.y)*(C.y-A.y) + (C.x*C.x+C.y*C.y)*(A.y-B.y)) / D,
+                y: ((A.x*A.x+A.y*A.y)*(C.x-B.x) + (B.x*B.x+B.y*B.y)*(A.x-C.x) + (C.x*C.x+C.y*C.y)*(B.x-A.x)) / D,
+              };
+              const R = circumO ? Math.sqrt((circumO.x-A.x)**2 + (circumO.y-A.y)**2) : 0;
+
+              // Incenter
+              const da = Math.sqrt((B.x-C.x)**2+(B.y-C.y)**2);
+              const db = Math.sqrt((A.x-C.x)**2+(A.y-C.y)**2);
+              const dc = Math.sqrt((A.x-B.x)**2+(A.y-B.y)**2);
+              const perim = da+db+dc;
+              const inI = { x: (da*A.x+db*B.x+dc*C.x)/perim, y: (da*A.y+db*B.y+dc*C.y)/perim };
+              const sp = perim/2;
+              const areaVal = Math.sqrt(sp*(sp-da)*(sp-db)*(sp-dc));
+              const rr = areaVal / sp;
+
+              // Foot of perpendicular
+              const foot = (p, s1, s2) => {
+                const ddx = s2.x-s1.x, ddy = s2.y-s1.y, lenSq = ddx*ddx+ddy*ddy;
+                if (lenSq === 0) return s1;
+                const t = Math.max(0, Math.min(1, ((p.x-s1.x)*ddx+(p.y-s1.y)*ddy)/lenSq));
+                return { x: s1.x+t*ddx, y: s1.y+t*ddy };
+              };
+              const fBC = foot(inI,B,C), fAC = foot(inI,A,C), fAB = foot(inI,A,B);
+
+              // Tick marks
+              const ticks = (p1, p2, n, color) => {
+                const mx=(p1.x+p2.x)/2, my=(p1.y+p2.y)/2;
+                const ddx=p2.x-p1.x, ddy=p2.y-p1.y, len=Math.sqrt(ddx*ddx+ddy*ddy);
+                if (len<1) return null;
+                const nx=-ddy/len*5*zs, ny=ddx/len*5*zs;
+                return Array.from({length:n},(_,i)=>{
+                  const off=(i-(n-1)/2)*4*zs;
+                  const bx=mx+(ddx/len)*off, by=my+(ddy/len)*off;
+                  return <line key={i} x1={bx-nx} y1={by-ny} x2={bx+nx} y2={by+ny} stroke={color} strokeWidth={1.5} />;
+                });
+              };
+
+              // Right angle mark
+              const rightAngle = (ft, ctr, color) => {
+                const ddx=ctr.x-ft.x, ddy=ctr.y-ft.y, len=Math.sqrt(ddx*ddx+ddy*ddy);
+                if (len<1) return null;
+                const s = 5*zs;
+                const nx=-ddy/len*s, ny=ddx/len*s, ux=ddx/len*s, uy=ddy/len*s;
+                return <path d={`M ${ft.x+nx} ${ft.y+ny} L ${ft.x+nx+ux} ${ft.y+ny+uy} L ${ft.x+ux} ${ft.y+uy}`} fill="none" stroke={color} strokeWidth={1} />;
+              };
+
+              if (!circumO) return null;
+
+              const showCircum = buildPhase === "compare" || buildPhase === "combined";
+              const showIn = buildPhase === "compare" || buildPhase === "combined";
+
+              return (
+                <g style={{ animation: "fadeIn 0.5s ease" }}>
+                  {/* Circumscribed circle */}
+                  {showCircum && <>
+                    <circle cx={circumO.x} cy={circumO.y} r={R} fill="none" stroke={skyC} strokeWidth={1.5} opacity={0.8} />
+                    <circle cx={circumO.x} cy={circumO.y} r={3*zs} fill={skyC} />
+                    <text x={circumO.x+8*zs} y={circumO.y-8*zs} fontSize={11*zs} fill={skyC} fontWeight={700} fontFamily="'Playfair Display', serif">O</text>
+                    <line x1={circumO.x} y1={circumO.y} x2={A.x} y2={A.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="4,3" opacity={0.6} />
+                    <line x1={circumO.x} y1={circumO.y} x2={B.x} y2={B.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="4,3" opacity={0.6} />
+                    <line x1={circumO.x} y1={circumO.y} x2={C.x} y2={C.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="4,3" opacity={0.6} />
+                    {ticks(circumO, A, 1, skyC)}
+                    {ticks(circumO, B, 1, skyC)}
+                    {ticks(circumO, C, 1, skyC)}
+                  </>}
+
+                  {/* Inscribed circle */}
+                  {showIn && <>
+                    <circle cx={inI.x} cy={inI.y} r={rr} fill="none" stroke={mintC} strokeWidth={1.5} opacity={0.8} />
+                    <circle cx={inI.x} cy={inI.y} r={3*zs} fill={mintC} />
+                    <text x={inI.x-12*zs} y={inI.y+14*zs} fontSize={11*zs} fill={mintC} fontWeight={700} fontFamily="'Playfair Display', serif">I</text>
+                    <line x1={inI.x} y1={inI.y} x2={fBC.x} y2={fBC.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="4,3" opacity={0.6} />
+                    <line x1={inI.x} y1={inI.y} x2={fAC.x} y2={fAC.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="4,3" opacity={0.6} />
+                    <line x1={inI.x} y1={inI.y} x2={fAB.x} y2={fAB.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="4,3" opacity={0.6} />
+                    {rightAngle(fBC, inI, mintC)}
+                    {rightAngle(fAC, inI, mintC)}
+                    {rightAngle(fAB, inI, mintC)}
+                    {ticks(inI, fBC, 2, mintC)}
+                    {ticks(inI, fAC, 2, mintC)}
+                    {ticks(inI, fAB, 2, mintC)}
+                  </>}
+                </g>
+              );
+            })()}
+
             {/* Fail animation */}
             {failAnim && (
               <FixedG x={svgSize.w / 2} y={svgSize.h / 2}>
@@ -929,218 +1023,51 @@ export function renderDrawScreen(ctx) {
         )}
 
 
-        {/* Compare View — 외접원 옆에 내접원 / 외심 옆에 내심 */}
+        {/* Compare/Combined formulas */}
         {(buildPhase === "compare" || buildPhase === "combined") && triangle && (() => {
           const { A, B, C, sides, scale } = triangle;
-          const [sa, sb, sc] = sides.map(v => v * (scale || 1));
+          const da = Math.sqrt((B.x-C.x)**2+(B.y-C.y)**2);
+          const db = Math.sqrt((A.x-C.x)**2+(A.y-C.y)**2);
+          const dc = Math.sqrt((A.x-B.x)**2+(A.y-B.y)**2);
+          const perim = da+db+dc;
+          const sp = perim/2;
+          const areaVal = Math.sqrt(sp*(sp-da)*(sp-db)*(sp-dc));
+          const R_val = (da*db*dc) / (4*areaVal);
+          const r_val = areaVal / sp;
+          const skyC = PASTEL.sky, mintC = PASTEL.mint;
+          const [a,b,cc2] = sides;
 
-          // Circumcenter & radius
-          const circumO = (() => {
-            const D = 2 * (A.x * (B.y - C.y) + B.x * (C.y - A.y) + C.x * (A.y - B.y));
-            if (Math.abs(D) < 0.001) return null;
-            const ux = ((A.x*A.x + A.y*A.y) * (B.y - C.y) + (B.x*B.x + B.y*B.y) * (C.y - A.y) + (C.x*C.x + C.y*C.y) * (A.y - B.y)) / D;
-            const uy = ((A.x*A.x + A.y*A.y) * (C.x - B.x) + (B.x*B.x + B.y*B.y) * (A.x - C.x) + (C.x*C.x + C.y*C.y) * (B.x - A.x)) / D;
-            return { x: ux, y: uy };
-          })();
-          const R = circumO ? Math.sqrt((circumO.x - A.x) ** 2 + (circumO.y - A.y) ** 2) : 0;
-
-          // Incenter & radius
-          const da = Math.sqrt((B.x-C.x)**2 + (B.y-C.y)**2);
-          const db = Math.sqrt((A.x-C.x)**2 + (A.y-C.y)**2);
-          const dc = Math.sqrt((A.x-B.x)**2 + (A.y-B.y)**2);
-          const perim = da + db + dc;
-          const inI = { x: (da*A.x + db*B.x + dc*C.x) / perim, y: (da*A.y + db*B.y + dc*C.y) / perim };
-          const sp = perim / 2;
-          const areaVal = Math.sqrt(sp * (sp - da) * (sp - db) * (sp - dc));
-          const rr = areaVal / sp;
-
-          // Foot of perpendicular from I to each side
-          const foot = (p, s1, s2) => {
-            const dx = s2.x - s1.x, dy = s2.y - s1.y;
-            const lenSq = dx*dx + dy*dy;
-            if (lenSq === 0) return s1;
-            const t = Math.max(0, Math.min(1, ((p.x-s1.x)*dx + (p.y-s1.y)*dy) / lenSq));
-            return { x: s1.x + t * dx, y: s1.y + t * dy };
-          };
-          const fBC = foot(inI, B, C), fAC = foot(inI, A, C), fAB = foot(inI, A, B);
-
-          // Equal length tick marks
-          const ticks = (p1, p2, n, color) => {
-            const mx = (p1.x+p2.x)/2, my = (p1.y+p2.y)/2;
-            const dx = p2.x-p1.x, dy = p2.y-p1.y;
-            const len = Math.sqrt(dx*dx+dy*dy);
-            if (len < 1) return null;
-            const nx = -dy/len*5, ny = dx/len*5;
-            return Array.from({length: n}, (_, i) => {
-              const off = (i - (n-1)/2) * 4;
-              const bx = mx + (dx/len)*off, by = my + (dy/len)*off;
-              return <line key={i} x1={bx-nx} y1={by-ny} x2={bx+nx} y2={by+ny} stroke={color} strokeWidth={1.5} />;
-            });
-          };
-
-          // Right angle mark
-          const rightAngle = (ft, center, color) => {
-            const dx = center.x - ft.x, dy = center.y - ft.y;
-            const len = Math.sqrt(dx*dx + dy*dy);
-            if (len < 1) return null;
-            const nx = -dy/len*5, ny = dx/len*5;
-            const ux = dx/len*5, uy = dy/len*5;
-            return <path d={`M ${ft.x+nx} ${ft.y+ny} L ${ft.x+nx+ux} ${ft.y+ny+uy} L ${ft.x+ux} ${ft.y+uy}`}
-              fill="none" stroke={color} strokeWidth={1} />;
-          };
-
-          const vb = getActiveVB();
-          const skyC = PASTEL.sky, mintC = PASTEL.mint, coralC = PASTEL.coral;
-
-          if (buildPhase === "combined" && circumO) {
-            // === Combined: both on one triangle ===
-            return (
-              <div style={{ padding: "16px", borderTop: `1px solid ${theme.border}`, background: theme.card, animation: "fadeIn 0.5s ease" }}>
-                <svg width="100%" viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} style={{ maxHeight: 280 }}>
-                  {/* Triangle */}
-                  <polygon points={`${A.x},${A.y} ${B.x},${B.y} ${C.x},${C.y}`}
-                    fill="none" stroke={coralC} strokeWidth={2} strokeLinejoin="round" />
-                  <text x={A.x} y={A.y-8} textAnchor="middle" fontSize={11*zs} fill={coralC} fontWeight={700}>A</text>
-                  <text x={B.x} y={B.y+14*zs} textAnchor="middle" fontSize={11*zs} fill={coralC} fontWeight={700}>B</text>
-                  <text x={C.x} y={C.y-8} textAnchor="middle" fontSize={11*zs} fill={coralC} fontWeight={700}>C</text>
-
-                  {/* Circumscribed circle + O */}
-                  <circle cx={circumO.x} cy={circumO.y} r={R} fill="none" stroke={skyC} strokeWidth={1.5} />
-                  <circle cx={circumO.x} cy={circumO.y} r={3*zs} fill={skyC} />
-                  <text x={circumO.x+8*zs} y={circumO.y-8*zs} fontSize={10*zs} fill={skyC} fontWeight={700}>O</text>
-
-                  {/* Inscribed circle + I */}
-                  <circle cx={inI.x} cy={inI.y} r={rr} fill="none" stroke={mintC} strokeWidth={1.5} />
-                  <circle cx={inI.x} cy={inI.y} r={3*zs} fill={mintC} />
-                  <text x={inI.x-12*zs} y={inI.y+14*zs} fontSize={10*zs} fill={mintC} fontWeight={700}>I</text>
-
-                  {/* O → vertices (R) */}
-                  <line x1={circumO.x} y1={circumO.y} x2={A.x} y2={A.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="4,3" />
-                  <line x1={circumO.x} y1={circumO.y} x2={B.x} y2={B.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="4,3" />
-                  <line x1={circumO.x} y1={circumO.y} x2={C.x} y2={C.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="4,3" />
-                  {ticks(circumO, A, 1, skyC)}
-                  {ticks(circumO, B, 1, skyC)}
-                  {ticks(circumO, C, 1, skyC)}
-
-                  {/* I → feet (r) */}
-                  <line x1={inI.x} y1={inI.y} x2={fBC.x} y2={fBC.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="4,3" />
-                  <line x1={inI.x} y1={inI.y} x2={fAC.x} y2={fAC.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="4,3" />
-                  <line x1={inI.x} y1={inI.y} x2={fAB.x} y2={fAB.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="4,3" />
-                  {rightAngle(fBC, inI, mintC)}
-                  {rightAngle(fAC, inI, mintC)}
-                  {rightAngle(fAB, inI, mintC)}
-                  {ticks(inI, fBC, 2, mintC)}
-                  {ticks(inI, fAC, 2, mintC)}
-                  {ticks(inI, fAB, 2, mintC)}
-                </svg>
-
-                {/* Formulas */}
-                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                  <div style={{ flex: 1, background: `${skyC}08`, borderRadius: 12, padding: "12px", border: `1px solid ${skyC}30` }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: skyC, marginBottom: 6 }}>외심 O</div>
-                    <div style={{ fontSize: 12, color: theme.text, lineHeight: 1.8 }}>
-                      <div>OA = OB = OC = <b>R</b></div>
-                      <div>R = abc / 4S</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: skyC, marginTop: 4 }}>R ≈ {(R / (scale || 1)).toFixed(2)}</div>
-                    </div>
+          return (
+            <div style={{ padding: "12px 16px", borderTop: `1px solid ${theme.border}`, background: theme.card, animation: "fadeIn 0.5s ease" }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                <div style={{ flex: 1, background: `${skyC}08`, borderRadius: 12, padding: "12px", border: `1px solid ${skyC}30` }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: skyC, marginBottom: 6 }}>
+                    {buildPhase === "combined" ? "외심 O" : "외접원"}
                   </div>
-                  <div style={{ flex: 1, background: `${mintC}08`, borderRadius: 12, padding: "12px", border: `1px solid ${mintC}30` }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: mintC, marginBottom: 6 }}>내심 I</div>
-                    <div style={{ fontSize: 12, color: theme.text, lineHeight: 1.8 }}>
-                      <div>ID₁ = ID₂ = ID₃ = <b>r</b></div>
-                      <div>r = S / s</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: mintC, marginTop: 4 }}>r ≈ {(rr / (scale || 1)).toFixed(2)}</div>
-                    </div>
+                  <div style={{ fontSize: 12, color: theme.text, lineHeight: 1.8 }}>
+                    <div>OA = OB = OC = <b>R</b></div>
+                    <div>R = abc / 4S</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: skyC, marginTop: 4 }}>R ≈ {R_val.toFixed(2)}</div>
                   </div>
                 </div>
-
-                <button onClick={() => { resetAll(); setBuildPhase("input"); setTriMode("sss"); }} style={{
-                  width: "100%", marginTop: 12, padding: "12px", borderRadius: 12,
-                  border: `1.5px solid ${theme.border}`, background: theme.card,
-                  color: theme.textSec, fontSize: 12, cursor: "pointer",
-                }}>다른 삼각형 그리기</button>
+                <div style={{ flex: 1, background: `${mintC}08`, borderRadius: 12, padding: "12px", border: `1px solid ${mintC}30` }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: mintC, marginBottom: 6 }}>
+                    {buildPhase === "combined" ? "내심 I" : "내접원"}
+                  </div>
+                  <div style={{ fontSize: 12, color: theme.text, lineHeight: 1.8 }}>
+                    <div>ID₁ = ID₂ = ID₃ = <b>r</b></div>
+                    <div>r = S / s</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: mintC, marginTop: 4 }}>r ≈ {r_val.toFixed(2)}</div>
+                  </div>
+                </div>
               </div>
-            );
-          }
-
-          if (buildPhase === "compare" && circumO) {
-            // === Side by side: left=circumscribed, right=inscribed ===
-            return (
-              <div style={{ padding: "16px", borderTop: `1px solid ${theme.border}`, background: theme.card, animation: "fadeIn 0.5s ease" }}>
-                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                  {/* Left: Circumscribed */}
-                  <div style={{ flex: 1, textAlign: "center" }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: skyC, marginBottom: 4 }}>외접원</div>
-                    <svg width="100%" viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} style={{ maxHeight: 200, background: `${skyC}05`, borderRadius: 10, border: `1px solid ${theme.border}` }}>
-                      <polygon points={`${A.x},${A.y} ${B.x},${B.y} ${C.x},${C.y}`} fill="none" stroke={coralC} strokeWidth={2} strokeLinejoin="round" />
-                      <circle cx={circumO.x} cy={circumO.y} r={R} fill="none" stroke={skyC} strokeWidth={1.5} />
-                      <circle cx={circumO.x} cy={circumO.y} r={3*zs} fill={skyC} />
-                      <text x={circumO.x+8*zs} y={circumO.y-6*zs} fontSize={10*zs} fill={skyC} fontWeight={700}>O</text>
-                      <line x1={circumO.x} y1={circumO.y} x2={A.x} y2={A.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="4,3" />
-                      <line x1={circumO.x} y1={circumO.y} x2={B.x} y2={B.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="4,3" />
-                      <line x1={circumO.x} y1={circumO.y} x2={C.x} y2={C.y} stroke={skyC} strokeWidth={0.8} strokeDasharray="4,3" />
-                      {ticks(circumO, A, 1, skyC)}
-                      {ticks(circumO, B, 1, skyC)}
-                      {ticks(circumO, C, 1, skyC)}
-                      <text x={A.x} y={A.y-6*zs} textAnchor="middle" fontSize={9*zs} fill={coralC}>A</text>
-                      <text x={B.x} y={B.y+12*zs} textAnchor="middle" fontSize={9*zs} fill={coralC}>B</text>
-                      <text x={C.x} y={C.y-6*zs} textAnchor="middle" fontSize={9*zs} fill={coralC}>C</text>
-                    </svg>
-                  </div>
-                  {/* Right: Inscribed */}
-                  <div style={{ flex: 1, textAlign: "center" }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: mintC, marginBottom: 4 }}>내접원</div>
-                    <svg width="100%" viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} style={{ maxHeight: 200, background: `${mintC}05`, borderRadius: 10, border: `1px solid ${theme.border}` }}>
-                      <polygon points={`${A.x},${A.y} ${B.x},${B.y} ${C.x},${C.y}`} fill="none" stroke={coralC} strokeWidth={2} strokeLinejoin="round" />
-                      <circle cx={inI.x} cy={inI.y} r={rr} fill="none" stroke={mintC} strokeWidth={1.5} />
-                      <circle cx={inI.x} cy={inI.y} r={3*zs} fill={mintC} />
-                      <text x={inI.x+8*zs} y={inI.y-6*zs} fontSize={10*zs} fill={mintC} fontWeight={700}>I</text>
-                      <line x1={inI.x} y1={inI.y} x2={fBC.x} y2={fBC.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="4,3" />
-                      <line x1={inI.x} y1={inI.y} x2={fAC.x} y2={fAC.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="4,3" />
-                      <line x1={inI.x} y1={inI.y} x2={fAB.x} y2={fAB.y} stroke={mintC} strokeWidth={0.8} strokeDasharray="4,3" />
-                      {rightAngle(fBC, inI, mintC)}
-                      {rightAngle(fAC, inI, mintC)}
-                      {rightAngle(fAB, inI, mintC)}
-                      {ticks(inI, fBC, 2, mintC)}
-                      {ticks(inI, fAC, 2, mintC)}
-                      {ticks(inI, fAB, 2, mintC)}
-                      <text x={A.x} y={A.y-6*zs} textAnchor="middle" fontSize={9*zs} fill={coralC}>A</text>
-                      <text x={B.x} y={B.y+12*zs} textAnchor="middle" fontSize={9*zs} fill={coralC}>B</text>
-                      <text x={C.x} y={C.y-6*zs} textAnchor="middle" fontSize={9*zs} fill={coralC}>C</text>
-                    </svg>
-                  </div>
-                </div>
-
-                {/* Formulas side by side */}
-                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                  <div style={{ flex: 1, background: `${skyC}08`, borderRadius: 12, padding: "12px", border: `1px solid ${skyC}30` }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: skyC, marginBottom: 6 }}>외접원 공식</div>
-                    <div style={{ fontSize: 12, color: theme.text, lineHeight: 1.8 }}>
-                      <div>OA = OB = OC = <b>R</b></div>
-                      <div>R = abc / 4S</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: skyC, marginTop: 4 }}>R ≈ {(R / (scale || 1)).toFixed(2)}</div>
-                    </div>
-                  </div>
-                  <div style={{ flex: 1, background: `${mintC}08`, borderRadius: 12, padding: "12px", border: `1px solid ${mintC}30` }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: mintC, marginBottom: 6 }}>내접원 공식</div>
-                    <div style={{ fontSize: 12, color: theme.text, lineHeight: 1.8 }}>
-                      <div>ID₁ = ID₂ = ID₃ = <b>r</b></div>
-                      <div>r = S / s</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: mintC, marginTop: 4 }}>r ≈ {(rr / (scale || 1)).toFixed(2)}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <button onClick={() => { resetAll(); setBuildPhase("input"); setTriMode("sss"); }} style={{
-                  width: "100%", marginTop: 12, padding: "12px", borderRadius: 12,
-                  border: `1.5px solid ${theme.border}`, background: theme.card,
-                  color: theme.textSec, fontSize: 12, cursor: "pointer",
-                }}>다른 삼각형 그리기</button>
-              </div>
-            );
-          }
-
-          return null;
+              <button onClick={() => { resetAll(); setBuildPhase("input"); setTriMode("sss"); }} style={{
+                width: "100%", padding: "10px", borderRadius: 12,
+                border: `1.5px solid ${theme.border}`, background: theme.card,
+                color: theme.textSec, fontSize: 12, cursor: "pointer",
+              }}>다른 삼각형 그리기</button>
+            </div>
+          );
         })()}
 
         {/* Jakdo panel */}
