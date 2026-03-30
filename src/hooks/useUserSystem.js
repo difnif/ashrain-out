@@ -205,7 +205,7 @@ export function useUserSystem(deps) {
   const approveSignup = useCallback((reqId) => {
     const req = signupRequests.find(r => r.id === reqId);
     if (!req) return;
-    setMembers(prev => [...prev, { id: req.id, name: req.name, nickname: "", pw: req.pw, role: req.role || "student" }]);
+    setMembers(prev => [...prev, { id: req.id, name: req.name, nickname: "", pw: req.pw, role: req.role || "external" }]);
     setSignupRequests(prev => prev.filter(r => r.id !== reqId));
     playSfx("success");
   }, [signupRequests, playSfx]);
