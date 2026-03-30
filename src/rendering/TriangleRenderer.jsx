@@ -81,7 +81,7 @@ export function renderHighlight(ctx) {
     if (!selectedProp || !triangle || !jedoCenter || !jedoCircle) return null;
     const { A, B, C } = triangle;
     const O = jedoCenter;
-    const prop = getProperties().find(p => p.id === selectedProp);
+    const prop = getProperties(ctx).find(p => p.id === selectedProp);
     if (!prop) return null;
     const hc = prop.color; // highlight color
     const hcAlpha = hc + "40"; // with transparency
