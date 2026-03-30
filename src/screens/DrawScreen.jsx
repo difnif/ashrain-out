@@ -1246,7 +1246,7 @@ export function renderDrawScreen(ctx) {
           const areaVal = Math.sqrt(sp*(sp-da)*(sp-db)*(sp-dc));
           const R_val = (da*db*dc) / (4*areaVal);
           const r_val = areaVal / sp;
-          const skyC = "#3A8FC2", mintC = "#2E9E6B";
+          const skyC = "#3B82F6", mintC = "#10B981";
           const [a,b,cc2] = sides;
 
           return (
