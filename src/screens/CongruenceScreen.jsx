@@ -45,6 +45,16 @@ function RT({children}) {
   })}</>;
 }
 
+// SVG text with background halo for readability
+function HText({x,y,children,fill,fontSize=11,anchor="middle",fw=700}) {
+  return <g>
+    <text x={x} y={y} textAnchor={anchor} fontSize={fontSize} fontWeight={fw}
+      fill="none" stroke="white" strokeWidth={4} strokeLinejoin="round" paintOrder="stroke">{children}</text>
+    <text x={x} y={y} textAnchor={anchor} fontSize={fontSize} fontWeight={fw}
+      fill={fill}>{children}</text>
+  </g>;
+}
+
 export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg}) {
   const [mode,setMode]=useState(null);
   const [inputMode,setInputMode]=useState("A");
@@ -64,8 +74,12 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg}) {
   const [drawStroke,setDrawStroke]=useState([]);
   const [drawnHyp,setDrawnHyp]=useState(null);
 
-  const W=Math.min(typeof window!=="undefined"?window.innerWidth-16:380,420);
-  const H=300;
+  const baseW=Math.min(typeof window!=="undefined"?window.innerWidth-16:380,420);
+  const [canvasW,setCanvasW]=useState(null);
+  const [canvasH,setCanvasH]=useState(null);
+  const W=canvasW||baseW;
+  const H=canvasH||300;
+  const dragRef=useRef(null);
   const defVb={x:0,y:0,w:W,h:H};
   const curVb=vb||defVb;
 
@@ -116,18 +130,31 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg}) {
   const onTouchStart2=useCallback(e=>{
     if(e.touches.length===2){
       const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-      pinchRef.current={d,vb:{...curVb}};
+      const mx=(e.touches[0].clientX+e.touches[1].clientX)/2;
+      const my=(e.touches[0].clientY+e.touches[1].clientY)/2;
+      pinchRef.current={d,vb:{...curVb},mx,my};
+    } else if(e.touches.length===1&&curVb!==defVb){
+      pinchRef.current={pan:true,sx:e.touches[0].clientX,sy:e.touches[0].clientY,vb:{...curVb}};
     }
-  },[curVb]);
+  },[curVb,defVb]);
   const onTouchMove2=useCallback(e=>{
-    if(e.touches.length===2&&pinchRef.current){
-      e.preventDefault();
+    if(!pinchRef.current)return;
+    e.preventDefault();
+    if(e.touches.length===2&&!pinchRef.current.pan){
       const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
       const scale=pinchRef.current.d/d;
       const ov=pinchRef.current.vb;
       const cx=ov.x+ov.w/2,cy=ov.y+ov.h/2;
-      const nw=Math.max(100,Math.min(W*3,ov.w*scale)),nh=Math.max(75,Math.min(H*3,ov.h*scale));
+      const nw=Math.max(50,Math.min(W*4,ov.w*scale));
+      const nh=Math.max(50,Math.min(H*4,ov.h*scale));
       setVb({x:cx-nw/2,y:cy-nh/2,w:nw,h:nh});
+    } else if(e.touches.length===1&&pinchRef.current.pan){
+      const dx=(e.touches[0].clientX-pinchRef.current.sx)*(pinchRef.current.vb.w/W);
+      const dy=(e.touches[0].clientY-pinchRef.current.sy)*(pinchRef.current.vb.h/H);
+      const ov=pinchRef.current.vb;
+      setVb({...ov,x:ov.x-dx,y:ov.y-dy});
+      pinchRef.current.sx=e.touches[0].clientX;pinchRef.current.sy=e.touches[0].clientY;
+      pinchRef.current.vb={...ov,x:ov.x-dx,y:ov.y-dy};
     }
   },[W,H]);
   const onTouchEnd2=useCallback(()=>{pinchRef.current=null;},[]);
@@ -271,9 +298,9 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg}) {
             {buildP>0.5&&<line x1={t1.B.x} y1={t1.B.y} x2={lerpN(t1.B.x,t1.A.x,Math.min((buildP-0.5)*2,1))} y2={lerpN(t1.B.y,t1.A.y,Math.min((buildP-0.5)*2,1))} stroke={theme.text} strokeWidth={2} strokeLinecap="round"/>}
             {buildP>0.3&&<RightMark x={t1.C.x} y={t1.C.y} d1={dir(t1.C,t1.B)} d2={dir(t1.C,t1.A)} color={C.right}/>}
             {buildP>0.8&&<>
-              <text x={t1.A.x+6} y={t1.A.y-4} fontSize={11} fill={theme.text} fontWeight={700}>A</text>
-              <text x={t1.B.x-14} y={t1.B.y+14} fontSize={11} fill={theme.text} fontWeight={700}>B</text>
-              <text x={t1.C.x+4} y={t1.C.y+14} fontSize={11} fill={theme.text} fontWeight={700}>C</text>
+              <HText x={t1.A.x+6} y={t1.A.y-4} fontSize={11} fill={theme.text}>A</HText>
+              <HText x={t1.B.x-14} y={t1.B.y+14} fontSize={11} fill={theme.text}>B</HText>
+              <HText x={t1.C.x+4} y={t1.C.y+14} fontSize={11} fill={theme.text}>C</HText>
             </>}
           </>}</g>
         ):(
@@ -282,10 +309,10 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg}) {
             <polygon points={`${t1.A.x},${t1.A.y} ${t1.B.x},${t1.B.y} ${t1.C.x},${t1.C.y}`} fill="none" stroke={theme.text} strokeWidth={2} strokeLinejoin="round"/>
             <RightMark x={t1.C.x} y={t1.C.y} d1={dir(t1.C,t1.B)} d2={dir(t1.C,t1.A)} color={C.right}
               glow={curHi.includes("right")}/>
-            <text x={t1.A.x+(t1.A.x>W/2?4:-12)} y={t1.A.y-5} fontSize={11} fill={theme.text} fontWeight={700}>A</text>
-            <text x={t1.B.x-14} y={t1.B.y+14} fontSize={11} fill={theme.text} fontWeight={700}>B</text>
-            <text x={t1.C.x+4} y={t1.C.y+14} fontSize={11} fill={theme.text} fontWeight={700}>C</text>
-            <text x={t1.C.x-2} y={t1.C.y-10} fontSize={8} fill={C.right}>90°</text>
+            <HText x={t1.A.x+(t1.A.x>W/2?4:-12)} y={t1.A.y-5} fontSize={11} fill={theme.text}>A</HText>
+            <HText x={t1.B.x-14} y={t1.B.y+14} fontSize={11} fill={theme.text}>B</HText>
+            <HText x={t1.C.x+4} y={t1.C.y+14} fontSize={11} fill={theme.text}>C</HText>
+            <HText x={t1.C.x-2} y={t1.C.y-10} fontSize={8} fill={C.right}>90°</HText>
 
             {/* T2 */}
             {t2&&<g opacity={cloneOpacity||1}>
@@ -295,11 +322,11 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg}) {
               {!flipping&&<RightMark x={t2.C.x} y={t2.C.y} d1={dir(t2.C,t2.B)} d2={dir(t2.C,t2.A)} color={C.right}
                 glow={curHi.includes("right")}/>}
               {!flipping?<>
-                <text x={t2.A.x+(t2.A.x<W/2?-12:4)} y={t2.A.y-5} fontSize={11} fill={theme.text} fontWeight={700}>D</text>
-                <text x={t2.B.x+4} y={t2.B.y+14} fontSize={11} fill={theme.text} fontWeight={700}>E</text>
-                <text x={t2.C.x-14} y={t2.C.y+14} fontSize={11} fill={theme.text} fontWeight={700}>F</text>
-                <text x={t2.C.x+2} y={t2.C.y-10} fontSize={8} fill={C.right}>90°</text>
-              </>:<text x={t2.A.x+4} y={t2.A.y>t1.C.y?t2.A.y+14:t2.A.y-5} fontSize={11} fill={C.match} fontWeight={700}>F'</text>}
+                <HText x={t2.A.x+(t2.A.x<W/2?-12:4)} y={t2.A.y-5} fontSize={11} fill={theme.text}>D</HText>
+                <HText x={t2.B.x+4} y={t2.B.y+14} fontSize={11} fill={theme.text}>E</HText>
+                <HText x={t2.C.x-14} y={t2.C.y+14} fontSize={11} fill={theme.text}>F</HText>
+                <HText x={t2.C.x+2} y={t2.C.y-10} fontSize={8} fill={C.right}>90°</HText>
+              </>:<HText x={t2.A.x+4} y={t2.A.y>t1.C.y?t2.A.y+14:t2.A.y-5} fontSize={11} fill={C.match}>F'</HText>}
             </g>}
 
             {/* Hypotenuse highlight */}
@@ -313,20 +340,20 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg}) {
             {/* RHA: angle at B — interior arc */}
             {mode==="rha"&&(curHi.includes("angle")||curHi.includes("asa")||curHi.includes("proven"))&&<>
               <IArc v={t1.B} p1={t1.C} p2={t1.A} r={18} color={C.angle} glow={curHi.includes("angle")}/>
-              <text x={t1.B.x+20} y={t1.B.y-6} fontSize={9} fill={C.angle} fontWeight={700}>{angDeg.toFixed(0)}°</text>
+              <HText x={t1.B.x+20} y={t1.B.y-6} fontSize={9} fill={C.angle}>{angDeg.toFixed(0)}°</HText>
               {t2&&!flipping&&<>
                 <IArc v={t2.B} p1={t2.A} p2={t2.C} r={18} color={C.angle} glow={curHi.includes("angle")}/>
-                <text x={t2.B.x-30} y={t2.B.y-6} fontSize={9} fill={C.angle} fontWeight={700}>{angDeg.toFixed(0)}°</text>
+                <HText x={t2.B.x-30} y={t2.B.y-6} fontSize={9} fill={C.angle}>{angDeg.toFixed(0)}°</HText>
               </>}
             </>}
 
             {/* RHA: third angle at A — interior */}
             {mode==="rha"&&(curHi.includes("third")||curHi.includes("asa")||curHi.includes("proven"))&&<>
               <IArc v={t1.A} p1={t1.B} p2={t1.C} r={14} color={C.match} glow={curHi.includes("third")}/>
-              <text x={t1.A.x-24} y={t1.A.y+12} fontSize={8} fill={C.match} fontWeight={700}>{(90-angDeg).toFixed(0)}°</text>
+              <HText x={t1.A.x-24} y={t1.A.y+12} fontSize={8} fill={C.match}>{(90-angDeg).toFixed(0)}°</HText>
               {t2&&!flipping&&<>
                 <IArc v={t2.A} p1={t2.C} p2={t2.B} r={14} color={C.match}/>
-                <text x={t2.A.x+10} y={t2.A.y+12} fontSize={8} fill={C.match} fontWeight={700}>{(90-angDeg).toFixed(0)}°</text>
+                <HText x={t2.A.x+10} y={t2.A.y+12} fontSize={8} fill={C.match}>{(90-angDeg).toFixed(0)}°</HText>
               </>}
             </>}
 
@@ -364,7 +391,7 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg}) {
             </>}
 
             {/* Proven checkmark */}
-            {curHi.includes("proven")&&<text x={curVb.x+curVb.w/2} y={curVb.y+18} textAnchor="middle" fontSize={14} fill={C.proven} fontWeight={700}>≅ 합동! ✓</text>}
+            {curHi.includes("proven")&&<HText x={curVb.x+curVb.w/2} y={curVb.y+18} fontSize={14} fill={C.proven}>≅ 합동! ✓</HText>}
           </g>
         )}
       </svg>
@@ -372,6 +399,24 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg}) {
   };
 
   const ist={padding:"12px",borderRadius:10,border:`1.5px solid ${theme.border}`,background:theme.bg,color:theme.text,fontSize:14,textAlign:"center",fontFamily:"'Noto Serif KR',serif",width:"100%",boxSizing:"border-box"};
+
+  // Canvas resize drag
+  useEffect(()=>{
+    const onMove=e=>{
+      if(!dragRef.current)return;
+      const {axis,startY,startH,startX,startW}=dragRef.current;
+      const clientY=e.touches?e.touches[0].clientY:e.clientY;
+      if(axis==="h"){
+        const dy=clientY-startY;
+        setCanvasH(Math.max(150,Math.min(600,startH+dy)));
+      }
+    };
+    const onUp=()=>{dragRef.current=null;};
+    window.addEventListener("mousemove",onMove);window.addEventListener("mouseup",onUp);
+    window.addEventListener("touchmove",onMove,{passive:false});window.addEventListener("touchend",onUp);
+    return()=>{window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp);
+      window.removeEventListener("touchmove",onMove);window.removeEventListener("touchend",onUp);};
+  },[]);
 
   return (
     <div style={{height:"100vh",maxHeight:"100dvh",display:"flex",flexDirection:"column",background:theme.bg,fontFamily:"'Noto Serif KR',serif"}}>
@@ -455,7 +500,15 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg}) {
 
         {phase!=="input"&&triData&&(
           <div style={{animation:"fadeIn 0.4s ease"}}>
-            <div style={{padding:"10px 8px 6px",textAlign:"center"}}>{renderCanvas()}</div>
+            <div style={{padding:"10px 8px 6px",textAlign:"center",position:"relative"}}>
+              {renderCanvas()}
+              {/* Bottom resize handle */}
+              <div onTouchStart={e=>{e.preventDefault();dragRef.current={axis:"h",startY:e.touches[0].clientY,startH:H};}}
+                onMouseDown={e=>{dragRef.current={axis:"h",startY:e.clientY,startH:H};}}
+                style={{height:12,cursor:"ns-resize",display:"flex",justifyContent:"center",alignItems:"center",marginTop:-2}}>
+                <div style={{width:40,height:4,borderRadius:2,background:theme.border}}/>
+              </div>
+            </div>
             {phase==="proof"&&<>
               <div style={{margin:"0 12px 10px",padding:"18px 16px",borderRadius:16,
                 background:curHi.includes("proven")?`${C.proven}08`:theme.card,
