@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -12,72 +11,67 @@ export default async function handler(req, res) {
   const { text, imageBase64 } = req.body;
   if (!text && !imageBase64) return res.status(400).json({ error: "No input" });
 
-  const systemPrompt = `너는 중학교 수학 문제 분석 전문가야. 학생이 문제를 보내면 다음을 JSON으로 분석해줘.
+  const systemPrompt = `너는 중학교 수학 선생님이야. 학생이 수학 문제를 보내면, 문제를 "직독직해"하듯 한 문장씩 분석해.
 
-반드시 아래 JSON 형식만 출력해. 다른 텍스트 없이 JSON만.
+반드시 아래 JSON 형식만 출력해. 다른 텍스트 없이 순수 JSON만.
 
 {
-  "type": "문제 유형 (예: 일차방정식, 이등변삼각형의 성질, 피타고라스 정리 활용, 일차함수 그래프 등)",
+  "problemText": "사진에서 추출한 문제 전체 텍스트 (텍스트 입력이면 그대로 사용)",
+  "type": "문제 유형 (예: 이등변삼각형의 성질, 일차방정식 활용)",
   "grade": "중1/중2/중3",
-  "chapter": "해당 단원명",
-  "conditions": [
-    {"text": "문제에서 추출한 조건 문장", "label": "조건 설명", "color": "coral/sky/mint/lavender 중 하나"}
+  "chapter": "단원명",
+  "steps": [
+    {
+      "highlight": "형광펜 칠할 문제 원문 부분 (problemText에 있는 그대로)",
+      "color": "coral/sky/mint/lavender",
+      "title": "이 부분이 뭘 뜻하는지 한 줄 제목",
+      "explain": "중학생 눈높이 설명 (2-3줄, 친근하게)",
+      "category": "조건/관계/구하는것/공식힌트"
+    }
   ],
-  "find": "구하려는 것",
-  "reason": "왜 이 풀이 방법을 써야 하는지 논리적 설명 (2-3문장)",
-  "method": "풀이에 사용할 핵심 개념/공식 이름",
-  "equations": ["세워야 할 식1", "식2", ...],
-  "direction": "풀이 방향 힌트 (식을 세운 후 어떻게 진행하면 되는지, 답은 절대 알려주지 마)",
-  "tips": "실수하기 쉬운 포인트 (선택)"
+  "equation": "세워야 할 식 (답은 절대 쓰지 마!)",
+  "direction": "이 식을 어떻게 풀면 되는지 한 줄 힌트",
+  "deepHelp": [
+    {
+      "stepIndex": 0,
+      "prerequisite": "선행 개념명",
+      "prerequisiteGrade": "중1",
+      "simpleExplain": "선행 개념을 아주 쉽게 설명 (3-4줄)",
+      "example": "숫자를 아주 작고 쉽게 바꾼 예시 문제와 풀이 (예: '삼각형 세 변이 3, 4, 5일 때...'처럼 계산하기 쉬운 숫자로)",
+      "analogy": "일상생활 비유 (예: '피자를 똑같이 나누는 것처럼...')"
+    }
+  ]
 }
 
-주의:
-- 답을 절대 알려주지 마. 식까지만 세워줘.
-- conditions의 color는 조건 종류별로 다르게: 길이/크기=coral, 각도/관계=sky, 조건/가정=mint, 구하는것=lavender
-- 중학교 1~3학년 수준으로 설명해
-- equations에는 학생이 직접 풀어야 할 식만 넣어`;
+핵심 규칙:
+- steps는 문제를 위→아래로 읽으며 3~6단계로 분석
+- highlight는 반드시 problemText 안의 원문 그대로
+- color: 길이/크기=coral, 각도/관계=sky, 조건/가정=mint, 구하는것=lavender
+- equation에 답을 절대 포함하지 마
+- deepHelp의 example은 반드시 숫자가 작고 계산이 쉬운 예시 (한 자릿수)
+- deepHelp의 analogy는 중학생이 공감할 일상 비유 (피자, 종이접기, 줄서기 등)
+- 말투: "~이야", "~거든", "~해봐" 같은 친근한 반말`;
 
-  const messages = [];
   const content = [];
-
   if (imageBase64) {
-    content.push({
-      type: "image",
-      source: { type: "base64", media_type: "image/jpeg", data: imageBase64 }
-    });
-    content.push({ type: "text", text: text || "이 수학 문제를 분석해줘." });
+    content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: imageBase64 } });
+    content.push({ type: "text", text: text || "이 수학 문제를 직독직해 방식으로 분석해줘." });
   } else {
     content.push({ type: "text", text });
   }
 
-  messages.push({ role: "user", content });
-
   try {
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 2000,
-        system: systemPrompt,
-        messages,
-      }),
+      headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 3000, system: systemPrompt, messages: [{ role: "user", content }] }),
     });
-
     const data = await resp.json();
     if (data.error) return res.status(500).json({ error: data.error.message });
-
     const raw = data.content?.[0]?.text || "";
-    // Extract JSON from response
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return res.status(500).json({ error: "Failed to parse", raw });
-
-    const result = JSON.parse(jsonMatch[0]);
-    return res.status(200).json(result);
+    if (!jsonMatch) return res.status(500).json({ error: "Parse failed", raw: raw.slice(0, 200) });
+    return res.status(200).json(JSON.parse(jsonMatch[0]));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
