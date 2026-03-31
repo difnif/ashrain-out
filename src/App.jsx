@@ -192,6 +192,11 @@ function AppInner() {
     try { return JSON.parse(localStorage.getItem("ar_archive")) || []; } catch { return []; }
   });
   const [studentNotifications, setStudentNotifications] = useState([]);
+  const [studentDiary, setStudentDiary] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ar_diary")) || []; } catch { return []; }
+  });
+  useEffect(() => { localStorage.setItem("ar_diary", JSON.stringify(studentDiary)); }, [studentDiary]);
+
   const [dndStart, setDndStart] = useState(() => localStorage.getItem("ar_dnd_start") || "23:00");
   const [dndEnd, setDndEnd] = useState(() => localStorage.getItem("ar_dnd_end") || "07:00");
 
@@ -554,6 +559,7 @@ function AppInner() {
     homework: studentHomework, setHomework: setStudentHomework,
     archive: studentArchive, setArchive: setStudentArchive,
     notifications: studentNotifications, setNotifications: setStudentNotifications,
+    diary: studentDiary, setDiary: setStudentDiary,
     dndStart, dndEnd, setDndStart, setDndEnd,
     triangle, setTriangle, triMode, setTriMode, inputMode, setInputMode,
     buildPhase, setBuildPhase, sssInput, setSssInput, animPhase, animProgress,
