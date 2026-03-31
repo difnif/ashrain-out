@@ -510,9 +510,9 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPC
         )}
 
         {phase!=="input"&&triData&&(
-          <div style={{animation:"fadeIn 0.4s ease", display: isPC ? "flex" : "block", flexDirection: isPC ? "row" : undefined, flex: 1, overflow: "hidden"}}>
+          <div style={{animation:"fadeIn 0.4s ease", display: isPC ? "flex" : "block", flexDirection: isPC ? "row" : undefined, flex: 1, overflow: isPC ? "hidden" : "visible"}}>
             {/* Canvas section */}
-            <div style={{padding:"10px 8px 6px",textAlign:"center",position:"relative", flex: isPC ? 1 : undefined, minWidth: isPC ? 0 : undefined}}>
+            <div style={{padding:"10px 8px 6px",textAlign:"center",position:"relative", flex: isPC ? 1 : "none", minWidth: isPC ? 0 : undefined, maxHeight: isPC ? undefined : "45vh"}}>
               {renderCanvas()}
               {/* Bottom resize handle */}
               {!isPC && <div onTouchStart={e=>{e.preventDefault();dragRef.current={axis:"h",startY:e.touches[0].clientY,startH:H};}}
@@ -531,7 +531,7 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPC
                 <div style={{fontSize:13,color:theme.text,lineHeight:2.2,whiteSpace:"pre-line"}}>
                   <RT>{steps[proofStep].d}</RT>
                 </div>
-                <button onClick={()=>showMsg("선생님께 질문하기 기능 연동 예정!",2000)}
+                <button onClick={(e)=>{e.stopPropagation();showMsg("선생님께 질문하기 기능 연동 예정!",2000);playSfx("click");}}
                   style={{marginTop:6,padding:"5px 10px",borderRadius:8,border:`1px solid ${theme.border}`,background:theme.card,color:theme.textSec,fontSize:10,cursor:"pointer"}}>
                   ❓ 이해가 안 돼요
                 </button>
