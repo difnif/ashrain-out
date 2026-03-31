@@ -352,6 +352,26 @@ export function renderDrawScreen(ctx) {
 
             {/* Property highlight overlay */}
             {showProperties && renderHighlight()}
+            {/* Side labels when properties panel is open */}
+            {showProperties && triangle && (() => {
+              const {A,B,C} = triangle;
+              const midBC = {x:(B.x+C.x)/2, y:(B.y+C.y)/2};
+              const midAC = {x:(A.x+C.x)/2, y:(A.y+C.y)/2};
+              const midAB = {x:(A.x+B.x)/2, y:(A.y+B.y)/2};
+              const cx3 = (A.x+B.x+C.x)/3, cy3 = (A.y+B.y+C.y)/3;
+              const off = 14*zs;
+              const sideLabel = (mid, label, color) => {
+                const dx = mid.x-cx3, dy = mid.y-cy3;
+                const len = Math.sqrt(dx*dx+dy*dy) || 1;
+                return <g key={label}><text x={mid.x+dx/len*off} y={mid.y+dy/len*off}
+                  textAnchor="middle" dominantBaseline="middle" fontSize={12*zs} fill="none" stroke="white" strokeWidth={3*zs} paintOrder="stroke"
+                  fontWeight={700} fontFamily="'Playfair Display', serif">{label}</text>
+                  <text x={mid.x+dx/len*off} y={mid.y+dy/len*off}
+                  textAnchor="middle" dominantBaseline="middle" fontSize={12*zs} fill={color}
+                  fontWeight={700} fontFamily="'Playfair Display', serif">{label}</text></g>;
+              };
+              return <g>{sideLabel(midBC, "a", PASTEL.coral)}{sideLabel(midAC, "b", PASTEL.sky)}{sideLabel(midAB, "c", PASTEL.mint)}</g>;
+            })()}
 
             {/* Jakdo drawn arcs (proper arc paths) */}
             {jakdoArcs.map((arc, i) => {
@@ -612,6 +632,21 @@ export function renderDrawScreen(ctx) {
                   {circumHi&&<><text x={circumO.x} y={circumO.y+16*zs} textAnchor="middle" fontSize={9*zs} fill={skyC} fontWeight={700}>R = {R.toFixed(1)}</text></>}
                   </>}
                   <text x={(A.x+B.x+C.x)/3} y={Math.min(A.y,B.y,C.y)-14*zs} textAnchor="middle" fontSize={10*zs} fill={skyC} fontWeight={700} opacity={co}>외접원</text>
+
+                  {/* Side labels a, b, c */}
+                  {(() => {
+                    const midBC = {x:(B.x+C.x)/2, y:(B.y+C.y)/2};
+                    const midAC = {x:(A.x+C.x)/2, y:(A.y+C.y)/2};
+                    const midAB = {x:(A.x+B.x)/2, y:(A.y+B.y)/2};
+                    const cx3 = (A.x+B.x+C.x)/3, cy3 = (A.y+B.y+C.y)/3;
+                    const off = 12*zs;
+                    const sideLabel = (mid, label, color) => {
+                      const dx = mid.x-cx3, dy = mid.y-cy3;
+                      const len = Math.sqrt(dx*dx+dy*dy) || 1;
+                      return <text x={mid.x+dx/len*off} y={mid.y+dy/len*off} textAnchor="middle" dominantBaseline="middle" fontSize={11*zs} fill={color} fontWeight={700} fontFamily="'Playfair Display', serif">{label}</text>;
+                    };
+                    return <>{sideLabel(midBC, "a", PASTEL.coral)}{sideLabel(midAC, "b", PASTEL.sky)}{sideLabel(midAB, "c", PASTEL.mint)}</>;
+                  })()}
 
                   {/* RIGHT: 클론+내접원 */}
                   <polygon points={`${A2.x},${A2.y} ${B2.x},${B2.y} ${C2.x},${C2.y}`} fill="none" stroke={theme.text} strokeWidth={2} strokeLinejoin="round" opacity={io}/>
@@ -1291,21 +1326,36 @@ export function renderDrawScreen(ctx) {
                     <div>OA = OB = OC = <b style={{color: skyC}}>R</b></div>
                     <div style={{ marginTop: 8 }}><b>공식:</b> R = abc / 4S</div>
                     <div style={{ marginTop: 4, padding: "8px 10px", background: theme.bg, borderRadius: 8, fontSize: 11, lineHeight: 2 }}>
-                      <div><b>① 세 변의 길이:</b></div>
-                      <div style={{marginLeft: 8}}>a = {a.toFixed(2)}, b = {b.toFixed(2)}, c = {cc2.toFixed(2)}</div>
-                      <div style={{marginTop:4}}><b>② 반둘레 s:</b></div>
-                      <div style={{marginLeft: 8}}>s = (a + b + c) / 2 = ({a.toFixed(1)} + {b.toFixed(1)} + {cc2.toFixed(1)}) / 2 = <b>{((a+b+cc2)/2).toFixed(2)}</b></div>
-                      <div style={{marginTop:4}}><b>③ 넓이 S (헤론의 공식):</b></div>
-                      <div style={{marginLeft: 8}}>S = √(s(s-a)(s-b)(s-c))</div>
-                      <div style={{marginLeft: 16}}>= √({((a+b+cc2)/2).toFixed(1)} × {(((a+b+cc2)/2)-a).toFixed(1)} × {(((a+b+cc2)/2)-b).toFixed(1)} × {(((a+b+cc2)/2)-cc2).toFixed(1)})</div>
-                      <div style={{marginLeft: 16}}>= <b>{areaVal.toFixed(2)}</b></div>
-                      <div style={{marginTop:4}}><b>④ R 계산:</b></div>
-                      <div style={{marginLeft: 8}}>R = abc / 4S = ({a.toFixed(1)} × {b.toFixed(1)} × {cc2.toFixed(1)}) / (4 × {areaVal.toFixed(1)})</div>
-                      <div style={{marginLeft: 16}}>= {(a*b*cc2).toFixed(1)} / {(4*areaVal).toFixed(1)}</div>
+                      <div style={{padding:"8px 0",borderBottom:`1px solid ${theme.border}20`}}>
+                        <div><b>① 세 변의 길이 (a, b, c):</b></div>
+                        <div style={{marginLeft: 8, marginTop: 4}}>
+                          <span style={{color:PASTEL.coral}}>a</span>(BC) = {a.toFixed(2)}, <span style={{color:PASTEL.sky}}>b</span>(AC) = {b.toFixed(2)}, <span style={{color:PASTEL.mint}}>c</span>(AB) = {cc2.toFixed(2)}
+                        </div>
+                      </div>
+                      <div style={{padding:"8px 0",borderBottom:`1px solid ${theme.border}20`}}>
+                        <div><b>② (a + b + c) ÷ 2 = s:</b></div>
+                        <div style={{marginLeft: 8, marginTop: 4}}>s = ({a.toFixed(1)} + {b.toFixed(1)} + {cc2.toFixed(1)}) ÷ 2 = <b>{((a+b+cc2)/2).toFixed(2)}</b></div>
+                      </div>
+                      <div style={{padding:"8px 0",borderBottom:`1px solid ${theme.border}20`}}>
+                        <div><b>③ 넓이 S (헤론의 공식):</b></div>
+                        <div style={{marginLeft: 8, marginTop: 4}}>S = √(s × (s−a) × (s−b) × (s−c))</div>
+                        <div style={{marginLeft: 12, marginTop: 2}}>= √({((a+b+cc2)/2).toFixed(1)} × {(((a+b+cc2)/2)-a).toFixed(1)} × {(((a+b+cc2)/2)-b).toFixed(1)} × {(((a+b+cc2)/2)-cc2).toFixed(1)})</div>
+                        <div style={{marginLeft: 12}}>= <b>{areaVal.toFixed(2)}</b></div>
+                      </div>
+                      <div style={{padding:"8px 0"}}>
+                        <div><b>④ R 계산:</b></div>
+                        <div style={{marginLeft: 8, marginTop: 4}}>R = (a × b × c) ÷ (4 × S)</div>
+                        <div style={{marginLeft: 12, marginTop: 2}}>= ({a.toFixed(1)} × {b.toFixed(1)} × {cc2.toFixed(1)}) ÷ (4 × {areaVal.toFixed(1)})</div>
+                        <div style={{marginLeft: 12}}>= {(a*b*cc2).toFixed(1)} ÷ {(4*areaVal).toFixed(1)}</div>
+                      </div>
                     </div>
                     <div style={{ fontSize: 16, fontWeight: 700, color: skyC, marginTop: 8, textAlign: "center" }}>
                       R ≈ {R_val.toFixed(2)}
                     </div>
+                    <button onClick={() => { showMsg("질문함 기능 연동 예정!", 2000); playSfx("click"); }}
+                      style={{ marginTop: 8, padding: "5px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 10, cursor: "pointer" }}>
+                      ❓ 이해가 안 돼요
+                    </button>
                   </div>
                 </div>
               )}
@@ -1323,18 +1373,32 @@ export function renderDrawScreen(ctx) {
                     <div>ID₁ = ID₂ = ID₃ = <b style={{color: mintC}}>r</b></div>
                     <div style={{ marginTop: 8 }}><b>공식:</b> r = S / s</div>
                     <div style={{ marginTop: 4, padding: "8px 10px", background: theme.bg, borderRadius: 8, fontSize: 11, lineHeight: 2 }}>
-                      <div><b>① 세 변의 길이:</b></div>
-                      <div style={{marginLeft: 8}}>a = {a.toFixed(2)}, b = {b.toFixed(2)}, c = {cc2.toFixed(2)}</div>
-                      <div style={{marginTop:4}}><b>② 반둘레 s:</b></div>
-                      <div style={{marginLeft: 8}}>s = (a + b + c) / 2 = <b>{((a+b+cc2)/2).toFixed(2)}</b></div>
-                      <div style={{marginTop:4}}><b>③ 넓이 S:</b></div>
-                      <div style={{marginLeft: 8}}>S = {areaVal.toFixed(2)} (위와 동일)</div>
-                      <div style={{marginTop:4}}><b>④ r 계산:</b></div>
-                      <div style={{marginLeft: 8}}>r = S / s = {areaVal.toFixed(2)} / {((a+b+cc2)/2).toFixed(2)}</div>
+                      <div style={{padding:"8px 0",borderBottom:`1px solid ${theme.border}20`}}>
+                        <div><b>① 세 변의 길이 (a, b, c):</b></div>
+                        <div style={{marginLeft: 8, marginTop: 4}}>
+                          <span style={{color:PASTEL.coral}}>a</span>(BC) = {a.toFixed(2)}, <span style={{color:PASTEL.sky}}>b</span>(AC) = {b.toFixed(2)}, <span style={{color:PASTEL.mint}}>c</span>(AB) = {cc2.toFixed(2)}
+                        </div>
+                      </div>
+                      <div style={{padding:"8px 0",borderBottom:`1px solid ${theme.border}20`}}>
+                        <div><b>② (a + b + c) ÷ 2 = s:</b></div>
+                        <div style={{marginLeft: 8, marginTop: 4}}>s = <b>{((a+b+cc2)/2).toFixed(2)}</b></div>
+                      </div>
+                      <div style={{padding:"8px 0",borderBottom:`1px solid ${theme.border}20`}}>
+                        <div><b>③ 넓이 S:</b></div>
+                        <div style={{marginLeft: 8, marginTop: 4}}>S = {areaVal.toFixed(2)} (위와 동일)</div>
+                      </div>
+                      <div style={{padding:"8px 0"}}>
+                        <div><b>④ r 계산:</b></div>
+                        <div style={{marginLeft: 8, marginTop: 4}}>r = S ÷ s = {areaVal.toFixed(2)} ÷ {((a+b+cc2)/2).toFixed(2)}</div>
+                      </div>
                     </div>
                     <div style={{ fontSize: 16, fontWeight: 700, color: mintC, marginTop: 8, textAlign: "center" }}>
                       r ≈ {r_val.toFixed(2)}
                     </div>
+                    <button onClick={() => { showMsg("질문함 기능 연동 예정!", 2000); playSfx("click"); }}
+                      style={{ marginTop: 8, padding: "5px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 10, cursor: "pointer" }}>
+                      ❓ 이해가 안 돼요
+                    </button>
                   </div>
                 </div>
               )}
