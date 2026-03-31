@@ -113,24 +113,110 @@ function DiaryTab({ theme, diary, setDiary, playSfx }) {
   const todayEntry = diary.find(d => d.date === viewDate);
   const [text, setText] = useState(todayEntry?.content || "");
   const [editing, setEditing] = useState(false);
+  // Drawing state
+  const [drawMode, setDrawMode] = useState(false);
+  const [penColor, setPenColor] = useState("#333");
+  const [penSize, setPenSize] = useState(3);
+  const [isEraser, setIsEraser] = useState(false);
+  const [strokes, setStrokes] = useState(todayEntry?.strokes || []);
+  const [currentStroke, setCurrentStroke] = useState(null);
+  const [undoHistory, setUndoHistory] = useState([]);
+  const canvasRef = useRef(null);
+  const drawingRef = useRef(false);
 
   useEffect(() => {
     const entry = diary.find(d => d.date === viewDate);
     setText(entry?.content || "");
-    setEditing(false);
+    setStrokes(entry?.strokes || []);
+    setEditing(false); setDrawMode(false);
+    setUndoHistory([]);
   }, [viewDate, diary]);
+
+  // Redraw canvas whenever strokes change
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * 2; canvas.height = rect.height * 2;
+    ctx.scale(2, 2);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    const allStrokes = currentStroke ? [...strokes, currentStroke] : strokes;
+    allStrokes.forEach(stroke => {
+      if (stroke.points.length < 2) return;
+      ctx.beginPath();
+      ctx.strokeStyle = stroke.eraser ? theme.card : stroke.color;
+      ctx.lineWidth = stroke.eraser ? stroke.size * 3 : stroke.size;
+      ctx.globalCompositeOperation = stroke.eraser ? "destination-out" : "source-over";
+      ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+      for (let i = 1; i < stroke.points.length; i++) {
+        ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+      }
+      ctx.stroke();
+    });
+    ctx.globalCompositeOperation = "source-over";
+  }, [strokes, currentStroke, theme]);
+
+  const getPos = (e) => {
+    const canvas = canvasRef.current; if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+  };
+
+  const onDrawStart = (e) => {
+    if (!drawMode) return;
+    e.preventDefault();
+    const pos = getPos(e); if (!pos) return;
+    drawingRef.current = true;
+    setCurrentStroke({ color: penColor, size: penSize, eraser: isEraser, points: [pos] });
+  };
+  const onDrawMove = (e) => {
+    if (!drawingRef.current || !drawMode) return;
+    e.preventDefault();
+    const pos = getPos(e); if (!pos) return;
+    setCurrentStroke(prev => prev ? { ...prev, points: [...prev.points, pos] } : null);
+  };
+  const onDrawEnd = () => {
+    if (!drawingRef.current) return;
+    drawingRef.current = false;
+    if (currentStroke && currentStroke.points.length > 1) {
+      setUndoHistory(prev => [...prev, strokes]);
+      setStrokes(prev => [...prev, currentStroke]);
+    }
+    setCurrentStroke(null);
+  };
+
+  const undoDraw = () => {
+    if (undoHistory.length > 0) {
+      setStrokes(undoHistory[undoHistory.length - 1]);
+      setUndoHistory(prev => prev.slice(0, -1));
+      playSfx("click");
+    }
+  };
+
+  const clearDraw = () => {
+    if (strokes.length > 0) {
+      setUndoHistory(prev => [...prev, strokes]);
+      setStrokes([]);
+      playSfx("click");
+    }
+  };
 
   const save = () => {
     setDiary(prev => {
       const exists = prev.find(d => d.date === viewDate);
-      if (exists) return prev.map(d => d.date === viewDate ? { ...d, content: text, updatedAt: Date.now() } : d);
-      return [...prev, { id: `diary-${viewDate}`, date: viewDate, content: text, createdAt: Date.now(), updatedAt: Date.now() }];
+      const entry = { content: text, strokes, updatedAt: Date.now() };
+      if (exists) return prev.map(d => d.date === viewDate ? { ...d, ...entry } : d);
+      return [...prev, { id: `diary-${viewDate}`, date: viewDate, ...entry, createdAt: Date.now() }];
     });
-    setEditing(false);
+    setEditing(false); setDrawMode(false);
     playSfx("success");
   };
 
-  const canEdit = viewDate === today; // Only today is editable
+  const canEdit = viewDate === today;
+  const COLORS = ["#333", "#D95F4B", "#3A8FC2", "#2E9E6B", "#9B7FBF", "#E8A040", "#E88DB5"];
 
   return (
     <div style={{ padding: "12px 16px", animation: "fadeIn 0.3s ease" }}>
@@ -153,31 +239,73 @@ function DiaryTab({ theme, diary, setDiary, playSfx }) {
         }} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: viewDate < today ? theme.text : theme.border }}>▶</button>
       </div>
 
+      {/* Drawing toolbar */}
+      {drawMode && canEdit && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 8, padding: "8px 10px", borderRadius: 12, background: theme.card, border: `1px solid ${theme.border}`, flexWrap: "wrap", alignItems: "center", animation: "fadeIn 0.2s ease" }}>
+          {/* Colors */}
+          {COLORS.map(col => (
+            <button key={col} onClick={() => { setPenColor(col); setIsEraser(false); }}
+              style={{ width: 24, height: 24, borderRadius: 12, background: col, border: penColor === col && !isEraser ? `3px solid ${PASTEL.coral}` : `2px solid ${theme.border}`, cursor: "pointer" }} />
+          ))}
+          <div style={{ width: 1, height: 20, background: theme.border, margin: "0 2px" }} />
+          {/* Eraser */}
+          <button onClick={() => setIsEraser(!isEraser)} style={{
+            padding: "4px 8px", borderRadius: 8, fontSize: 14, cursor: "pointer",
+            border: isEraser ? `2px solid ${PASTEL.coral}` : `1px solid ${theme.border}`,
+            background: isEraser ? `${PASTEL.coral}15` : theme.card,
+          }}>🧽</button>
+          {/* Size */}
+          <input type="range" min={1} max={12} value={penSize} onChange={e => setPenSize(+e.target.value)}
+            style={{ width: 60, accentColor: PASTEL.coral }} />
+          <div style={{ width: 1, height: 20, background: theme.border, margin: "0 2px" }} />
+          {/* Undo / Clear */}
+          <button onClick={undoDraw} disabled={undoHistory.length === 0}
+            style={{ padding: "4px 8px", borderRadius: 8, fontSize: 12, cursor: "pointer", border: `1px solid ${theme.border}`, background: theme.card, color: undoHistory.length > 0 ? theme.text : theme.border }}>↩</button>
+          <button onClick={clearDraw} disabled={strokes.length === 0}
+            style={{ padding: "4px 8px", borderRadius: 8, fontSize: 12, cursor: "pointer", border: `1px solid ${theme.border}`, background: theme.card, color: strokes.length > 0 ? PASTEL.coral : theme.border }}>🗑</button>
+        </div>
+      )}
+
       {/* Diary page */}
       <div style={{
-        minHeight: 300, padding: 20, borderRadius: 16,
+        minHeight: 320, borderRadius: 16, position: "relative", overflow: "hidden",
         background: theme.card, border: `1px solid ${theme.border}`,
         backgroundImage: `repeating-linear-gradient(transparent, transparent 31px, ${theme.border}40 31px, ${theme.border}40 32px)`,
         backgroundPosition: "0 20px",
       }}>
-        {editing ? (
-          <textarea value={text} onChange={e => setText(e.target.value)}
-            style={{ width: "100%", minHeight: 260, border: "none", background: "transparent", color: theme.text, fontSize: 14, lineHeight: "32px", fontFamily: "'Noto Serif KR', serif", resize: "none", outline: "none" }}
-            placeholder="오늘 공부한 내용을 적어보세요..." autoFocus />
-        ) : (
-          <div style={{ fontSize: 14, lineHeight: "32px", color: text ? theme.text : theme.textSec, whiteSpace: "pre-wrap", minHeight: 260 }}>
-            {text || (canEdit ? "터치해서 작성하기..." : "작성한 내용이 없어요")}
-          </div>
-        )}
+        {/* Text layer */}
+        <div style={{ padding: 20, position: "relative", zIndex: 1, pointerEvents: drawMode ? "none" : "auto" }}>
+          {editing && !drawMode ? (
+            <textarea value={text} onChange={e => setText(e.target.value)}
+              style={{ width: "100%", minHeight: 280, border: "none", background: "transparent", color: theme.text, fontSize: 14, lineHeight: "32px", fontFamily: "'Noto Serif KR', serif", resize: "none", outline: "none" }}
+              placeholder="오늘 공부한 내용을 적어보세요..." autoFocus />
+          ) : (
+            <div onClick={() => canEdit && !drawMode && setEditing(true)}
+              style={{ fontSize: 14, lineHeight: "32px", color: text ? theme.text : theme.textSec, whiteSpace: "pre-wrap", minHeight: 280, cursor: canEdit ? "text" : "default" }}>
+              {text || (canEdit ? "터치해서 작성하기..." : "작성한 내용이 없어요")}
+            </div>
+          )}
+        </div>
+
+        {/* Drawing canvas overlay */}
+        <canvas ref={canvasRef}
+          style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: drawMode ? 10 : 2, touchAction: "none", pointerEvents: drawMode ? "auto" : "none" }}
+          onMouseDown={onDrawStart} onMouseMove={onDrawMove} onMouseUp={onDrawEnd} onMouseLeave={onDrawEnd}
+          onTouchStart={onDrawStart} onTouchMove={onDrawMove} onTouchEnd={onDrawEnd} />
       </div>
 
+      {/* Action buttons */}
       {canEdit && (
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          {editing ? (
-            <button onClick={save} style={{ flex: 1, padding: 12, borderRadius: 12, border: "none", background: PASTEL.coral, color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>저장</button>
-          ) : (
-            <button onClick={() => setEditing(true)} style={{ flex: 1, padding: 12, borderRadius: 12, border: `1px solid ${theme.border}`, background: theme.card, color: theme.text, fontSize: 13, cursor: "pointer" }}>✏️ 작성하기</button>
+          {/* Toggle draw mode */}
+          <button onClick={() => { setDrawMode(!drawMode); if (editing) setEditing(false); playSfx("click"); }}
+            style={{ padding: "10px 14px", borderRadius: 12, border: drawMode ? `2px solid ${PASTEL.coral}` : `1px solid ${theme.border}`, background: drawMode ? `${PASTEL.coral}10` : theme.card, color: drawMode ? PASTEL.coral : theme.text, fontSize: 13, cursor: "pointer", fontWeight: drawMode ? 700 : 400 }}>
+            ✏️ {drawMode ? "그리는 중" : "그리기"}
+          </button>
+          {!drawMode && !editing && (
+            <button onClick={() => setEditing(true)} style={{ padding: "10px 14px", borderRadius: 12, border: `1px solid ${theme.border}`, background: theme.card, color: theme.text, fontSize: 13, cursor: "pointer" }}>📝 글쓰기</button>
           )}
+          <button onClick={save} style={{ flex: 1, padding: "10px", borderRadius: 12, border: "none", background: PASTEL.coral, color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>💾 저장</button>
         </div>
       )}
 
@@ -186,14 +314,18 @@ function DiaryTab({ theme, diary, setDiary, playSfx }) {
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 11, color: theme.textSec, marginBottom: 8 }}>최근 기록</div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {sortedDates.slice(0, 14).map(d => (
-              <button key={d} onClick={() => setViewDate(d)} style={{
-                padding: "6px 10px", borderRadius: 8, fontSize: 10, cursor: "pointer",
-                border: viewDate === d ? `2px solid ${PASTEL.coral}` : `1px solid ${theme.border}`,
-                background: viewDate === d ? `${PASTEL.coral}10` : theme.card,
-                color: d === today ? PASTEL.coral : theme.text,
-              }}>{d.slice(5)}</button>
-            ))}
+            {sortedDates.slice(0, 14).map(d => {
+              const entry = diary.find(dd => dd.date === d);
+              const hasDrawing = entry?.strokes?.length > 0;
+              return (
+                <button key={d} onClick={() => setViewDate(d)} style={{
+                  padding: "6px 10px", borderRadius: 8, fontSize: 10, cursor: "pointer",
+                  border: viewDate === d ? `2px solid ${PASTEL.coral}` : `1px solid ${theme.border}`,
+                  background: viewDate === d ? `${PASTEL.coral}10` : theme.card,
+                  color: d === today ? PASTEL.coral : theme.text,
+                }}>{d.slice(5)} {hasDrawing ? "🎨" : ""}</button>
+              );
+            })}
           </div>
         </div>
       )}
