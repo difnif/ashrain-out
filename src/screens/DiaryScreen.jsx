@@ -44,6 +44,221 @@ const SLASH_CMDS = [
   { cmd: "image",   icon: "🖼", label: "이미지 업로드" },
 ];
 
+
+// ─── Brush Engine ─────────────────────────────────────────────────────────────
+const BRUSH = {
+  PEN:       { id:"PEN",       name:"펜",    emoji:"🖊",  tip:"깔끔한 디지털 펜" },
+  PENCIL:    { id:"PENCIL",    name:"연필",  emoji:"✏️",  tip:"종이 결의 연필" },
+  PASTEL:    { id:"PASTEL",    name:"파스텔",emoji:"🟣",  tip:"분필 같은 파스텔" },
+  CHARCOAL:  { id:"CHARCOAL",  name:"목탄",  emoji:"🌑",  tip:"거친 목탄" },
+  WATERCOLOR:{ id:"WATERCOLOR",name:"수채",  emoji:"💧",  tip:"번지는 수채화" },
+  OIL:       { id:"OIL",       name:"유채",  emoji:"🖌",  tip:"두꺼운 유채물감" },
+  INK:       { id:"INK",       name:"수묵",  emoji:"🎏",  tip:"속도감 있는 수묵" },
+  EMBOSS:    { id:"EMBOSS",    name:"엠보싱",emoji:"⬜",  tip:"입체 엠보싱" },
+  TEXTURE:   { id:"TEXTURE",   name:"텍스쳐",emoji:"🟫",  tip:"거친 브리슬 붓" },
+};
+const BRUSH_LIST = Object.values(BRUSH);
+
+// XOR-shift seeded RNG — deterministic per path
+function mkRng(s){ let x=(s|0)||12345; return ()=>{ x^=x<<13; x^=x>>17; x^=x<<5; return (x>>>0)/4294967296; }; }
+
+// Color utils
+function hexRgb(h){ if(!h||!h.startsWith("#"))return{r:50,g:50,b:50}; const v=h.replace("#",""); return v.length===3?{r:parseInt(v[0]+v[0],16),g:parseInt(v[1]+v[1],16),b:parseInt(v[2]+v[2],16)}:{r:parseInt(v.slice(0,2),16),g:parseInt(v.slice(2,4),16),b:parseInt(v.slice(4,6),16)}; }
+function rgba(c,a){ const {r,g,b}=hexRgb(c); return `rgba(${r},${g},${b},${a})`; }
+function lighter(c,n){ const {r,g,b}=hexRgb(c); return `rgb(${Math.min(255,r+n)},${Math.min(255,g+n)},${Math.min(255,b+n)})`; }
+function darker(c,n){ const {r,g,b}=hexRgb(c); return `rgb(${Math.max(0,r-n)},${Math.max(0,g-n)},${Math.max(0,b-n)})`; }
+
+// Smooth bezier through points on canvas ctx
+function csSmooth(ctx,pts){
+  if(!pts||pts.length<2)return;
+  ctx.moveTo(pts[0].x,pts[0].y);
+  for(let i=1;i<pts.length-1;i++){
+    const mx=(pts[i].x+pts[i+1].x)/2, my=(pts[i].y+pts[i+1].y)/2;
+    ctx.quadraticCurveTo(pts[i].x,pts[i].y,mx,my);
+  }
+  ctx.lineTo(pts[pts.length-1].x,pts[pts.length-1].y);
+}
+
+// ── Brush renderers ──────────────────────────────────────────────────────────
+function bPen(ctx,pts,color,size){
+  ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=size; ctx.lineCap="round"; ctx.lineJoin="round";
+  ctx.beginPath(); csSmooth(ctx,pts); ctx.stroke(); ctx.restore();
+}
+
+function bHighlight(ctx,pts,color,size){
+  ctx.save(); ctx.globalAlpha=0.4; ctx.strokeStyle=color; ctx.lineWidth=size;
+  ctx.lineCap="square"; ctx.lineJoin="round";
+  ctx.beginPath(); csSmooth(ctx,pts); ctx.stroke(); ctx.restore();
+}
+
+function bPencil(ctx,pts,color,size,rng){
+  ctx.save();
+  const {r,g,b}=hexRgb(color);
+  for(let p=0;p<5;p++){
+    ctx.globalAlpha=0.12+rng()*0.22; ctx.strokeStyle=`rgb(${r},${g},${b})`;
+    ctx.lineWidth=size*(0.2+rng()*0.4); ctx.lineCap="round";
+    ctx.beginPath();
+    pts.forEach((pt,i)=>{ const ox=(rng()-0.5)*size*2.5,oy=(rng()-0.5)*size*2.5; i===0?ctx.moveTo(pt.x+ox,pt.y+oy):ctx.lineTo(pt.x+ox,pt.y+oy); });
+    ctx.stroke();
+  }
+  for(let i=0;i<pts.length;i++) for(let g2=0;g2<7;g2++){
+    ctx.globalAlpha=rng()*0.16; ctx.fillStyle=`rgb(${r},${g},${b})`;
+    ctx.fillRect(pts[i].x+(rng()-0.5)*size*2.8,pts[i].y+(rng()-0.5)*size*2.8,rng()*1.3,rng()*1.3);
+  }
+  ctx.restore();
+}
+
+function bPastel(ctx,pts,color,size,rng){
+  ctx.save();
+  for(let p=0;p<5;p++){
+    ctx.save(); ctx.globalAlpha=0.05+rng()*0.06; ctx.strokeStyle=color;
+    ctx.lineWidth=size*(2.5+rng()*3.5); ctx.lineCap="round"; ctx.filter=`blur(${size*(0.6+rng()*1)}px)`;
+    ctx.beginPath();
+    pts.forEach((pt,i)=>{ const ox=(rng()-0.5)*size*2.5,oy=(rng()-0.5)*size*2.5; i===0?ctx.moveTo(pt.x+ox,pt.y+oy):ctx.lineTo(pt.x+ox,pt.y+oy); });
+    ctx.stroke(); ctx.restore();
+  }
+  for(let i=0;i<pts.length;i++) for(let g2=0;g2<14;g2++){
+    ctx.globalAlpha=rng()*0.45; ctx.fillStyle=color;
+    ctx.fillRect(pts[i].x+(rng()-0.5)*size*2.5,pts[i].y+(rng()-0.5)*size*2.5,0.4+rng()*2.2,0.4+rng()*2.2);
+  }
+  ctx.restore();
+}
+
+function bCharcoal(ctx,pts,color,size,rng){
+  ctx.save();
+  for(let p=0;p<6;p++){
+    ctx.save(); ctx.globalAlpha=0.025+rng()*0.065; ctx.strokeStyle=color;
+    ctx.lineWidth=size*(3+rng()*6); ctx.lineCap="round"; ctx.filter=`blur(${size*(1.8+rng()*2.5)}px)`;
+    ctx.beginPath();
+    pts.forEach((pt,i)=>{ const ox=(rng()-0.5)*size*5,oy=(rng()-0.5)*size*5; i===0?ctx.moveTo(pt.x+ox,pt.y+oy):ctx.lineTo(pt.x+ox,pt.y+oy); });
+    ctx.stroke(); ctx.restore();
+  }
+  for(let p=0;p<4;p++){
+    ctx.globalAlpha=0.3+rng()*0.4; ctx.strokeStyle=color; ctx.lineWidth=size*(0.3+rng()*0.7); ctx.lineCap="butt";
+    ctx.beginPath();
+    pts.forEach((pt,i)=>{ const ox=(rng()-0.5)*size*1.2,oy=(rng()-0.5)*size*1.2; i===0?ctx.moveTo(pt.x+ox,pt.y+oy):ctx.lineTo(pt.x+ox,pt.y+oy); });
+    ctx.stroke();
+  }
+  for(let i=0;i<pts.length;i++) if(rng()>0.3){
+    ctx.globalAlpha=rng()*0.6; ctx.fillStyle=color;
+    ctx.fillRect(pts[i].x+(rng()-0.5)*size*4.5,pts[i].y+(rng()-0.5)*size*4.5,rng()*3,rng()*1.2);
+  }
+  ctx.restore();
+}
+
+function bWatercolor(ctx,pts,color,size,rng){
+  ctx.save();
+  for(let p=0;p<12;p++){
+    ctx.save(); const spread=size*(0.7+p*0.65);
+    ctx.globalAlpha=0.014+rng()*0.013; ctx.strokeStyle=color; ctx.lineWidth=spread;
+    ctx.lineCap="round"; ctx.lineJoin="round"; ctx.filter=`blur(${spread*0.2}px)`;
+    ctx.beginPath();
+    pts.forEach((pt,i)=>{ const ox=(rng()-0.5)*spread*0.45,oy=(rng()-0.5)*spread*0.45; i===0?ctx.moveTo(pt.x+ox,pt.y+oy):ctx.lineTo(pt.x+ox,pt.y+oy); });
+    ctx.stroke(); ctx.restore();
+  }
+  for(let i=0;i<pts.length;i+=2) if(rng()>0.55){
+    ctx.save(); const r2=size*(1.8+rng()*3.5);
+    ctx.globalAlpha=rng()*0.038; ctx.filter=`blur(${r2*0.5}px)`;
+    const grad=ctx.createRadialGradient(pts[i].x,pts[i].y,0,pts[i].x,pts[i].y,r2);
+    grad.addColorStop(0,color); grad.addColorStop(0.55,color); grad.addColorStop(1,"transparent");
+    ctx.fillStyle=grad; ctx.beginPath();
+    ctx.ellipse(pts[i].x+(rng()-0.5)*r2*0.5,pts[i].y+(rng()-0.5)*r2*0.5,r2*(0.7+rng()*0.5),r2*(0.5+rng()*0.6),rng()*Math.PI,0,Math.PI*2);
+    ctx.fill(); ctx.restore();
+  }
+  ctx.restore();
+}
+
+function bOil(ctx,pts,color,size,rng){
+  ctx.save(); const {r,g,b}=hexRgb(color);
+  for(let p=0;p<7;p++){
+    const cr=Math.max(0,Math.min(255,r+Math.floor((rng()-0.5)*50)));
+    const cg=Math.max(0,Math.min(255,g+Math.floor((rng()-0.5)*50)));
+    const cb=Math.max(0,Math.min(255,b+Math.floor((rng()-0.5)*50)));
+    ctx.globalAlpha=0.32+rng()*0.48; ctx.strokeStyle=`rgb(${cr},${cg},${cb})`;
+    ctx.lineWidth=size*(0.55+rng()*1); ctx.lineCap="round"; ctx.lineJoin="round";
+    ctx.beginPath();
+    pts.forEach((pt,i)=>{ const ox=(rng()-0.5)*size*0.9,oy=(rng()-0.5)*size*0.9; i===0?ctx.moveTo(pt.x+ox,pt.y+oy):ctx.lineTo(pt.x+ox,pt.y+oy); });
+    ctx.stroke();
+  }
+  // Impasto specular
+  ctx.globalAlpha=0.38; ctx.strokeStyle="rgba(255,255,255,0.6)"; ctx.lineWidth=size*0.25; ctx.lineCap="round";
+  ctx.beginPath();
+  pts.forEach((pt,i)=>{ const ox=-size*0.28+(rng()-0.5)*size*0.15,oy=-size*0.22; i===0?ctx.moveTo(pt.x+ox,pt.y+oy):ctx.lineTo(pt.x+ox,pt.y+oy); });
+  ctx.stroke();
+  // Dark shadow edge
+  ctx.globalAlpha=0.22; ctx.strokeStyle=darker(color,60); ctx.lineWidth=size*0.18;
+  ctx.beginPath(); pts.forEach((pt,i)=>{ i===0?ctx.moveTo(pt.x+size*0.32,pt.y+size*0.32):ctx.lineTo(pt.x+size*0.32,pt.y+size*0.32); }); ctx.stroke();
+  ctx.restore();
+}
+
+function bInk(ctx,pts,color,size,rng){
+  ctx.save(); if(pts.length<2){ctx.restore();return;}
+  const spds=pts.map((p,i)=>i===0?1:Math.hypot(p.x-pts[i-1].x,p.y-pts[i-1].y));
+  const maxS=Math.max(...spds,0.5);
+  for(let i=1;i<pts.length;i++){
+    const sp=spds[i]/maxS, w=size*(0.12+2.8*(1-sp));
+    ctx.globalAlpha=Math.min(1,0.45+sp*0.5); ctx.strokeStyle=color; ctx.lineWidth=w; ctx.lineCap="round"; ctx.lineJoin="round";
+    ctx.beginPath(); ctx.moveTo(pts[i-1].x,pts[i-1].y); ctx.lineTo(pts[i].x,pts[i].y); ctx.stroke();
+    if(sp<0.28){
+      ctx.save(); ctx.globalAlpha=0.015+rng()*0.02; ctx.filter=`blur(${w*0.85}px)`;
+      ctx.strokeStyle=color; ctx.lineWidth=w*3;
+      ctx.beginPath(); ctx.moveTo(pts[i-1].x,pts[i-1].y); ctx.lineTo(pts[i].x,pts[i].y); ctx.stroke(); ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+function bEmboss(ctx,pts,color,size,rng){
+  ctx.save();
+  // Shadow
+  ctx.globalAlpha=0.48; ctx.strokeStyle="rgba(0,0,0,0.38)"; ctx.lineWidth=size*1.5;
+  ctx.lineCap="round"; ctx.lineJoin="round"; ctx.filter=`blur(${size*0.1}px)`;
+  ctx.beginPath(); pts.forEach((pt,i)=>i===0?ctx.moveTo(pt.x+size*0.42,pt.y+size*0.42):ctx.lineTo(pt.x+size*0.42,pt.y+size*0.42)); ctx.stroke();
+  // Highlight
+  ctx.filter="none"; ctx.globalAlpha=0.62; ctx.strokeStyle="rgba(255,255,255,0.82)"; ctx.lineWidth=size*1.5;
+  ctx.beginPath(); pts.forEach((pt,i)=>i===0?ctx.moveTo(pt.x-size*0.42,pt.y-size*0.42):ctx.lineTo(pt.x-size*0.42,pt.y-size*0.42)); ctx.stroke();
+  // Midtone
+  ctx.globalAlpha=0.2; ctx.strokeStyle=color; ctx.lineWidth=size;
+  ctx.beginPath(); csSmooth(ctx,pts); ctx.stroke();
+  ctx.restore();
+}
+
+function bTexture(ctx,pts,color,size,rng){
+  ctx.save();
+  for(let i=0;i<pts.length;i++){
+    const n=Math.ceil(5+rng()*9);
+    for(let d=0;d<n;d++){
+      ctx.globalAlpha=0.06+rng()*0.35; ctx.fillStyle=color;
+      const dx=(rng()-0.5)*size*3,dy=(rng()-0.5)*size*3;
+      const dw=rng()*size*2.2+size*0.15,dh=rng()*size*0.55+size*0.1;
+      ctx.save(); ctx.translate(pts[i].x+dx,pts[i].y+dy); ctx.rotate(rng()*Math.PI);
+      ctx.fillRect(-dw/2,-dh/2,dw,dh); ctx.restore();
+    }
+  }
+  ctx.globalAlpha=0.18; ctx.strokeStyle=color; ctx.lineWidth=size*0.32; ctx.lineCap="round";
+  ctx.beginPath(); csSmooth(ctx,pts); ctx.stroke();
+  ctx.restore();
+}
+
+// ── Master dispatcher ────────────────────────────────────────────────────────
+function renderPath(ctx,path){
+  const{pts,color,size,tool:t,brushType="PEN",seed=42}=path;
+  if(!pts||pts.length<2)return;
+  const rng=mkRng(typeof seed==="number"?seed:42);
+  if(t===TOOL.HIGHLIGHT||brushType==="HIGHLIGHT"){bHighlight(ctx,pts,color,size);return;}
+  switch(brushType){
+    case "PENCIL":    bPencil(ctx,pts,color,size,rng);break;
+    case "PASTEL":    bPastel(ctx,pts,color,size,rng);break;
+    case "CHARCOAL":  bCharcoal(ctx,pts,color,size,rng);break;
+    case "WATERCOLOR":bWatercolor(ctx,pts,color,size,rng);break;
+    case "OIL":       bOil(ctx,pts,color,size,rng);break;
+    case "INK":       bInk(ctx,pts,color,size,rng);break;
+    case "EMBOSS":    bEmboss(ctx,pts,color,size,rng);break;
+    case "TEXTURE":   bTexture(ctx,pts,color,size,rng);break;
+    default:          bPen(ctx,pts,color,size);
+  }
+}
+
 // ─── Bezier smoothing (Catmull-Rom → cubic bezier) ───────────────────────────
 const F = n => n.toFixed(1);
 function smooth(pts) {
@@ -235,11 +450,14 @@ export default function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, arc
 
   // Drawing
   const [tool, setTool] = useState(TOOL.TEXT);
+  const [brushType, setBrushType] = useState("PEN");
   const [penColor, setPenColor] = useState("#2d2d2d");
   const [penSize, setPenSize] = useState(3);
   const [paths, setPaths] = useState([]);
   const [curPts, setCurPts] = useState([]);
   const [eraserPos, setEraserPos] = useState(null);
+  const bgCanvasRef = useRef(null);
+  const fgCanvasRef = useRef(null);
 
   // Page text (main textarea content)
   const [pageText, setPageText] = useState("");
@@ -274,6 +492,29 @@ export default function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, arc
   const redoStack = useRef([]);
 
   const isDrawMode = tool===TOOL.PEN||tool===TOOL.HIGHLIGHT||tool===TOOL.ERASER;
+  const isPenLike = tool===TOOL.PEN;
+
+  // ── Canvas rendering ───────────────────────────────────────────────────────
+  // Redraw all committed paths to bgCanvas
+  useEffect(()=>{
+    const bg=bgCanvasRef.current; if(!bg)return;
+    bg.width=CANVAS_W; bg.height=pageH;
+    const ctx=bg.getContext("2d");
+    paths.forEach(p=>renderPath(ctx,p));
+  },[paths,pageH]);
+
+  // Draw live stroke to fgCanvas
+  useEffect(()=>{
+    const fg=fgCanvasRef.current; if(!fg)return;
+    if(fg.width!==CANVAS_W||fg.height!==pageH){fg.width=CANVAS_W;fg.height=pageH;}
+    const ctx=fg.getContext("2d");
+    ctx.clearRect(0,0,CANVAS_W,pageH);
+    if(curPts.length<2)return;
+    const liveColor=tool===TOOL.HIGHLIGHT?penColor+"55":penColor;
+    const liveSize=tool===TOOL.HIGHLIGHT?penSize*4:penSize;
+    renderPath(ctx,{id:"cur",pts:curPts,color:liveColor,size:liveSize,tool,
+      brushType:tool===TOOL.HIGHLIGHT?"HIGHLIGHT":brushType,seed:999});
+  },[curPts,penColor,penSize,tool,brushType,pageH]);
 
   // ── Load entry ──────────────────────────────────────────────────────────────
   useEffect(()=>{
@@ -471,6 +712,8 @@ export default function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, arc
         color:tool===TOOL.HIGHLIGHT?penColor+"55":penColor,
         size:tool===TOOL.HIGHLIGHT?penSize*4:penSize,
         tool,
+        brushType:tool===TOOL.HIGHLIGHT?"HIGHLIGHT":brushType,
+        seed:Date.now()%999983,
       }]);
     }
     setCurPts([]);
@@ -763,24 +1006,18 @@ export default function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, arc
             {renderBg()}
           </svg>
 
-          {/* Drawing */}
-          <svg width={CANVAS_W} height={pageH} style={{ position:"absolute",top:0,left:0,pointerEvents:"none" }}>
-            {paths.map(p=>(
-              <path key={p.id} d={smooth(p.pts)} fill="none" stroke={p.color} strokeWidth={p.size}
-                strokeLinecap="round" strokeLinejoin="round"
-                opacity={p.tool===TOOL.HIGHLIGHT?0.45:1} />
-            ))}
-            {curPts.length>1&&(
-              <path d={smooth(curPts)} fill="none"
-                stroke={tool===TOOL.HIGHLIGHT?penColor+"55":penColor}
-                strokeWidth={tool===TOOL.HIGHLIGHT?penSize*4:penSize}
-                strokeLinecap="round" strokeLinejoin="round" />
-            )}
-            {eraserPos&&(
+          {/* Drawing — Canvas 2D */}
+          <canvas ref={bgCanvasRef} width={CANVAS_W} height={pageH}
+            style={{ position:"absolute",top:0,left:0,pointerEvents:"none" }} />
+          <canvas ref={fgCanvasRef} width={CANVAS_W} height={pageH}
+            style={{ position:"absolute",top:0,left:0,pointerEvents:"none" }} />
+          {/* Eraser cursor */}
+          {eraserPos&&(
+            <svg width={CANVAS_W} height={pageH} style={{ position:"absolute",top:0,left:0,pointerEvents:"none" }}>
               <circle cx={eraserPos.x} cy={eraserPos.y} r={ERASER_R} fill="rgba(255,255,255,0.3)"
                 stroke="#aaa" strokeWidth={1/xf.z} strokeDasharray={`${4/xf.z},${3/xf.z}`}/>
-            )}
-          </svg>
+            </svg>
+          )}
 
           {/* Main textarea — aligned to ruled lines, always present */}
           <textarea
@@ -836,14 +1073,36 @@ export default function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, arc
             ))}
           </div>
 
+          {/* Brush type selector */}
+          {tool===TOOL.PEN&&(
+            <div style={{ marginBottom:6, overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
+              <div style={{ display:"flex", gap:4, paddingBottom:2, minWidth:"max-content" }}>
+                {BRUSH_LIST.map(br=>{
+                  const active=brushType===br.id;
+                  return (
+                    <button key={br.id} title={br.tip} onClick={()=>setBrushType(br.id)}
+                      style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"center",
+                        gap:1, padding:"4px 8px", borderRadius:10, cursor:"pointer",
+                        border:active?`2px solid ${PASTEL.coral}`:`1px solid ${theme.border}`,
+                        background:active?`${PASTEL.coral}18`:theme.card,
+                        color:active?PASTEL.coral:theme.text }}>
+                      <span style={{ fontSize:17 }}>{br.emoji}</span>
+                      <span style={{ fontSize:9, fontWeight:active?700:400, whiteSpace:"nowrap" }}>{br.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Pen options */}
           {(tool===TOOL.PEN||tool===TOOL.HIGHLIGHT)&&(
             <div style={{ display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap" }}>
-              {PEN_COLORS.map(c=>(
-                <button key={c} onClick={()=>setPenColor(c)}
-                  style={{ width:22,height:22,borderRadius:11,background:c,
-                    border:penColor===c?"3px solid white":"1px solid #ccc",
-                    boxShadow:penColor===c?`0 0 0 2px ${c}`:"none",cursor:"pointer" }}/>
+              {["#2d2d2d","#555","#1a6fc4","#e05252","#2ecc71","#9b59b6","#e67e22","#16a085","#c8956c","#f8f0e0"].map(col=>(
+                <button key={col} onClick={()=>setPenColor(col)}
+                  style={{ width:22,height:22,borderRadius:11,background:col,
+                    border:penColor===col?"3px solid white":"1px solid #ccc",
+                    boxShadow:penColor===col?`0 0 0 2px ${col}`:"none",cursor:"pointer" }}/>
               ))}
               <div style={{ marginLeft:4,display:"flex",gap:3 }}>
                 {[1,2,4,8].map(s=>(
