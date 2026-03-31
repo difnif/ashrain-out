@@ -1,3 +1,4 @@
+import { useState, useRef } from "react";
 import { HelpPopup, PROPERTY_HELP } from "../components/HelpPopup";
 import { PASTEL, dist } from "../config";
 import FloatingMsg from "../components/FloatingMsg";
