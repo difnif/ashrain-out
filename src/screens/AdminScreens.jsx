@@ -7,6 +7,7 @@ export function renderAdminScreen(ctx) {
     { icon: "📬", label: "질문함", desc: (ctx.helpRequests||[]).filter(r=>r.status!=="answered").length > 0 ? `🔔 ${(ctx.helpRequests||[]).filter(r=>r.status!=="answered").length}건 대기` : "학생 질문 · 답변", action: () => setScreen("question-inbox") },
     { icon: "👤", label: "회원 관리", desc: signupRequests.length > 0 ? `🔔 가입 신청 ${signupRequests.length}건` : "권한 · 계정 · 비밀번호", action: () => setScreen("admin-students") },
     { icon: "💬", label: "대사 스크립트", desc: "말투별 대사 수정", action: () => setScreen("admin-scripts") },
+    { icon: "🤖", label: "분석 모델", desc: `현재: ${({"claude-opus-4-20250514":"Opus","claude-sonnet-4-20250514":"Sonnet","claude-haiku-4-5-20251001":"Haiku"})[ctx.analysisModel] || "Sonnet"}`, action: () => setScreen("admin-model") },
     { icon: "🔑", label: "권한 관리", desc: "역할별 기능 제한", action: () => setScreen("admin-perms") },
   ];
   return (
