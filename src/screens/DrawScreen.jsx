@@ -29,6 +29,7 @@ export function renderDrawScreen(ctx) {
     showArchiveSave, setShowArchiveSave, archivePublic, setArchivePublic,
     compareSelected, setCompareSelected,
     renderTriangleAnim, renderHighlight, getProperties,
+    archive, setArchive,
     handleJedoClick, handleJakdoDown, handleJakdoMove, handleJakdoUp, handleUndo,
     resetAll, generateTriangleWithBase, drawGoal,
     failAnim, idleMsg, retryDraw, generateTriangle,
@@ -1341,11 +1342,28 @@ export function renderDrawScreen(ctx) {
                 </p>
               )}
 
-              <button onClick={() => { setCompareSelected(null); resetAll(); setBuildPhase("input"); setTriMode("sss"); }} style={{
-                width: "100%", padding: "10px", borderRadius: 12,
-                border: `1.5px solid ${theme.border}`, background: theme.card,
-                color: theme.textSec, fontSize: 12, cursor: "pointer",
-              }}>다른 삼각형 그리기</button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => { setCompareSelected(null); resetAll(); setBuildPhase("input"); setTriMode("sss"); }} style={{
+                  flex: 1, padding: "10px", borderRadius: 12,
+                  border: `1px solid ${theme.border}`, background: theme.card,
+                  color: theme.textSec, fontSize: 12, cursor: "pointer",
+                }}>닫기</button>
+                <button onClick={() => {
+                  if (setArchive) {
+                    setArchive(prev => [...prev, {
+                      id: `draw-${Date.now()}`, type: buildPhase === "compare" ? "외접원↔내접원" : "외심↔내심",
+                      title: `${jedoType === "circum" ? "외접원" : "내접원"} 비교 학습`,
+                      preview: `R≈${R_val.toFixed(1)}, r≈${r_val.toFixed(1)}`,
+                      createdAt: Date.now(), isPublic: false, hidden: false, userId: user?.id,
+                    }]);
+                    playSfx("success"); showMsg("아카이브에 저장! 📂", 1500);
+                  }
+                }} style={{
+                  flex: 2, padding: "10px", borderRadius: 12, border: "none",
+                  background: `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
+                  color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                }}>📂 아카이브에 저장</button>
+              </div>
             </div>
           );
         })()}
