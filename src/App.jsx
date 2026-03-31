@@ -565,7 +565,6 @@ function AppInner() {
   // --- Menu Screen ---
   if (screen === "menu") {
     const menuItems = [
-      { icon: "📐", label: "문제 분석", desc: "AI 조건추출 · 풀이방향", action: () => setScreen("problem") },
       { icon: "📖", label: "복습하기", desc: "기하학 개념 학습", action: () => setScreen("study") },
       { icon: "◎", label: "아카이브", desc: "나만의 작품 갤러리", disabled: !canArchive, action: canArchive ? () => {} : undefined },
       { icon: "🏛️", label: "광장", desc: "실시간 채팅 · 순위", action: () => setScreen("plaza") },
@@ -605,7 +604,7 @@ function AppInner() {
   if (screen === "study") {
     const categories = [
       { icon: "⬡", label: "그려서 공부하기", desc: "삼각형, 외심, 내심", action: () => setScreen("polygons") },
-      { icon: "📝", label: "문제의 문장 이해하기", desc: "수학 문제 독해 연습", action: () => setScreen("sentence") },
+      { icon: "📝", label: "문제의 문장 이해하기", desc: "AI 조건추출 · 유형분류 · 풀이방향", action: () => setScreen("sentence") },
     ];
     return (
       <ScreenWrap title="복습하기" back="메뉴" backTo="menu">
@@ -618,27 +617,9 @@ function AppInner() {
 
 
   // --- Sentence Understanding Screen (문제의 문장 이해하기) ---
-  if (screen === "sentence") {
-    return (
-      <ScreenWrap title="문제의 문장 이해하기" back="복습하기" backTo="study">
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div style={{ textAlign: "center", animation: "fadeIn 0.5s ease" }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>📝</div>
-            <p style={{ fontSize: 15, color: theme.text, fontWeight: 700, marginBottom: 8 }}>준비 중이에요!</p>
-            <p style={{ fontSize: 12, color: theme.textSec, lineHeight: 1.8 }}>
-              수학 문제의 문장을 분석하고<br/>핵심 조건을 찾아내는 연습을 할 수 있어요.
-            </p>
-          </div>
-        </div>
-      </ScreenWrap>
-    );
-  }
+  if (screen === "sentence") return renderProblemScreen(ctx);
 
-
-  // --- Problem Analysis Screen ---
-  if (screen === "problem") return renderProblemScreen(ctx);
-
-  // --- Congruence Screen ---
+    // --- Congruence Screen ---
   if (screen === "congruence") return renderCongruenceScreen(ctx);
 
   // --- Plaza (광장) Screen ---
