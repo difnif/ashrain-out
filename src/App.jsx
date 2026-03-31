@@ -186,30 +186,22 @@ function AppInner() {
 
   // Student mode / LMS state
   const [isStudentModePreview, setIsStudentModePreview] = useState(false);
-  const [helpRequests, setHelpRequests] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("ar_help_requests")) || []; } catch { return []; }
-  });
-  const [studentHomework, setStudentHomework] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("ar_homework")) || []; } catch { return []; }
-  });
+  const [helpRequests, setHelpRequests] = useState([]);
+  const [studentHomework, setStudentHomework] = useState([]);
   const [studentArchive, setStudentArchive] = useState(() => {
     try { return JSON.parse(localStorage.getItem("ar_archive")) || []; } catch { return []; }
   });
-  const [studentDiary, setStudentDiary] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("ar_diary")) || []; } catch { return []; }
-  });
-  const [studentNotifications, setStudentNotifications] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("ar_notifications")) || []; } catch { return []; }
-  });
+  const [studentNotifications, setStudentNotifications] = useState([]);
   const [dndStart, setDndStart] = useState(() => localStorage.getItem("ar_dnd_start") || "23:00");
   const [dndEnd, setDndEnd] = useState(() => localStorage.getItem("ar_dnd_end") || "07:00");
 
-  // Persist LMS state
-  useEffect(() => { localStorage.setItem("ar_help_requests", JSON.stringify(helpRequests)); }, [helpRequests]);
-  useEffect(() => { localStorage.setItem("ar_homework", JSON.stringify(studentHomework)); }, [studentHomework]);
+  // Firestore sync for LMS data (질문·숙제·알림)
+  useFirestoreSync("data", "helpRequests", helpRequests, setHelpRequests, []);
+  useFirestoreSync("data", "homework", studentHomework, setStudentHomework, []);
+  useFirestoreSync("data", "notifications", studentNotifications, setStudentNotifications, []);
+
+  // localStorage for non-shared data
   useEffect(() => { localStorage.setItem("ar_archive", JSON.stringify(studentArchive)); }, [studentArchive]);
-  useEffect(() => { localStorage.setItem("ar_diary", JSON.stringify(studentDiary)); }, [studentDiary]);
-  useEffect(() => { localStorage.setItem("ar_notifications", JSON.stringify(studentNotifications)); }, [studentNotifications]);
   useEffect(() => { localStorage.setItem("ar_dnd_start", dndStart); }, [dndStart]);
   useEffect(() => { localStorage.setItem("ar_dnd_end", dndEnd); }, [dndEnd]);
   const [drawGoal, setDrawGoal] = useState("construct");
@@ -561,7 +553,6 @@ function AppInner() {
     helpRequests, setHelpRequests,
     homework: studentHomework, setHomework: setStudentHomework,
     archive: studentArchive, setArchive: setStudentArchive,
-    diary: studentDiary, setDiary: setStudentDiary,
     notifications: studentNotifications, setNotifications: setStudentNotifications,
     dndStart, dndEnd, setDndStart, setDndEnd,
     triangle, setTriangle, triMode, setTriMode, inputMode, setInputMode,
@@ -649,6 +640,8 @@ function AppInner() {
     const categories = [
       { icon: "⬡", label: "그려서 공부하기", desc: "삼각형, 외심, 내심", action: () => setScreen("polygons") },
       { icon: "📝", label: "문제의 문장 이해하기", desc: "AI 조건추출 · 유형분류 · 풀이방향", action: () => setScreen("sentence") },
+      { icon: "🧮", label: "쓸모 없어 보이는 수학", desc: "준비 중", disabled: true },
+      { icon: "🧠", label: "쓸모 있는데 어려운 수학", desc: "준비 중", disabled: true },
     ];
     return (
       <ScreenWrap title="복습하기" back="메뉴" backTo="menu">
