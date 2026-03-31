@@ -17,6 +17,8 @@ import {
   renderAdminSignupsScreen, renderAdminScriptsScreen,
 } from "./screens/AdminScreens";
 import { renderProblemScreen } from "./screens/ProblemScreen";
+import { renderStudentHomeScreen } from "./screens/StudentHomeScreen";
+import { renderQuestionInboxScreen } from "./screens/QuestionInboxScreen";
 import { renderCongruenceScreen } from "./screens/CongruenceScreen";
 import { renderSettingsScreen } from "./screens/SettingsScreen";
 import { renderDrawScreen } from "./screens/DrawScreen";
@@ -181,6 +183,35 @@ function AppInner() {
   const [signupDone, setSignupDone] = useState(false);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
   const [compareSelected, setCompareSelected] = useState(null);
+
+  // Student mode / LMS state
+  const [isStudentModePreview, setIsStudentModePreview] = useState(false);
+  const [helpRequests, setHelpRequests] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ar_help_requests")) || []; } catch { return []; }
+  });
+  const [studentHomework, setStudentHomework] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ar_homework")) || []; } catch { return []; }
+  });
+  const [studentArchive, setStudentArchive] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ar_archive")) || []; } catch { return []; }
+  });
+  const [studentDiary, setStudentDiary] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ar_diary")) || []; } catch { return []; }
+  });
+  const [studentNotifications, setStudentNotifications] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ar_notifications")) || []; } catch { return []; }
+  });
+  const [dndStart, setDndStart] = useState(() => localStorage.getItem("ar_dnd_start") || "23:00");
+  const [dndEnd, setDndEnd] = useState(() => localStorage.getItem("ar_dnd_end") || "07:00");
+
+  // Persist LMS state
+  useEffect(() => { localStorage.setItem("ar_help_requests", JSON.stringify(helpRequests)); }, [helpRequests]);
+  useEffect(() => { localStorage.setItem("ar_homework", JSON.stringify(studentHomework)); }, [studentHomework]);
+  useEffect(() => { localStorage.setItem("ar_archive", JSON.stringify(studentArchive)); }, [studentArchive]);
+  useEffect(() => { localStorage.setItem("ar_diary", JSON.stringify(studentDiary)); }, [studentDiary]);
+  useEffect(() => { localStorage.setItem("ar_notifications", JSON.stringify(studentNotifications)); }, [studentNotifications]);
+  useEffect(() => { localStorage.setItem("ar_dnd_start", dndStart); }, [dndStart]);
+  useEffect(() => { localStorage.setItem("ar_dnd_end", dndEnd); }, [dndEnd]);
   const [drawGoal, setDrawGoal] = useState("construct");
   const [proofStep, setProofStep] = useState(0); // "construct" | "compare" | "combined"
   const [chatMsg, setChatMsg] = useState("");
@@ -525,6 +556,14 @@ function AppInner() {
     handleLogout,
     editToneKey, setEditToneKey, customScripts, setCustomScripts,
     drawGoal, setDrawGoal, compareSelected, setCompareSelected,
+    isStudentModePreview, isAdminPreview: isStudentModePreview,
+    exitPreview: () => { setIsStudentModePreview(false); setScreen("admin"); },
+    helpRequests, setHelpRequests,
+    homework: studentHomework, setHomework: setStudentHomework,
+    archive: studentArchive, setArchive: setStudentArchive,
+    diary: studentDiary, setDiary: setStudentDiary,
+    notifications: studentNotifications, setNotifications: setStudentNotifications,
+    dndStart, dndEnd, setDndStart, setDndEnd,
     triangle, setTriangle, triMode, setTriMode, inputMode, setInputMode,
     buildPhase, setBuildPhase, sssInput, setSssInput, animPhase, animProgress,
     jedoLines, jedoCenter, jedoCircle, jedoType,
@@ -563,6 +602,11 @@ function AppInner() {
   // --- Signup Screen ---
 
   // --- Menu Screen ---
+  // Student/External users → student home instead of admin menu
+  if (screen === "menu" && userRole && userRole !== "admin" && userRole !== "assistant") {
+    return renderStudentHomeScreen(ctx);
+  }
+
   if (screen === "menu") {
     const menuItems = [
       { icon: "📖", label: "복습하기", desc: "기하학 개념 학습", action: () => setScreen("study") },
@@ -615,6 +659,16 @@ function AppInner() {
     );
   }
 
+
+  // --- Student Mode ---
+  if (screen === "student-mode") {
+    if (!isStudentModePreview) setIsStudentModePreview(true);
+    return renderStudentHomeScreen(ctx);
+  }
+  if (screen === "student-home") return renderStudentHomeScreen(ctx);
+
+  // --- Question Inbox ---
+  if (screen === "question-inbox") return renderQuestionInboxScreen(ctx);
 
   // --- Sentence Understanding Screen (문제의 문장 이해하기) ---
   if (screen === "sentence") return renderProblemScreen(ctx);
