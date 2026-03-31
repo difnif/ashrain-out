@@ -5,6 +5,8 @@ import InfoPanel from "../components/InfoPanel";
 
 export function renderDrawScreen(ctx) {
   const [helpPopupData, setHelpPopupData] = useState(null);
+  const [canvasWidth, setCanvasWidth] = useState(null);
+  const svgPanRef = useRef(null);
 
   const {
     theme, themeKey, setScreen, playSfx, showMsg, activeTone, isPC,
@@ -248,9 +250,19 @@ export function renderDrawScreen(ctx) {
             onMouseDown={(e) => { handleMouseDown(e); if(buildPhase==="jakdo") handleJakdoDown(e); handleDrawStart(e); }}
             onMouseMove={(e) => { handleMouseMove(e); if(buildPhase==="jakdo") handleJakdoMove(e); handleDrawMove(e); }}
             onMouseUp={(e) => { handleMouseUp(e); if(buildPhase==="jakdo") handleJakdoUp(e); handleDrawEnd(e); }}
-            onTouchStart={(e) => { handleTouchStart(e); if(buildPhase==="jakdo") handleJakdoDown(e); handleDrawStart(e); }}
-            onTouchMove={(e) => { handleTouchMove(e); if(buildPhase==="jakdo") handleJakdoMove(e); handleDrawMove(e); }}
-            onTouchEnd={(e) => { handleTouchEnd(e); if(buildPhase==="jakdo") handleJakdoUp(e); handleDrawEnd(e); }}
+            onTouchStart={(e) => {
+              if ((buildPhase==="properties"||buildPhase==="compare"||buildPhase==="combined") && e.touches.length===1) {
+                const t=e.touches[0], svg=e.currentTarget, vb=svg.getAttribute("viewBox")?.split(" ").map(Number);
+                if(vb){svgPanRef.current={sx:t.clientX,sy:t.clientY,vx:vb[0],vy:vb[1],vw:vb[2],vh:vb[3]};return;}
+              }
+              handleTouchStart(e); if(buildPhase==="jakdo") handleJakdoDown(e); handleDrawStart(e);
+            }}
+            onTouchMove={(e) => {
+              if(svgPanRef.current&&e.touches.length===1){e.preventDefault();const t=e.touches[0],p=svgPanRef.current,svg=e.currentTarget,rect=svg.getBoundingClientRect();
+                svg.setAttribute("viewBox",`${p.vx-(t.clientX-p.sx)*p.vw/rect.width} ${p.vy-(t.clientY-p.sy)*p.vh/rect.height} ${p.vw} ${p.vh}`);return;}
+              handleTouchMove(e); if(buildPhase==="jakdo") handleJakdoMove(e); handleDrawMove(e);
+            }}
+            onTouchEnd={(e) => { if(svgPanRef.current){svgPanRef.current=null;return;} handleTouchEnd(e); if(buildPhase==="jakdo") handleJakdoUp(e); handleDrawEnd(e); }}
           >
             {/* Global SVG styles — keep stroke width constant on zoom */}
             <defs>
@@ -743,6 +755,15 @@ export function renderDrawScreen(ctx) {
               }}
             >
               <div style={{ width: 40, height: 4, borderRadius: 2, background: theme.border }} />
+            </div>
+          )}
+          {/* Horizontal resize */}
+          {triangle && buildPhase !== "animating" && buildPhase !== "input" && (
+            <div onTouchStart={(e)=>{e.preventDefault();canvasDragRef.current={startX:e.touches[0].clientX,startW:canvasWidth||e.currentTarget.parentElement?.offsetWidth||300,hz:true};}}
+              onTouchMove={(e)=>{if(!canvasDragRef.current?.hz)return;e.preventDefault();setCanvasWidth(Math.max(200,canvasDragRef.current.startW+(e.touches[0].clientX-canvasDragRef.current.startX)));}}
+              onTouchEnd={()=>{if(canvasDragRef.current?.hz)canvasDragRef.current=null;}}
+              style={{position:"absolute",right:-6,top:"30%",height:"40%",width:12,display:"flex",alignItems:"center",justifyContent:"center",cursor:"ew-resize",touchAction:"none"}}>
+              <div style={{width:4,height:30,borderRadius:2,background:theme.border}} />
             </div>
           )}
           {buildPhase === "jedo" && !jedoCircle && jedoLines.length === 0 && (
