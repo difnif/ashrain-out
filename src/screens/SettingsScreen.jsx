@@ -3,7 +3,7 @@ import { PASTEL, THEMES, TONES } from "../config";
 export function renderSettingsScreen(ctx) {
   const { theme, themeKey, setThemeKey, toneKey, setToneKey, setScreen, playSfx,
     bgmOn, setBgmOn, sfxOn, setSfxOn, bgmVol, setBgmVol, sfxVol, setSfxVol,
-    userRole, user, handleLogout, ROLES, ScreenWrap } = ctx;
+    userRole, user, handleLogout, ROLES, ScreenWrap, archiveDefaultPublic, setArchiveDefaultPublic } = ctx;
     const SliderRow = ({ label, value, onChange, icon }) => (
       <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
         <span style={{ fontSize:18 }}>{icon}</span>
