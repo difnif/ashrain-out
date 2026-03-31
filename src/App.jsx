@@ -197,6 +197,9 @@ function AppInner() {
   });
   useEffect(() => { localStorage.setItem("ar_diary", JSON.stringify(studentDiary)); }, [studentDiary]);
 
+  const [analysisModel, setAnalysisModel] = useState(() => localStorage.getItem("ar_analysis_model") || "claude-sonnet-4-20250514");
+  useEffect(() => { localStorage.setItem("ar_analysis_model", analysisModel); }, [analysisModel]);
+
   const [archiveDefaultPublic, setArchiveDefaultPublic] = useState(() => localStorage.getItem("ar_archive_public") === "true");
   useEffect(() => { localStorage.setItem("ar_archive_public", archiveDefaultPublic); }, [archiveDefaultPublic]);
 
@@ -567,6 +570,7 @@ function AppInner() {
     archive: studentArchive, setArchive: setStudentArchive,
     notifications: studentNotifications, setNotifications: setStudentNotifications,
     diary: studentDiary, setDiary: setStudentDiary,
+    analysisModel, setAnalysisModel,
     archiveDefaultPublic, setArchiveDefaultPublic,
     helpPopupData, setHelpPopupData, canvasWidth, setCanvasWidth, svgPanRef,
     dndStart, dndEnd, setDndStart, setDndEnd,
@@ -776,6 +780,37 @@ function AppInner() {
 
 
   // --- Admin Script Editor ---
+  if (screen === "admin-model") {
+    const MODELS = [
+      { key: "claude-opus-4-20250514", label: "Opus", desc: "최고 성능, 느림, 비쌈", icon: "👑" },
+      { key: "claude-sonnet-4-20250514", label: "Sonnet", desc: "균형 잡힌 성능 (기본값)", icon: "⚡" },
+      { key: "claude-haiku-4-5-20251001", label: "Haiku", desc: "빠르고 저렴", icon: "🚀" },
+    ];
+    return (
+      <ScreenWrap title="분석 모델 설정" back="관리자" backTo="admin">
+        <div style={{ padding: 20 }}>
+          <p style={{ fontSize: 12, color: theme.textSec, marginBottom: 16 }}>문제 분석 시 사용할 Claude 모델을 선택하세요.</p>
+          {MODELS.map(m => (
+            <button key={m.key} onClick={() => { setAnalysisModel(m.key); playSfx("click"); showMsg(m.label + " 모델로 변경!", 1500); }}
+              style={{
+                width: "100%", textAlign: "left", padding: "16px", marginBottom: 8, borderRadius: 14,
+                border: "2px solid " + (analysisModel === m.key ? PASTEL.coral : theme.border),
+                background: analysisModel === m.key ? PASTEL.coral + "08" : theme.card,
+                cursor: "pointer", display: "flex", alignItems: "center", gap: 12,
+              }}>
+              <span style={{ fontSize: 24 }}>{m.icon}</span>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>{m.label}</div>
+                <div style={{ fontSize: 11, color: theme.textSec }}>{m.desc}</div>
+                <div style={{ fontSize: 9, color: theme.textSec, marginTop: 2 }}>{m.key}</div>
+              </div>
+              {analysisModel === m.key && <span style={{ marginLeft: "auto", color: PASTEL.coral, fontWeight: 700 }}>{"✓"}</span>}
+            </button>
+          ))}
+        </div>
+      </ScreenWrap>
+    );
+  }
   if (screen === "admin-scripts") return renderAdminScriptsScreen(ctx);
 
 
