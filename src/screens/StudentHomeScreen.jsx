@@ -6,7 +6,7 @@ const TABS = [
   { key: "archive", icon: "📂", label: "아카이브" },
   { key: "diary", icon: "📓", label: "다이어리" },
   { key: "homework", icon: "📝", label: "숙제" },
-  { key: "notif", icon: "🔔", label: "알림" },
+  { key: "settings", icon: "⚙️", label: "설정" },
 ];
 
 function dateStr(d) { return d ? new Date(d).toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""; }
@@ -635,40 +635,184 @@ function HomeworkTab({ theme, homework, setHomework, playSfx, showMsg }) {
   );
 }
 
-// ===== Notification Tab =====
-function NotifTab({ theme, notifications, setNotifications, dndStart, dndEnd, setDndStart, setDndEnd, playSfx }) {
-  const markAllRead = () => { setNotifications(prev => prev.map(n => ({ ...n, read: true }))); playSfx("click"); };
+// ===== Settings Tab =====
+function SettingsTab({ theme, playSfx, showMsg, user, updateMember, handleLogout,
+  notifications, setNotifications, dndStart, dndEnd, setDndStart, setDndEnd,
+  themeKey, setThemeKey, toneKey, setToneKey,
+  bgmOn, setBgmOn, sfxOn, setSfxOn, bgmVol, setBgmVol, sfxVol, setSfxVol,
+  archiveDefaultPublic, setArchiveDefaultPublic }) {
+
+  const [section, setSection] = useState(null); // null|account|notif|display|audio|archive
+  const [editField, setEditField] = useState(null); // id|pw|nickname
+  const [editVal, setEditVal] = useState("");
+  const [editPwOld, setEditPwOld] = useState("");
+
+  const member = user || {};
+  const idChangeCount = member.idChangeCount || 0;
+  const lastNicknameChange = member.lastNicknameChange || 0;
+  const canChangeId = idChangeCount < 2;
+  const daysSinceNickChange = (Date.now() - lastNicknameChange) / 86400000;
+  const canChangeNickname = daysSinceNickChange >= 7;
+
+  const saveEdit = () => {
+    if (!editField || !editVal.trim()) { showMsg("값을 입력해주세요", 1500); return; }
+    if (editField === "id") {
+      if (!canChangeId) { showMsg("아이디는 최대 2회까지만 변경 가능해요", 2000); return; }
+      if (editVal.length < 3) { showMsg("3글자 이상 입력해주세요", 1500); return; }
+      updateMember(member.id, { id: editVal, idChangeCount: idChangeCount + 1 });
+      showMsg("아이디가 변경되었어요!", 2000);
+    } else if (editField === "pw") {
+      if (editPwOld !== member.pw) { showMsg("현재 비밀번호가 틀려요", 1500); return; }
+      if (editVal.length < 4) { showMsg("4글자 이상 입력해주세요", 1500); return; }
+      updateMember(member.id, { pw: editVal });
+      showMsg("비밀번호가 변경되었어요!", 2000);
+    } else if (editField === "nickname") {
+      if (!canChangeNickname) { showMsg(`${Math.ceil(7 - daysSinceNickChange)}일 후에 변경 가능해요`, 2000); return; }
+      if (editVal.length < 1 || editVal.length > 10) { showMsg("1~10글자로 입력해주세요", 1500); return; }
+      updateMember(member.id, { nickname: editVal, lastNicknameChange: Date.now() });
+      showMsg("닉네임이 변경되었어요!", 2000);
+    }
+    setEditField(null); setEditVal(""); setEditPwOld("");
+    playSfx("success");
+  };
+
+  const unread = notifications.filter(n => !n.read).length;
+
+  // Edit modal
+  if (editField) {
+    const titles = { id: "아이디 변경", pw: "비밀번호 변경", nickname: "닉네임 변경" };
+    return (
+      <div style={{ padding: "16px", animation: "fadeIn 0.3s ease" }}>
+        <button onClick={() => setEditField(null)} style={{ background: "none", border: "none", color: theme.textSec, fontSize: 13, cursor: "pointer", marginBottom: 12 }}>← 돌아가기</button>
+        <div style={{ padding: 20, borderRadius: 16, background: theme.card, border: `1px solid ${theme.border}` }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: theme.text, marginBottom: 16 }}>{titles[editField]}</div>
+          {editField === "id" && (
+            <div style={{ fontSize: 10, color: PASTEL.coral, marginBottom: 10 }}>
+              ⚠️ 아이디 변경은 총 2회까지 가능 (현재 {idChangeCount}/2회 사용)
+            </div>
+          )}
+          {editField === "nickname" && !canChangeNickname && (
+            <div style={{ fontSize: 10, color: PASTEL.coral, marginBottom: 10 }}>
+              ⏳ {Math.ceil(7 - daysSinceNickChange)}일 후에 변경 가능해요
+            </div>
+          )}
+          {editField === "pw" && (
+            <input type="password" placeholder="현재 비밀번호" value={editPwOld}
+              onChange={e => setEditPwOld(e.target.value)}
+              style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 14, marginBottom: 10, boxSizing: "border-box" }} />
+          )}
+          <input type={editField === "pw" ? "password" : "text"}
+            placeholder={editField === "id" ? "새 아이디" : editField === "pw" ? "새 비밀번호" : "새 닉네임"}
+            value={editVal} onChange={e => setEditVal(e.target.value)}
+            style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 14, boxSizing: "border-box" }} />
+          <button onClick={saveEdit} disabled={editField === "id" && !canChangeId || editField === "nickname" && !canChangeNickname}
+            style={{ width: "100%", marginTop: 12, padding: 14, borderRadius: 14, border: "none",
+              background: PASTEL.coral, color: "white", fontSize: 14, fontWeight: 700, cursor: "pointer",
+              opacity: (editField === "id" && !canChangeId) || (editField === "nickname" && !canChangeNickname) ? 0.4 : 1 }}>
+            변경하기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ padding: "12px 16px", animation: "fadeIn 0.3s ease" }}>
-      <div style={{ padding: "12px 14px", borderRadius: 14, background: theme.card, border: `1px solid ${theme.border}`, marginBottom: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginBottom: 8 }}>🌙 방해금지 시간대</div>
+    <div style={{ padding: "16px", animation: "fadeIn 0.3s ease" }}>
+      {/* Account */}
+      <div style={{ padding: 16, borderRadius: 16, background: theme.card, border: `1px solid ${theme.border}`, marginBottom: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginBottom: 10 }}>👤 내 계정</div>
+        <div style={{ fontSize: 11, color: theme.textSec, marginBottom: 4 }}>이름: <b style={{ color: theme.text }}>{member.name || "미설정"}</b> <span style={{ fontSize: 9, color: theme.textSec }}>(변경불가)</span></div>
+        {[
+          { key: "id", label: "아이디", value: member.id, sub: canChangeId ? `변경 ${idChangeCount}/2회` : "변경 불가 (2/2)" },
+          { key: "nickname", label: "닉네임", value: member.nickname || "미설정", sub: canChangeNickname ? "변경 가능" : `${Math.ceil(7 - daysSinceNickChange)}일 후 변경 가능` },
+          { key: "pw", label: "비밀번호", value: "••••••", sub: "" },
+        ].map(item => (
+          <div key={item.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderTop: `1px solid ${theme.border}20` }}>
+            <div>
+              <span style={{ fontSize: 12, color: theme.text }}>{item.label}: <b>{item.value}</b></span>
+              {item.sub && <div style={{ fontSize: 9, color: theme.textSec }}>{item.sub}</div>}
+            </div>
+            <button onClick={() => { setEditField(item.key); setEditVal(""); setEditPwOld(""); playSfx("click"); }}
+              style={{ padding: "4px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.textSec, fontSize: 10, cursor: "pointer" }}>
+              변경
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Notifications */}
+      <div style={{ padding: 14, borderRadius: 16, background: theme.card, border: `1px solid ${theme.border}`, marginBottom: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: theme.text }}>🔔 알림 {unread > 0 && <span style={{ fontSize: 10, color: PASTEL.coral }}>({unread})</span>}</div>
+          {unread > 0 && <button onClick={() => { setNotifications(prev => prev.map(n => ({ ...n, read: true }))); playSfx("click"); }}
+            style={{ fontSize: 10, color: PASTEL.sky, background: "none", border: "none", cursor: "pointer" }}>모두 읽음</button>}
+        </div>
+        {notifications.slice(0, 3).map(n => (
+          <div key={n.id} style={{ padding: "6px 0", borderTop: `1px solid ${theme.border}20`, display: "flex", gap: 6, alignItems: "flex-start" }}>
+            {!n.read && <div style={{ width: 6, height: 6, borderRadius: 3, background: PASTEL.coral, marginTop: 5, flexShrink: 0 }} />}
+            <div style={{ fontSize: 11, color: n.read ? theme.textSec : theme.text }}>{n.title}</div>
+          </div>
+        ))}
+        {notifications.length === 0 && <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center" }}>알림 없음</p>}
+      </div>
+
+      {/* DND */}
+      <div style={{ padding: 14, borderRadius: 16, background: theme.card, border: `1px solid ${theme.border}`, marginBottom: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginBottom: 8 }}>🌙 방해금지</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <input type="time" value={dndStart} onChange={e => setDndStart(e.target.value)}
             style={{ flex: 1, padding: 8, borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 12 }} />
-          <span style={{ color: theme.textSec, fontSize: 12 }}>~</span>
+          <span style={{ color: theme.textSec }}>~</span>
           <input type="time" value={dndEnd} onChange={e => setDndEnd(e.target.value)}
             style={{ flex: 1, padding: 8, borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 12 }} />
         </div>
-        <p style={{ fontSize: 10, color: theme.textSec, marginTop: 6 }}>이 시간에는 알림이 오지 않아요</p>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={{ fontSize: 11, color: theme.textSec }}>알림 ({notifications.length})</span>
-        {notifications.some(n => !n.read) && <button onClick={markAllRead} style={{ fontSize: 10, color: PASTEL.sky, background: "none", border: "none", cursor: "pointer" }}>모두 읽음</button>}
+
+      {/* Display */}
+      <div style={{ padding: 14, borderRadius: 16, background: theme.card, border: `1px solid ${theme.border}`, marginBottom: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginBottom: 8 }}>🎨 화면</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          {[["light", "라이트"], ["dark", "다크"]].map(([k, l]) => (
+            <button key={k} onClick={() => { setThemeKey(k); playSfx("click"); }}
+              style={{ flex: 1, padding: 10, borderRadius: 10, border: `2px solid ${themeKey === k ? PASTEL.coral : theme.border}`, background: themeKey === k ? `${PASTEL.coral}10` : theme.card, color: theme.text, fontSize: 12, cursor: "pointer" }}>{l}</button>
+          ))}
+        </div>
+        <div style={{ fontSize: 11, color: theme.textSec, marginBottom: 6 }}>말투</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {[["default", "기본"], ["nagging", "잔소리"], ["cute", "더러운"]].map(([k, l]) => (
+            <button key={k} onClick={() => { setToneKey(k); playSfx("click"); }}
+              style={{ flex: 1, padding: 8, borderRadius: 8, border: `1.5px solid ${toneKey === k ? PASTEL.sky : theme.border}`, background: toneKey === k ? `${PASTEL.sky}10` : theme.card, color: theme.text, fontSize: 11, cursor: "pointer" }}>{l}</button>
+          ))}
+        </div>
       </div>
-      {notifications.length === 0 && <p style={{ textAlign: "center", color: theme.textSec, fontSize: 12, padding: 30 }}>알림이 없어요</p>}
-      {notifications.map(n => (
-        <button key={n.id} onClick={() => setNotifications(prev => prev.map(nn => nn.id === n.id ? { ...nn, read: true } : nn))}
-          style={{ width: "100%", textAlign: "left", padding: "12px 14px", marginBottom: 6, borderRadius: 12, background: n.read ? theme.card : `${PASTEL.sky}06`, border: `1px solid ${n.read ? theme.border : PASTEL.sky + "30"}`, cursor: "pointer" }}>
-          <div style={{ display: "flex", gap: 8 }}>
-            {!n.read && <div style={{ width: 8, height: 8, borderRadius: 4, background: PASTEL.coral, marginTop: 4, flexShrink: 0 }} />}
-            <div>
-              <div style={{ fontSize: 12, fontWeight: n.read ? 400 : 700, color: theme.text }}>{n.title}</div>
-              <div style={{ fontSize: 11, color: theme.textSec, marginTop: 2 }}>{n.message}</div>
-              <div style={{ fontSize: 9, color: theme.textSec, marginTop: 4 }}>{dateStr(n.time)}</div>
-            </div>
+
+      {/* Audio */}
+      <div style={{ padding: 14, borderRadius: 16, background: theme.card, border: `1px solid ${theme.border}`, marginBottom: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginBottom: 8 }}>🔊 오디오</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <button onClick={() => setBgmOn(!bgmOn)} style={{ flex: 1, padding: 8, borderRadius: 8, border: `1.5px solid ${bgmOn ? PASTEL.mint : theme.border}`, background: bgmOn ? `${PASTEL.mint}10` : theme.card, color: theme.text, fontSize: 11, cursor: "pointer" }}>🎵 BGM {bgmOn ? "ON" : "OFF"}</button>
+          <button onClick={() => setSfxOn(!sfxOn)} style={{ flex: 1, padding: 8, borderRadius: 8, border: `1.5px solid ${sfxOn ? PASTEL.sky : theme.border}`, background: sfxOn ? `${PASTEL.sky}10` : theme.card, color: theme.text, fontSize: 11, cursor: "pointer" }}>🔊 효과음 {sfxOn ? "ON" : "OFF"}</button>
+        </div>
+      </div>
+
+      {/* Archive default */}
+      <div style={{ padding: 14, borderRadius: 16, background: theme.card, border: `1px solid ${theme.border}`, marginBottom: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: theme.text }}>📂 아카이브 기본 공개</div>
+            <div style={{ fontSize: 10, color: theme.textSec }}>{archiveDefaultPublic ? "🌍 공개" : "🔒 비공개"}</div>
           </div>
-        </button>
-      ))}
+          <button onClick={() => { setArchiveDefaultPublic(!archiveDefaultPublic); playSfx("click"); }}
+            style={{ width: 48, height: 26, borderRadius: 13, border: "none", cursor: "pointer", background: archiveDefaultPublic ? PASTEL.mint : theme.border, position: "relative", transition: "background 0.3s" }}>
+            <div style={{ width: 20, height: 20, borderRadius: 10, background: "white", position: "absolute", top: 3, left: archiveDefaultPublic ? 25 : 3, transition: "left 0.3s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+          </button>
+        </div>
+      </div>
+
+      {/* Logout */}
+      <button onClick={handleLogout} style={{ width: "100%", padding: 14, borderRadius: 14, border: `1px solid ${PASTEL.coral}30`, background: `${PASTEL.coral}08`, color: PASTEL.coral, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+        로그아웃
+      </button>
     </div>
   );
 }
@@ -677,7 +821,7 @@ function NotifTab({ theme, notifications, setNotifications, dndStart, dndEnd, se
 export function StudentHomeScreenInner(props) {
   const { theme, playSfx, isAdminPreview, exitPreview, notifications, homework } = props;
   const [tab, setTab] = useState("home");
-  const unread = notifications.filter(n => !n.read).length;
+  const unread = 0; // notifications badge removed
   const pendingHw = homework.filter(h => h.status !== "completed").length;
 
   return (
@@ -697,12 +841,12 @@ export function StudentHomeScreenInner(props) {
         {tab === "archive" && <ArchiveTab {...props} />}
         {tab === "diary" && <DiaryTab {...props} />}
         {tab === "homework" && <HomeworkTab {...props} />}
-        {tab === "notif" && <NotifTab {...props} />}
+        {tab === "settings" && <SettingsTab {...props} />}
       </div>
       <div style={{ flexShrink: 0, display: "flex", borderTop: `1px solid ${theme.border}`, background: theme.card, paddingBottom: "env(safe-area-inset-bottom, 0)" }}>
         {TABS.map(t => {
           const active = tab === t.key;
-          const badge = t.key === "notif" ? unread : t.key === "homework" ? pendingHw : 0;
+          const badge = t.key === "homework" ? pendingHw : 0;
           return (
             <button key={t.key} onClick={() => { setTab(t.key); playSfx("click"); }}
               style={{ flex: 1, padding: "10px 0 8px", border: "none", background: "transparent", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, position: "relative" }}>
