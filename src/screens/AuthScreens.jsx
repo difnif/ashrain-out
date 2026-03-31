@@ -54,7 +54,7 @@ export function renderLoginScreen(ctx) {
             ashrain.out
           </h1>
           <p style={{ fontSize: 13, color: "#8B7E74", margin: "0 0 36px 0", fontFamily: "'Noto Serif KR', serif", fontStyle: "italic" }}>
-            뭐,왜.
+            뭐, 왜. 생각 좀 해볼게.
           </p>
 
           <input
