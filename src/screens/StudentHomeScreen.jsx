@@ -9,7 +9,6 @@ function monthAgo() { const d=new Date();d.setMonth(d.getMonth()-1);return d.toI
 const TABS = [
   {key:"home",icon:"🏠",label:"홈"},
   {key:"study",icon:"📖",label:"복습"},
-  {key:"diary",icon:"📓",label:"다이어리"},
   {key:"homework",icon:"📝",label:"숙제"},
   {key:"more",icon:"···",label:"더보기"},
 ];
@@ -17,7 +16,7 @@ const TABS = [
 // ============================================================
 // HOME TAB — Dashboard
 // ============================================================
-function HomeTab({theme,user,playSfx,setTab,homework,notifications,activityLog,streak}) {
+function HomeTab({theme,user,playSfx,setTab,setScreen,homework,notifications,activityLog,streak}) {
   const pending = homework.filter(h=>h.status!=="completed").length;
   const unread = notifications.filter(n=>!n.read).length;
   const today = todayKey();
@@ -83,16 +82,16 @@ function HomeTab({theme,user,playSfx,setTab,homework,notifications,activityLog,s
           </div>
         </div>
       </button>
-      <button onClick={()=>{setTab("diary");playSfx("click");}} style={{
-        width:"100%",padding:"14px 16px",borderRadius:14,
-        border:`1px solid ${theme.border}`,background:theme.card,
+      <button onClick={()=>{playSfx("click");setScreen("sentence");}} style={{
+        width:"100%",padding:"16px 16px",borderRadius:14,
+        border:`2px solid ${PASTEL.sky}25`,background:`${PASTEL.sky}04`,
         cursor:"pointer",textAlign:"left",
       }}>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <span style={{fontSize:22}}>📓</span>
+          <span style={{fontSize:24}}>🙋</span>
           <div>
-            <div style={{fontSize:13,fontWeight:600,color:theme.text}}>오늘의 다이어리 쓰기</div>
-            <div style={{fontSize:10,color:theme.textSec}}>공부한 내용 정리 + 그림 그리기</div>
+            <div style={{fontSize:14,fontWeight:700,color:theme.text}}>질문하기</div>
+            <div style={{fontSize:11,color:theme.textSec}}>모르는 문제 사진 찍으면 AI가 분석해줘요</div>
           </div>
         </div>
       </button>
@@ -124,132 +123,6 @@ function StudyTab({theme,setScreen,playSfx,logActivity}) {
           </div>
         </button>
       ))}
-    </div>
-  );
-}
-
-// ============================================================
-// DIARY TAB (with drawing)
-// ============================================================
-function DiaryTab({theme,diary,setDiary,playSfx,logActivity}) {
-  const today = todayKey();
-  const sortedDates = [...new Set(diary.map(d=>d.date))].sort().reverse();
-  const [viewDate,setViewDate] = useState(today);
-  const [text,setText] = useState("");
-  const [editing,setEditing] = useState(false);
-  const [drawMode,setDrawMode] = useState(false);
-  const [penColor,setPenColor] = useState("#333");
-  const [penSize,setPenSize] = useState(3);
-  const [isEraser,setIsEraser] = useState(false);
-  const [strokes,setStrokes] = useState([]);
-  const [curStroke,setCurStroke] = useState(null);
-  const [undoHist,setUndoHist] = useState([]);
-  const canvasRef = useRef(null);
-  const drawingRef = useRef(false);
-
-  useEffect(()=>{
-    const e = diary.find(d=>d.date===viewDate);
-    setText(e?.content||""); setStrokes(e?.strokes||[]);
-    setEditing(false); setDrawMode(false); setUndoHist([]);
-  },[viewDate,diary]);
-
-  useEffect(()=>{
-    const cv=canvasRef.current; if(!cv) return;
-    const ctx=cv.getContext("2d");
-    const r=cv.getBoundingClientRect();
-    cv.width=r.width*2;cv.height=r.height*2;ctx.scale(2,2);
-    ctx.clearRect(0,0,r.width,r.height);
-    ctx.lineCap="round";ctx.lineJoin="round";
-    [...strokes,...(curStroke?[curStroke]:[])].forEach(s=>{
-      if(s.points.length<2) return;
-      ctx.beginPath();ctx.strokeStyle=s.eraser?theme.card:s.color;
-      ctx.lineWidth=s.eraser?s.size*3:s.size;
-      ctx.globalCompositeOperation=s.eraser?"destination-out":"source-over";
-      ctx.moveTo(s.points[0].x,s.points[0].y);
-      for(let i=1;i<s.points.length;i++) ctx.lineTo(s.points[i].x,s.points[i].y);
-      ctx.stroke();
-    });
-    ctx.globalCompositeOperation="source-over";
-  },[strokes,curStroke,theme]);
-
-  const getPos=e=>{const cv=canvasRef.current;if(!cv)return null;const r=cv.getBoundingClientRect();const s=e.touches?e.touches[0]:e;return{x:s.clientX-r.left,y:s.clientY-r.top};};
-  const ds=e=>{if(!drawMode)return;e.preventDefault();const p=getPos(e);if(!p)return;drawingRef.current=true;setCurStroke({color:penColor,size:penSize,eraser:isEraser,points:[p]});};
-  const dm=e=>{if(!drawingRef.current||!drawMode)return;e.preventDefault();const p=getPos(e);if(!p)return;setCurStroke(prev=>prev?{...prev,points:[...prev.points,p]}:null);};
-  const de=()=>{if(!drawingRef.current)return;drawingRef.current=false;if(curStroke&&curStroke.points.length>1){setUndoHist(p=>[...p,strokes]);setStrokes(p=>[...p,curStroke]);}setCurStroke(null);};
-  const undo=()=>{if(undoHist.length){setStrokes(undoHist[undoHist.length-1]);setUndoHist(p=>p.slice(0,-1));}};
-
-  const save=()=>{
-    setDiary(prev=>{
-      const ex=prev.find(d=>d.date===viewDate);
-      const data={content:text,strokes,updatedAt:Date.now()};
-      if(ex)return prev.map(d=>d.date===viewDate?{...d,...data}:d);
-      return[...prev,{id:`diary-${viewDate}`,date:viewDate,...data,createdAt:Date.now()}];
-    });
-    setEditing(false);setDrawMode(false);
-    logActivity("다이어리");playSfx("success");
-  };
-
-  const canEdit=viewDate===today;
-  const COLORS=["#333","#D95F4B","#3A8FC2","#2E9E6B","#9B7FBF","#E8A040","#E88DB5"];
-
-  return (
-    <div style={{padding:"12px 16px",animation:"fadeIn 0.3s ease"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-        <button onClick={()=>{const d=new Date(viewDate);d.setDate(d.getDate()-1);setViewDate(d.toISOString().slice(0,10));}} style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:theme.text}}>◀</button>
-        <div style={{textAlign:"center"}}>
-          <div style={{fontSize:13,fontWeight:700,color:theme.text}}>
-            {new Date(viewDate).toLocaleDateString("ko-KR",{month:"long",day:"numeric",weekday:"short"})}
-          </div>
-          {viewDate===today&&<span style={{fontSize:9,color:PASTEL.coral,fontWeight:700}}>오늘</span>}
-        </div>
-        <button onClick={()=>{const d=new Date(viewDate);d.setDate(d.getDate()+1);const n=d.toISOString().slice(0,10);if(n<=today)setViewDate(n);}} style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:viewDate<today?theme.text:theme.border}}>▶</button>
-      </div>
-
-      {drawMode&&canEdit&&(
-        <div style={{display:"flex",gap:5,marginBottom:8,padding:"6px 8px",borderRadius:10,background:theme.card,border:`1px solid ${theme.border}`,flexWrap:"wrap",alignItems:"center",animation:"fadeIn 0.2s ease"}}>
-          {COLORS.map(col=>(<button key={col} onClick={()=>{setPenColor(col);setIsEraser(false);}} style={{width:22,height:22,borderRadius:11,background:col,border:penColor===col&&!isEraser?`3px solid ${PASTEL.coral}`:`1.5px solid ${theme.border}`,cursor:"pointer"}}/>))}
-          <span style={{color:theme.border}}>|</span>
-          <button onClick={()=>setIsEraser(!isEraser)} style={{padding:"3px 6px",borderRadius:6,fontSize:12,cursor:"pointer",border:isEraser?`2px solid ${PASTEL.coral}`:`1px solid ${theme.border}`,background:isEraser?`${PASTEL.coral}15`:theme.card}}>🧽</button>
-          <input type="range" min={1} max={12} value={penSize} onChange={e=>setPenSize(+e.target.value)} style={{width:50,accentColor:PASTEL.coral}}/>
-          <button onClick={undo} style={{padding:"3px 6px",borderRadius:6,fontSize:11,cursor:"pointer",border:`1px solid ${theme.border}`,background:theme.card,color:undoHist.length?theme.text:theme.border}}>↩</button>
-        </div>
-      )}
-
-      <div style={{minHeight:300,borderRadius:14,position:"relative",overflow:"hidden",background:theme.card,border:`1px solid ${theme.border}`,backgroundImage:`repeating-linear-gradient(transparent,transparent 31px,${theme.border}40 31px,${theme.border}40 32px)`,backgroundPosition:"0 16px"}}>
-        <div style={{padding:16,position:"relative",zIndex:1,pointerEvents:drawMode?"none":"auto"}}>
-          {editing&&!drawMode?(
-            <textarea value={text} onChange={e=>setText(e.target.value)} style={{width:"100%",minHeight:268,border:"none",background:"transparent",color:theme.text,fontSize:14,lineHeight:"32px",fontFamily:"'Noto Serif KR',serif",resize:"none",outline:"none"}} placeholder="오늘 공부한 내용을 적어보세요..." autoFocus/>
-          ):(
-            <div onClick={()=>canEdit&&!drawMode&&setEditing(true)} style={{fontSize:14,lineHeight:"32px",color:text?theme.text:theme.textSec,whiteSpace:"pre-wrap",minHeight:268,cursor:canEdit?"text":"default"}}>
-              {text||(canEdit?"터치해서 작성하기...":"작성한 내용이 없어요")}
-            </div>
-          )}
-        </div>
-        <canvas ref={canvasRef} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",zIndex:drawMode?10:2,touchAction:"none",pointerEvents:drawMode?"auto":"none"}}
-          onMouseDown={ds} onMouseMove={dm} onMouseUp={de} onMouseLeave={de} onTouchStart={ds} onTouchMove={dm} onTouchEnd={de}/>
-      </div>
-
-      {canEdit&&(
-        <div style={{display:"flex",gap:6,marginTop:8}}>
-          <button onClick={()=>{setDrawMode(!drawMode);if(editing)setEditing(false);playSfx("click");}} style={{padding:"9px 12px",borderRadius:10,border:drawMode?`2px solid ${PASTEL.coral}`:`1px solid ${theme.border}`,background:drawMode?`${PASTEL.coral}10`:theme.card,color:drawMode?PASTEL.coral:theme.text,fontSize:12,cursor:"pointer"}}>
-            ✏️ {drawMode?"그리는 중":"그리기"}
-          </button>
-          {!drawMode&&!editing&&<button onClick={()=>setEditing(true)} style={{padding:"9px 12px",borderRadius:10,border:`1px solid ${theme.border}`,background:theme.card,color:theme.text,fontSize:12,cursor:"pointer"}}>📝 글쓰기</button>}
-          <button onClick={save} style={{flex:1,padding:9,borderRadius:10,border:"none",background:PASTEL.coral,color:"white",fontSize:12,fontWeight:700,cursor:"pointer"}}>💾 저장</button>
-        </div>
-      )}
-
-      {sortedDates.length>0&&(
-        <div style={{marginTop:14}}>
-          <div style={{fontSize:10,color:theme.textSec,marginBottom:6}}>최근 기록</div>
-          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-            {sortedDates.slice(0,14).map(d=>{
-              const has=diary.find(dd=>dd.date===d)?.strokes?.length>0;
-              return <button key={d} onClick={()=>setViewDate(d)} style={{padding:"5px 8px",borderRadius:6,fontSize:9,cursor:"pointer",border:viewDate===d?`2px solid ${PASTEL.coral}`:`1px solid ${theme.border}`,background:viewDate===d?`${PASTEL.coral}10`:theme.card,color:d===today?PASTEL.coral:theme.text}}>{d.slice(5)}{has?" 🎨":""}</button>;
-            })}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -448,7 +321,7 @@ function ArchivePage({theme,archive,setArchive,playSfx,back}) {
 // MAIN STUDENT HOME SCREEN
 // ============================================================
 export function StudentHomeScreenInner({theme,setScreen,playSfx,showMsg,user,isAdminPreview,exitPreview,
-  archive,setArchive,diary,setDiary,homework,setHomework,notifications,setNotifications,
+  archive,setArchive,homework,setHomework,notifications,setNotifications,
   dndStart,dndEnd,setDndStart,setDndEnd,members}) {
 
   const [tab,setTab]=useState("home");
@@ -491,9 +364,8 @@ export function StudentHomeScreenInner({theme,setScreen,playSfx,showMsg,user,isA
       )}
 
       <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
-        {tab==="home"&&<HomeTab theme={theme} user={user} playSfx={playSfx} setTab={setTab} homework={homework} notifications={notifications} activityLog={activityLog} streak={streak}/>}
+        {tab==="home"&&<HomeTab theme={theme} user={user} playSfx={playSfx} setTab={setTab} setScreen={setScreen} homework={homework} notifications={notifications} activityLog={activityLog} streak={streak}/>}
         {tab==="study"&&<StudyTab theme={theme} setScreen={setScreen} playSfx={playSfx} logActivity={logActivity}/>}
-        {tab==="diary"&&<DiaryTab theme={theme} diary={diary} setDiary={setDiary} playSfx={playSfx} logActivity={logActivity}/>}
         {tab==="homework"&&<HomeworkTab theme={theme} homework={homework} setHomework={setHomework} playSfx={playSfx} showMsg={showMsg} logActivity={logActivity}/>}
         {tab==="more"&&<MoreTab theme={theme} playSfx={playSfx} setScreen={setScreen} setTab={setTab} subPage={subPage} setSubPage={setSubPage}
           notifications={notifications} setNotifications={setNotifications} dndStart={dndStart} dndEnd={dndEnd} setDndStart={setDndStart} setDndEnd={setDndEnd}
