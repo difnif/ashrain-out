@@ -241,7 +241,11 @@ export default function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, arc
   const [curPts, setCurPts] = useState([]);
   const [eraserPos, setEraserPos] = useState(null);
 
-  // Blocks
+  // Page text (main textarea content)
+  const [pageText, setPageText] = useState("");
+  const textareaRef = useRef(null);
+
+  // Blocks (special: math, callout, todo, toggle, archive, image, divider)
   const [blocks, setBlocks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -276,6 +280,7 @@ export default function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, arc
     const e = diary.find(d=>d.date===viewDate);
     setPaths(e?.paths||[]);
     setBlocks(e?.blocks||[]);
+    setPageText(e?.pageText||"");
     setMood(e?.mood||null);
     setBgType(e?.bgType||BG.RULED);
     setSelectedId(null); setEditingId(null); setCurPts([]);
@@ -326,7 +331,7 @@ export default function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, arc
   // ── Save ────────────────────────────────────────────────────────────────────
   const save=()=>{
     setDiary(prev=>{
-      const entry={ id:`diary-${viewDate}`, date:viewDate, paths, blocks, mood, bgType, updatedAt:Date.now() };
+      const entry={ id:`diary-${viewDate}`, date:viewDate, paths, blocks, pageText, mood, bgType, updatedAt:Date.now() };
       const ex=prev.find(d=>d.date===viewDate);
       if(ex) return prev.map(d=>d.date===viewDate?{...d,...entry}:d);
       return [...prev,{...entry,createdAt:Date.now()}];
@@ -473,37 +478,37 @@ export default function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, arc
 
   // ── Canvas tap (TEXT mode) ──────────────────────────────────────────────────
   const onCanvasClick = useCallback(e=>{
-    if(isDrawMode||tool===TOOL.SELECT||!canEdit) return;
-    const pos = s2c(e.clientX,e.clientY);
-    // Check hit
-    const hit=[...blocks].reverse().find(b=>
-      pos.x>=b.x&&pos.x<=b.x+(b.w||280)&&pos.y>=b.y&&pos.y<=b.y+(b.h||200)
-    );
-    if(hit){ setSelectedId(hit.id); return; }
-    if(selectedId){ setSelectedId(null); setEditingId(null); return; }
-    // Create text block
-    snapshot();
-    const id=`blk${Date.now()}`;
-    setBlocks(prev=>[...prev,{id,type:"text",x:pos.x,y:pos.y,w:280,content:"",fontSize:14}]);
-    setEditingId(id);
-  },[isDrawMode,tool,canEdit,s2c,blocks,selectedId,snapshot]);
+    if(isDrawMode||!canEdit) return;
+    if(tool===TOOL.SELECT){
+      // In select mode, deselect if clicking empty area
+      const pos = s2c(e.clientX,e.clientY);
+      const hit=[...blocks].reverse().find(b=>
+        pos.x>=b.x&&pos.x<=b.x+(b.w||280)&&pos.y>=b.y&&pos.y<=b.y+(b.h||200)
+      );
+      if(!hit){ setSelectedId(null); setEditingId(null); }
+      return;
+    }
+    if(tool===TOOL.TEXT){
+      // Focus the textarea; no floating block created
+      textareaRef.current?.focus();
+      setSelectedId(null);
+    }
+  },[isDrawMode,tool,canEdit,s2c,blocks]);
 
   // ── Slash command ───────────────────────────────────────────────────────────
-  const handleTextChange=(blockId,val)=>{
-    updBlock(blockId,{content:val});
+  const handlePageTextChange=(val)=>{
+    setPageText(val);
     const m=val.match(/\/([a-z]*)$/);
     if(m){
-      const r=containerRef.current?.getBoundingClientRect();
-      setSlashMenu({blockId,query:m[1],x:r?r.left+20:60,y:r?r.bottom-160:300});
+      setSlashMenu({blockId:"__page__",query:m[1]});
     } else { setSlashMenu(null); }
   };
 
   const execSlash=(blockId,cmd)=>{
     setSlashMenu(null);
-    // Remove /cmd from text
-    setBlocks(prev=>prev.map(b=>b.id===blockId?{...b,content:(b.content||"").replace(/\/[a-z]*$/,"")}:b));
-    const blk=blocks.find(b=>b.id===blockId);
-    const bx=blk?blk.x+20:60, by=blk?blk.y+40:60;
+    // Remove /cmd from pageText
+    setPageText(prev=>prev.replace(/\/[a-z]*$/,""));
+    const bx=60, by=Math.max(60, (blocks.length*60)+60);
     snapshot();
     if(cmd==="archive"){ setArchivePicker({cx:bx,cy:by}); }
     else if(cmd==="math"){ setMathDialog({cx:bx,cy:by}); }
@@ -577,25 +582,14 @@ export default function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, arc
 
     switch(block.type){
       case "text":
+        // Legacy text blocks (migrated entries) — shown inline
         return (
-          <div key={block.id} style={{...base,...selOutline,minHeight:24}}
+          <div key={block.id} style={{...base,...selOutline,minHeight:24,padding:"2px 4px"}}
             onMouseDown={e=>{e.stopPropagation();onTap(block.id);}}
-            onTouchStart={e=>{e.stopPropagation();onTap(block.id);}}
-            onDoubleClick={e=>{e.stopPropagation();onDbl(block.id);}}>
-            {isEd?(
-              <textarea autoFocus value={block.content}
-                onChange={e=>handleTextChange(block.id,e.target.value)}
-                onBlur={()=>setEditingId(null)}
-                onKeyDown={e=>e.key==="Escape"&&setEditingId(null)}
-                style={{ width:"100%",minHeight:36,border:"none",background:"transparent",color:theme.text,
-                  fontSize:block.fontSize||14,lineHeight:1.65,resize:"both",
-                  outline:`1px dashed ${theme.border}`,borderRadius:4,padding:"2px 4px",fontFamily:"inherit" }} />
-            ):(
-              <div style={{ fontSize:block.fontSize||14,lineHeight:1.65,color:block.content?theme.text:theme.textSec,
-                padding:"2px 4px",whiteSpace:"pre-wrap",minHeight:22 }}>
-                {block.content||(canEdit?"텍스트 입력 (/ 명령어)":"")}
-              </div>
-            )}
+            onTouchStart={e=>{e.stopPropagation();onTap(block.id);}}>
+            <div style={{ fontSize:block.fontSize||14,lineHeight:1.65,color:theme.text,whiteSpace:"pre-wrap" }}>
+              {block.content}
+            </div>
           </div>
         );
 
@@ -706,7 +700,8 @@ export default function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, arc
     return el;
   };
 
-  const containerH = Math.min(Math.round(window.innerHeight*0.56), 560);
+  // Canvas fills available screen space; scrollable when not drawing
+  const containerH = Math.max(380, window.innerHeight - 320);
   const filteredCmds = slashMenu ? SLASH_CMDS.filter(c=>c.cmd.startsWith(slashMenu.query)) : [];
 
   return (
@@ -748,9 +743,13 @@ export default function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, arc
       )}
 
       {/* ── Canvas container ── */}
-      <div ref={containerRef} style={{ width:"100%",height:containerH,overflow:"hidden",borderRadius:14,
-          border:`1px solid ${theme.border}`,background:theme.card,position:"relative",touchAction:"none",cursor:
-            isDrawMode?(tool===TOOL.ERASER?"cell":"crosshair"):tool===TOOL.TEXT?"text":"default" }}
+      <div ref={containerRef} style={{ width:"100%",height:containerH,
+          overflowY: isDrawMode ? "hidden" : "auto",
+          WebkitOverflowScrolling:"touch",
+          borderRadius:14,
+          border:`1px solid ${theme.border}`,background:theme.card,position:"relative",
+          touchAction: isDrawMode ? "none" : "pan-y",
+          cursor: isDrawMode?(tool===TOOL.ERASER?"cell":"crosshair"):tool===TOOL.TEXT?"text":"default" }}
         onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
         onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
         onClick={onCanvasClick}>
@@ -783,9 +782,33 @@ export default function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, arc
             )}
           </svg>
 
-          {/* Blocks */}
+          {/* Main textarea — aligned to ruled lines, always present */}
+          <textarea
+            ref={textareaRef}
+            value={pageText}
+            onChange={e=>handlePageTextChange(e.target.value)}
+            readOnly={!canEdit}
+            placeholder={canEdit ? "여기에 필기하세요... (/ 명령어)" : ""}
+            style={{
+              position:"absolute", top:0, left:0,
+              width:CANVAS_W, minHeight:pageH,
+              border:"none", background:"transparent",
+              color:theme.text, fontSize:14,
+              lineHeight:"32px",
+              padding:"8px 20px",
+              boxSizing:"border-box",
+              resize:"none", outline:"none",
+              fontFamily:"'Noto Serif KR', serif",
+              zIndex:2,
+              pointerEvents: isDrawMode ? "none" : tool===TOOL.TEXT ? "auto" : "none",
+              caretColor: theme.text,
+              WebkitUserSelect: tool===TOOL.TEXT ? "text" : "none",
+            }}
+          />
+
+          {/* Blocks (special: math, callout, todo, toggle, archive, image) */}
           <div style={{ position:"absolute",top:0,left:0,width:CANVAS_W,minHeight:pageH,
-              pointerEvents:isDrawMode?"none":"auto" }}>
+              zIndex:3, pointerEvents:isDrawMode?"none":"auto" }}>
             {blocks.map(renderBlock)}
           </div>
         </div>
@@ -866,9 +889,9 @@ export default function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, arc
 
       {/* Slash menu */}
       {slashMenu&&filteredCmds.length>0&&(
-        <div style={{ position:"fixed",left:Math.min(slashMenu.x,window.innerWidth-220),bottom:130,
+        <div style={{ position:"fixed",left:"50%",transform:"translateX(-50%)",bottom:140,
             zIndex:500,background:theme.card,border:`1px solid ${theme.border}`,borderRadius:12,
-            boxShadow:"0 4px 20px rgba(0,0,0,0.18)",overflow:"hidden",minWidth:200 }}>
+            boxShadow:"0 4px 20px rgba(0,0,0,0.18)",overflow:"hidden",minWidth:220 }}>
           {filteredCmds.map(c=>(
             <button key={c.cmd} onMouseDown={e=>{e.preventDefault();execSlash(slashMenu.blockId,c.cmd);}}
               style={{ display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 16px",
