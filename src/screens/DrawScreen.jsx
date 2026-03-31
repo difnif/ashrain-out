@@ -612,35 +612,33 @@ export function renderDrawScreen(ctx) {
                 );
               }
 
-              // === Compare: TWO triangles side by side ===
-              // Shift original triangle left, clone right
-              const vb = getActiveVB();
-              const cx = (A.x+B.x+C.x)/3, cy = (A.y+B.y+C.y)/3;
-              const shift = vb.w * 0.28;
-
-              // Cloned triangle (shifted right for inscribed)
-              const A2={x:A.x+shift*2,y:A.y}, B2={x:B.x+shift*2,y:B.y}, C2={x:C.x+shift*2,y:C.y};
-              const inI2 = {x:inI.x+shift*2, y:inI.y};
-              const fBC2={x:fBC.x+shift*2,y:fBC.y}, fAC2={x:fAC.x+shift*2,y:fAC.y}, fAB2={x:fAB.x+shift*2,y:fAB.y};
-              const circumO2 = {x:circumO.x-shift, y:circumO.y};
-              // Shift original left
-              const oA={x:A.x-shift,y:A.y}, oB={x:B.x-shift,y:B.y}, oC={x:C.x-shift,y:C.y};
-              const oCircumO={x:circumO.x-shift, y:circumO.y};
+              // === Compare: left=원본+외접원, right=클론+내접원 ===
+              // 원본 삼각형은 renderTriangleAnim()이 이미 그리고 있음
+              // 여기서는 외접원만 추가 + 클론 삼각형+내접원을 오른쪽에 그림
+              const triW = Math.max(A.x,B.x,C.x) - Math.min(A.x,B.x,C.x);
+              const triH = Math.max(A.y,B.y,C.y) - Math.min(A.y,B.y,C.y);
+              const gap = Math.max(triW, triH) * 0.4;
+              // Clone shifted right (원본 오른쪽 끝 + gap)
+              const rightEdge = Math.max(A.x,B.x,C.x);
+              const leftEdge = Math.min(A.x,B.x,C.x);
+              const s2 = rightEdge - leftEdge + gap;
+              const A2={x:A.x+s2,y:A.y}, B2={x:B.x+s2,y:B.y}, C2={x:C.x+s2,y:C.y};
+              const inI2={x:inI.x+s2,y:inI.y};
+              const fBC2={x:fBC.x+s2,y:fBC.y}, fAC2={x:fAC.x+s2,y:fAC.y}, fAB2={x:fAB.x+s2,y:fAB.y};
 
               return (
                 <g style={{animation:"fadeIn 0.5s ease"}}>
-                  {/* Left: original triangle shifted left + circumscribed circle */}
-                  <polygon points={`${oA.x},${oA.y} ${oB.x},${oB.y} ${oC.x},${oC.y}`} fill="none" stroke={theme.text} strokeWidth={2} strokeLinejoin="round"/>
-                  <circle cx={oCircumO.x} cy={oCircumO.y} r={R} fill="none" stroke={skyC} strokeWidth={2.5} opacity={0.9}/>
-                  <circle cx={oCircumO.x} cy={oCircumO.y} r={4*zs} fill={skyC}/>
-                  <text x={oCircumO.x+8*zs} y={oCircumO.y-8*zs} fontSize={11*zs} fill={skyC} fontWeight={700}>O</text>
-                  <line x1={oCircumO.x} y1={oCircumO.y} x2={oA.x} y2={oA.y} stroke={skyC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
-                  <line x1={oCircumO.x} y1={oCircumO.y} x2={oB.x} y2={oB.y} stroke={skyC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
-                  <line x1={oCircumO.x} y1={oCircumO.y} x2={oC.x} y2={oC.y} stroke={skyC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
-                  {ticks(oCircumO,oA,1,skyC)}{ticks(oCircumO,oB,1,skyC)}{ticks(oCircumO,oC,1,skyC)}
-                  <text x={(oA.x+oB.x+oC.x)/3} y={Math.min(oA.y,oB.y,oC.y)-12*zs} textAnchor="middle" fontSize={10*zs} fill={skyC} fontWeight={700}>외접원</text>
+                  {/* Left: 외접원 (원본 삼각형 위에 오버레이) */}
+                  <circle cx={circumO.x} cy={circumO.y} r={R} fill="none" stroke={skyC} strokeWidth={2.5} opacity={0.9}/>
+                  <circle cx={circumO.x} cy={circumO.y} r={4*zs} fill={skyC}/>
+                  <text x={circumO.x+8*zs} y={circumO.y-8*zs} fontSize={11*zs} fill={skyC} fontWeight={700}>O</text>
+                  <line x1={circumO.x} y1={circumO.y} x2={A.x} y2={A.y} stroke={skyC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
+                  <line x1={circumO.x} y1={circumO.y} x2={B.x} y2={B.y} stroke={skyC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
+                  <line x1={circumO.x} y1={circumO.y} x2={C.x} y2={C.y} stroke={skyC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
+                  {ticks(circumO,A,1,skyC)}{ticks(circumO,B,1,skyC)}{ticks(circumO,C,1,skyC)}
+                  <text x={(A.x+B.x+C.x)/3} y={Math.min(A.y,B.y,C.y)-14*zs} textAnchor="middle" fontSize={10*zs} fill={skyC} fontWeight={700}>외접원</text>
 
-                  {/* Right: clone triangle + inscribed circle */}
+                  {/* Right: 클론 삼각형 + 내접원 */}
                   <polygon points={`${A2.x},${A2.y} ${B2.x},${B2.y} ${C2.x},${C2.y}`} fill="none" stroke={theme.text} strokeWidth={2} strokeLinejoin="round"/>
                   <circle cx={inI2.x} cy={inI2.y} r={rr} fill="none" stroke={mintC} strokeWidth={2.5} opacity={0.9}/>
                   <circle cx={inI2.x} cy={inI2.y} r={4*zs} fill={mintC}/>
@@ -650,9 +648,7 @@ export function renderDrawScreen(ctx) {
                   <line x1={inI2.x} y1={inI2.y} x2={fAB2.x} y2={fAB2.y} stroke={mintC} strokeWidth={1.2} strokeDasharray="5,3" opacity={0.7}/>
                   {rightAngle(fBC2,inI2,mintC)}{rightAngle(fAC2,inI2,mintC)}{rightAngle(fAB2,inI2,mintC)}
                   {ticks(inI2,fBC2,2,mintC)}{ticks(inI2,fAC2,2,mintC)}{ticks(inI2,fAB2,2,mintC)}
-                  <text x={(A2.x+B2.x+C2.x)/3} y={Math.min(A2.y,B2.y,C2.y)-12*zs} textAnchor="middle" fontSize={10*zs} fill={mintC} fontWeight={700}>내접원</text>
-
-
+                  <text x={(A2.x+B2.x+C2.x)/3} y={Math.min(A2.y,B2.y,C2.y)-14*zs} textAnchor="middle" fontSize={10*zs} fill={mintC} fontWeight={700}>내접원</text>
                 </g>
               );
             })()}
