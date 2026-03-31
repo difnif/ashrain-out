@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 반드시 아래 JSON 형식만 출력해. 다른 텍스트 없이 순수 JSON만.
 
 {
-  "problemText": "추출한 문제 전문. 수학 기호: 선분=AB̅, 직선=↔AB, 반직선=→AB, 각=∠ABC, 삼각형=△ABC, 평행=∥, 수직=⊥, 합동=≡. 채점/필기 무시, 원본만. 여러 문제면 주요 1개만.",
+  "problemText": "추출한 문제 전문. 수학 기호 규칙: 선분은 'AB' (bar 기호 쓰지 마. 문맥에서 선분인지 알 수 있으면 그냥 AB), 직선 AB는 그냥 '직선 AB', 반직선은 '반직선 AB', 각=∠ABC, 삼각형=△ABC, 평행=∥, 수직=⊥, 합동=≡. 절대 combining overline(̅) 사용 금지 - 모바일에서 깨짐. 채점/필기 무시, 원본만. 여러 문제면 주요 1개만. 보기/선택지는 각각 줄바꿈(\n)으로 구분. 예: ①, ②, ③은 각각 새 줄. 문제 본문과 보기 사이도 줄바꿈.",
   "figure": {
     "type": "triangle/quadrilateral/circle/line/none",
     "vertices": [{"label":"A","x":0,"y":0},{"label":"B","x":100,"y":0},{"label":"C","x":50,"y":-80}],
