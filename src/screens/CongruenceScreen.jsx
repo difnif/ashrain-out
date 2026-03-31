@@ -56,7 +56,7 @@ function HText({x,y,children,fill,fontSize=11,anchor="middle",fw=700}) {
   </g>;
 }
 
-export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPCProp}) {
+export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPCProp,user,archive,setArchive}) {
   const [mode,setMode]=useState(null);
   const [inputMode,setInputMode]=useState("A");
   const [v1,setV1]=useState("");const [v2,setV2]=useState("");
@@ -531,14 +531,26 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPC
                 <div style={{fontSize:13,color:theme.text,lineHeight:2.2,whiteSpace:"pre-line"}}>
                   <RT>{steps[proofStep].d}</RT>
                 </div>
+                <button onClick={()=>showMsg("선생님께 질문하기 기능 연동 예정!",2000)}
+                  style={{marginTop:6,padding:"5px 10px",borderRadius:8,border:`1px solid ${theme.border}`,background:theme.card,color:theme.textSec,fontSize:10,cursor:"pointer"}}>
+                  ❓ 이해가 안 돼요
+                </button>
               </div>
               <div style={{display:"flex",gap:8,padding:"0 12px 12px"}}>
                 {proofStep>0&&<button onClick={()=>setProofStep(s=>s-1)} style={{flex:1,padding:"12px",borderRadius:12,border:`1px solid ${theme.border}`,background:theme.card,color:theme.textSec,fontSize:13,cursor:"pointer"}}>← 이전</button>}
                 {proofStep<maxStep?(
                   <button onClick={()=>setProofStep(s=>s+1)} style={{flex:2,padding:"12px",borderRadius:12,border:"none",background:`linear-gradient(135deg,${PASTEL.coral},${PASTEL.dustyRose})`,color:"white",fontSize:14,fontWeight:700,cursor:"pointer"}}>다음 →</button>
-                ):(
-                  <button onClick={()=>{setPhase("input");setTriData(null);setMode(null);setDrawPhase(0);setDrawnHyp(null);setVb(null);playSfx("click");}} style={{flex:2,padding:"12px",borderRadius:12,border:"none",background:C.proven,color:"white",fontSize:14,fontWeight:700,cursor:"pointer"}}>다시 하기</button>
-                )}
+                ):(<>
+                  <button onClick={()=>{setPhase("input");setTriData(null);setMode(null);setDrawPhase(0);setDrawnHyp(null);setVb(null);playSfx("click");}} style={{flex:1,padding:"12px",borderRadius:12,border:`1px solid ${theme.border}`,background:theme.card,color:theme.textSec,fontSize:12,cursor:"pointer"}}>닫기</button>
+                  <button onClick={()=>{
+                    if(setArchive){setArchive(prev=>[...prev,{
+                      id:`cong-${Date.now()}`,type:`${mode.toUpperCase()} 합동 증명`,
+                      title:`${mode==="rha"?"RHA→ASA":"RHS→SAS"} 증명`,
+                      preview:`빗변=${triData?.hyp}`,
+                      createdAt:Date.now(),isPublic:false,hidden:false,userId:user?.id,
+                    }]);playSfx("success");showMsg("아카이브에 저장! 📂",1500);}
+                  }} style={{flex:2,padding:"12px",borderRadius:12,border:"none",background:`linear-gradient(135deg,${PASTEL.coral},${PASTEL.dustyRose})`,color:"white",fontSize:13,fontWeight:700,cursor:"pointer"}}>📂 아카이브에 저장</button>
+                </>)}
               </div>
               <div style={{display:"flex",justifyContent:"center",gap:4,paddingBottom:12}}>
                 {steps.map((_,i)=><div key={i} style={{width:i===proofStep?16:6,height:6,borderRadius:3,background:i<=proofStep?(curHi.includes("proven")?C.proven:PASTEL.coral):`${theme.textSec}30`,transition:"all 0.3s"}}/>)}
@@ -552,6 +564,6 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPC
 }
 
 export function renderCongruenceScreen(ctx) {
-  const {theme,setScreen,playSfx,showMsg,isPC}=ctx;
-  return <CongruenceScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} isPC={isPC}/>;
+  const {theme,setScreen,playSfx,showMsg,isPC,user,archive,setArchive}=ctx;
+  return <CongruenceScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} isPC={isPC} user={ctx.user} archive={ctx.archive} setArchive={ctx.setArchive}/>;
 }
