@@ -272,6 +272,8 @@ function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, archive }) {
   const canvasRef = useRef(null);
   const [showArchivePopup, setShowArchivePopup] = useState(false);
   const [pageHeight, setPageHeight] = useState(500);
+  const [panOffset, setPanOffset] = useState({x: 0, y: 0});
+  const pinchRef = useRef(null);
 
   const canEdit = viewDate === today;
 
@@ -342,25 +344,51 @@ function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, archive }) {
     <div style={{ padding: "12px 16px", animation: "fadeIn 0.3s ease" }}>
       {/* Date nav */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <button onClick={() => { const d = new Date(viewDate); d.setDate(d.getDate()-1); setViewDate(d.toISOString().slice(0,10)); }}
-          style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: theme.text, padding: "4px 8px" }}>◀</button>
+        <button onClick={() => {
+          const d = new Date(viewDate); d.setDate(d.getDate()-1);
+          const pageEl = document.getElementById("diary-page");
+          if (pageEl) { pageEl.style.animation = "none"; pageEl.offsetHeight; pageEl.style.animation = "pageFlipRight 0.4s ease"; }
+          setViewDate(d.toISOString().slice(0,10));
+        }} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: theme.text, padding: "4px 8px" }}>◀</button>
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>
             {new Date(viewDate).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short" })}
           </div>
           {viewDate === today && <span style={{ fontSize: 10, color: PASTEL.coral, fontWeight: 700 }}>오늘</span>}
         </div>
-        <button onClick={() => { const d = new Date(viewDate); d.setDate(d.getDate()+1); const n = d.toISOString().slice(0,10); if(n<=today) setViewDate(n); }}
-          style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: viewDate < today ? theme.text : theme.border, padding: "4px 8px" }}>▶</button>
+        <button onClick={() => {
+          const d = new Date(viewDate); d.setDate(d.getDate()+1); const n = d.toISOString().slice(0,10);
+          if (n <= today) {
+            const pageEl = document.getElementById("diary-page");
+            if (pageEl) { pageEl.style.animation = "none"; pageEl.offsetHeight; pageEl.style.animation = "pageFlipLeft 0.4s ease"; }
+            setViewDate(n);
+          }
+        }} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: viewDate < today ? theme.text : theme.border, padding: "4px 8px" }}>▶</button>
       </div>
 
       {/* Page */}
       <div style={{
         minHeight: pageHeight, borderRadius: 16, background: theme.card,
         border: `1px solid ${theme.border}`, position: "relative", overflow: "hidden",
-        backgroundImage: `repeating-linear-gradient(transparent, transparent 31px, ${theme.border}30 31px, ${theme.border}30 32px)`,
-        backgroundPosition: "0 20px",
-      }}>
+        backgroundImage: `repeating-linear-gradient(transparent, transparent ${31*canvasScale}px, ${theme.border}30 ${31*canvasScale}px, ${theme.border}30 ${32*canvasScale}px)`,
+        backgroundPosition: `${panOffset.x}px ${20*canvasScale + panOffset.y}px`,
+      }} id="diary-page"
+        onTouchStart={(e) => {
+          if (e.touches.length === 2 && !drawing) {
+            const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            pinchRef.current = { startDist: d, startScale: canvasScale };
+          }
+        }}
+        onTouchMove={(e) => {
+          if (e.touches.length === 2 && pinchRef.current) {
+            e.preventDefault();
+            const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            const newScale = Math.max(0.5, Math.min(10, pinchRef.current.startScale * (d / pinchRef.current.startDist)));
+            setCanvasScale(newScale);
+          }
+        }}
+        onTouchEnd={() => { pinchRef.current = null; }}
+      >
         {/* Drawing canvas (SVG overlay) */}
         <svg ref={canvasRef} width="100%" height={pageHeight}
           style={{ position: "absolute", top: 0, left: 0, touchAction: drawing ? "none" : "auto", zIndex: drawing ? 10 : 1 }}
@@ -377,7 +405,8 @@ function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, archive }) {
         </svg>
 
         {/* Text content */}
-        <div style={{ position: "relative", zIndex: drawing ? 0 : 5, padding: 20, minHeight: pageHeight - 40 }}>
+        <div style={{ position: "relative", zIndex: drawing ? 0 : 5, padding: 20, minHeight: pageHeight - 40,
+          transform: `scale(${canvasScale})`, transformOrigin: "top left", width: `${100/canvasScale}%` }}>
           {editing && !drawing ? (
             <textarea value={text} onChange={e => setText(e.target.value)}
               style={{ width: "100%", minHeight: pageHeight - 60, border: "none", background: "transparent", color: theme.text, fontSize: 14, lineHeight: "32px", fontFamily: "'Noto Serif KR', serif", resize: "none", outline: "none" }}
@@ -428,12 +457,20 @@ function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, archive }) {
         </div>
       )}
 
-      {/* Page height control */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-        <span style={{ fontSize: 10, color: theme.textSec }}>페이지 크기</span>
-        <input type="range" min={300} max={1500} value={pageHeight} onChange={e => setPageHeight(Number(e.target.value))}
-          style={{ flex: 1 }} />
-        <span style={{ fontSize: 10, color: theme.textSec }}>{pageHeight}px</span>
+      {/* Zoom + Page controls */}
+      <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 10, color: theme.textSec, whiteSpace: "nowrap" }}>🔍</span>
+          <input type="range" min={50} max={1000} value={Math.round(canvasScale * 100)}
+            onChange={e => setCanvasScale(Number(e.target.value) / 100)} style={{ flex: 1 }} />
+          <span style={{ fontSize: 10, color: theme.textSec, minWidth: 36, textAlign: "right" }}>{Math.round(canvasScale * 100)}%</span>
+        </div>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 10, color: theme.textSec, whiteSpace: "nowrap" }}>📏</span>
+          <input type="range" min={300} max={2000} value={pageHeight}
+            onChange={e => setPageHeight(Number(e.target.value))} style={{ flex: 1 }} />
+          <span style={{ fontSize: 10, color: theme.textSec, minWidth: 36, textAlign: "right" }}>{pageHeight}</span>
+        </div>
       </div>
 
       {/* Recent dates */}
@@ -646,7 +683,9 @@ export function StudentHomeScreenInner(props) {
   return (
     <div style={{ height: "100vh", maxHeight: "100dvh", display: "flex", flexDirection: "column", background: theme.bg, fontFamily: "'Noto Serif KR', serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700&display=swap" rel="stylesheet" />
-      <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}`}</style>
+      <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes pageFlipLeft{0%{transform:translateX(0);opacity:1}30%{transform:translateX(-30px) rotateY(15deg);opacity:0.7}100%{transform:translateX(0);opacity:1}}
+        @keyframes pageFlipRight{0%{transform:translateX(0);opacity:1}30%{transform:translateX(30px) rotateY(-15deg);opacity:0.7}100%{transform:translateX(0);opacity:1}}`}</style>
       {isAdminPreview && (
         <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px", background: `${PASTEL.coral}15`, borderBottom: `1px solid ${PASTEL.coral}30` }}>
           <span style={{ fontSize: 11, color: PASTEL.coral, fontWeight: 700 }}>👁️ 학생 모드 미리보기</span>
