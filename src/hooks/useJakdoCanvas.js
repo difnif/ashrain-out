@@ -356,15 +356,31 @@ export function useJakdoCanvas(deps) {
           setBuildPhase("combined");
         } else if (drawGoal === "compare") {
           setBuildPhase("compare");
-          // Widen viewBox for side-by-side
+          // Widen viewBox for side-by-side, accounting for circumscribed circle
           if (triangle) {
             const {A,B,C} = triangle;
+            // Circumcenter & radius
+            const D2 = 2*(A.x*(B.y-C.y)+B.x*(C.y-A.y)+C.x*(A.y-B.y));
+            const circumO = Math.abs(D2)<0.001 ? {x:(A.x+B.x+C.x)/3,y:(A.y+B.y+C.y)/3} : {
+              x:((A.x*A.x+A.y*A.y)*(B.y-C.y)+(B.x*B.x+B.y*B.y)*(C.y-A.y)+(C.x*C.x+C.y*C.y)*(A.y-B.y))/D2,
+              y:((A.x*A.x+A.y*A.y)*(C.x-B.x)+(B.x*B.x+B.y*B.y)*(A.x-C.x)+(C.x*C.x+C.y*C.y)*(B.x-A.x))/D2,
+            };
+            const R = Math.sqrt((circumO.x-A.x)**2+(circumO.y-A.y)**2);
+            // Left side bounds (triangle + circumscribed circle)
+            const leftMinX = Math.min(A.x,B.x,C.x,circumO.x-R);
+            const leftMaxX = Math.max(A.x,B.x,C.x,circumO.x+R);
+            const leftMinY = Math.min(A.y,B.y,C.y,circumO.y-R);
+            const leftMaxY = Math.max(A.y,B.y,C.y,circumO.y+R);
+            const leftW = leftMaxX-leftMinX, leftH = leftMaxY-leftMinY;
+            // Clone shift = left width + gap
+            const gap = leftW * 0.15;
             const triW = Math.max(Math.abs(A.x-B.x),Math.abs(A.x-C.x),Math.abs(B.x-C.x));
-            const minX = Math.min(A.x,B.x,C.x) - triW*0.3;
-            const maxX = Math.max(A.x,B.x,C.x) + triW*1.8;
-            const minY = Math.min(A.y,B.y,C.y) - triW*0.5;
-            const maxY = Math.max(A.y,B.y,C.y) + triW*0.3;
-            setManualView({x:minX, y:minY, w:maxX-minX, h:maxY-minY});
+            const rightW = triW * 1.4; // inscribed circle fits inside triangle
+            const totalW = leftW + gap + rightW;
+            const totalH = Math.max(leftH, leftMaxY-leftMinY) * 1.15;
+            const vx = leftMinX - leftW*0.05;
+            const vy = leftMinY - totalH*0.08;
+            setManualView({x:vx, y:vy, w:totalW*1.1, h:totalH});
           }
         } else {
           setBuildPhase("modeSelect");
