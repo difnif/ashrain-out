@@ -2,6 +2,42 @@ import { useState, useRef, useCallback } from "react";
 import { PASTEL } from "../config";
 
 const CMAP = { coral: PASTEL.coral, sky: PASTEL.sky, mint: PASTEL.mint, lavender: PASTEL.lavender };
+
+function FigureCanvas({ figure, theme, highlights = [] }) {
+  if (!figure || figure.type === "none" || !figure.vertices?.length) return null;
+  const verts = figure.vertices;
+  const pad = 30;
+  const xs = verts.map(v => v.x), ys = verts.map(v => v.y);
+  const minX = Math.min(...xs) - pad, maxX = Math.max(...xs) + pad;
+  const minY = Math.min(...ys) - pad, maxY = Math.max(...ys) + pad;
+  const w = maxX - minX, h = maxY - minY;
+  return (
+    <svg width="100%" viewBox={`${minX} ${minY} ${w} ${h}`}
+      style={{ maxHeight: 180, borderRadius: 12, background: theme.svgBg || theme.bg, border: `1px solid ${theme.border}`, marginBottom: 8 }}>
+      {(figure.edges || []).map((e, i) => {
+        const from = verts.find(v => v.label === e.from), to = verts.find(v => v.label === e.to);
+        if (!from || !to) return null;
+        const isHl = highlights.includes(e.from + e.to) || highlights.includes(e.to + e.from);
+        return <g key={i}>
+          <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={isHl ? PASTEL.coral : theme.text} strokeWidth={isHl ? 3 : 2} />
+          {e.label && <text x={(from.x+to.x)/2+5} y={(from.y+to.y)/2-5} fontSize={10} fill={isHl ? PASTEL.coral : theme.textSec}>{e.label}</text>}
+        </g>;
+      })}
+      {(figure.angles || []).filter(a => a.isRight).map((a, i) => {
+        const v = verts.find(vv => vv.label === a.vertex);
+        return v ? <rect key={`r${i}`} x={v.x-6} y={v.y-6} width={10} height={10} fill="none" stroke={PASTEL.lavender} strokeWidth={1.2} /> : null;
+      })}
+      {verts.map((v, i) => {
+        const isHl = highlights.some(h => h.includes(v.label));
+        return <g key={i}>
+          <circle cx={v.x} cy={v.y} r={isHl ? 4 : 3} fill={isHl ? PASTEL.coral : theme.text} />
+          <text x={v.x+(v.x<(minX+w/2)?-14:8)} y={v.y+(v.y<(minY+h/2)?-8:14)} fontSize={12} fill={isHl ? PASTEL.coral : theme.text} fontWeight={700}>{v.label}</text>
+        </g>;
+      })}
+    </svg>
+  );
+}
+
 const CAT_ICON = { "조건": "📌", "관계": "🔗", "구하는것": "🎯", "공식힌트": "💡" };
 
 export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests }) {
@@ -54,6 +90,17 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
     setInput(""); setImageData(null); setImagePreview(null);
     setResult(null); setError(""); setCurrentStep(-1);
     setHelpMode(null); setHelpStepIdx(null);
+  };
+
+  const saveToArchive = () => {
+    if (!result || !setArchive) return;
+    setArchive(prev => [...prev, {
+      id: `prob-${Date.now()}`, type: "문제분석", title: result.type || "수학 문제",
+      preview: (result.problemText || "").slice(0, 60),
+      content: { problemText: result.problemText, steps: result.steps, equation: result.equation, figure: result.figure },
+      createdAt: Date.now(), isPublic: false, hidden: false, userId: user?.id,
+    }]);
+    playSfx("success"); showMsg("아카이브에 저장했어요! 📂", 2000);
   };
 
   const nextStep = () => {
@@ -217,6 +264,11 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
             {/* Problem text with highlights */}
             <div style={{ margin: "8px 12px", borderRadius: 16, background: theme.card, border: `1px solid ${theme.border}` }}>
               {renderProblemText()}
+              {result.figure && result.figure.type !== "none" && (
+                <div style={{ padding: "0 14px 12px" }}>
+                  <FigureCanvas figure={result.figure} theme={theme} highlights={curStepData?.figureHighlight || []} />
+                </div>
+              )}
             </div>
 
             {/* Step-by-step explanations */}
@@ -242,7 +294,13 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
                       <div style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>{curStepData.title}</div>
                     </div>
                   </div>
-                  <div style={{ padding: "12px 16px", fontSize: 13, lineHeight: 2, color: theme.text }}>{curStepData.explain}</div>
+                  <div style={{ padding: "12px 16px" }}>
+                    <div style={{ fontSize: 13, lineHeight: 2, color: theme.text }}>{curStepData.explain}</div>
+                    <button onClick={() => { setHelpStepIdx(currentStep); setHelpMode("deep"); }}
+                      style={{ marginTop: 6, padding: "6px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 11, cursor: "pointer" }}>
+                      ❓ 이 부분이 이해 안 돼요
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -301,6 +359,14 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
                   background: isLastStep ? PASTEL.mint : `${theme.textSec}30`,
                   transition: "all 0.3s",
                 }} />
+              </div>
+            )}
+
+            {/* Save/Close after final step */}
+            {isLastStep && currentStep > 0 && !helpMode && (
+              <div style={{ display: "flex", gap: 8, padding: "4px 12px 12px" }}>
+                <button onClick={reset} style={{ flex: 1, padding: "12px", borderRadius: 12, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 12, cursor: "pointer" }}>닫기</button>
+                <button onClick={saveToArchive} style={{ flex: 2, padding: "12px", borderRadius: 12, border: "none", background: `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`, color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>📂 아카이브에 저장</button>
               </div>
             )}
 
