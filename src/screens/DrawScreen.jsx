@@ -29,7 +29,7 @@ export function renderDrawScreen(ctx) {
     showArchiveSave, setShowArchiveSave, archivePublic, setArchivePublic,
     compareSelected, setCompareSelected,
     renderTriangleAnim, renderHighlight, getProperties,
-    archive, setArchive,
+    archive, setArchive, archiveDefaultPublic,
     handleJedoClick, handleJakdoDown, handleJakdoMove, handleJakdoUp, handleUndo,
     resetAll, generateTriangleWithBase, drawGoal,
     failAnim, idleMsg, retryDraw, generateTriangle,
@@ -762,11 +762,14 @@ export function renderDrawScreen(ctx) {
                         {item.text}
                       </div>
                       {isSelected && (
-                        <div style={{
-                          fontSize: 11, color: theme.textSec, marginTop: 4,
-                          fontFamily: "'Noto Serif KR', serif",
-                        }}>
-                          ↑ 위 도형에서 확인하세요
+                        <div style={{ marginTop: 6 }}>
+                          <div style={{ fontSize: 11, color: theme.textSec, fontFamily: "'Noto Serif KR', serif", marginBottom: 6 }}>
+                            ↑ 위 도형에서 확인하세요
+                          </div>
+                          <button onClick={(e) => { e.stopPropagation(); showMsg("질문함 기능 연동 예정!", 2000); playSfx("click"); }}
+                            style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 10, cursor: "pointer" }}>
+                            ❓ 이해가 안 돼요
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1352,9 +1355,9 @@ export function renderDrawScreen(ctx) {
                   if (setArchive) {
                     setArchive(prev => [...prev, {
                       id: `draw-${Date.now()}`, type: buildPhase === "compare" ? "외접원↔내접원" : "외심↔내심",
-                      title: `${jedoType === "circum" ? "외접원" : "내접원"} 비교 학습`,
+                      title: `${jedoType === "circum" ? "외접원" : "내접원"} 비교`,
                       preview: `R≈${R_val.toFixed(1)}, r≈${r_val.toFixed(1)}`,
-                      createdAt: Date.now(), isPublic: false, hidden: false, userId: user?.id,
+                      createdAt: Date.now(), isPublic: archiveDefaultPublic || false, hidden: false, userId: user?.id,
                     }]);
                     playSfx("success"); showMsg("아카이브에 저장! 📂", 1500);
                   }
