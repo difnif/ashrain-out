@@ -100,7 +100,7 @@ function FigureCanvas({ figure, theme, highlights = [] }) {
 
 const CAT_ICON = { "조건": "📌", "관계": "🔗", "구하는것": "🎯", "공식힌트": "💡" };
 
-export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests, archive, setArchive, archiveDefaultPublic }) {
+export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests, archive, setArchive, archiveDefaultPublic, analysisModel }) {
   const [input, setInput] = useState("");
   const [imageData, setImageData] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -134,7 +134,7 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
     try {
       const resp = await fetch("/api/analyze", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: input.trim() || undefined, imageBase64: imageData || undefined }),
+        body: JSON.stringify({ text: input.trim() || undefined, imageBase64: imageData || undefined, model: analysisModel || undefined }),
       });
       const data = await resp.json();
       if (data.error) throw new Error(data.error);
@@ -581,5 +581,5 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
 
 export function renderProblemScreen(ctx) {
   const { archive, setArchive, theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests } = ctx;
-  return <ProblemScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} user={user} helpRequests={helpRequests} setHelpRequests={setHelpRequests} archive={archive} setArchive={setArchive} archiveDefaultPublic={ctx.archiveDefaultPublic} />;
+  return <ProblemScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} user={user} helpRequests={helpRequests} setHelpRequests={setHelpRequests} archive={archive} setArchive={setArchive} archiveDefaultPublic={ctx.archiveDefaultPublic} analysisModel={ctx.analysisModel} />;
 }
