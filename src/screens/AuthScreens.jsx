@@ -54,7 +54,7 @@ export function renderLoginScreen(ctx) {
             ashrain.out
           </h1>
           <p style={{ fontSize: 13, color: "#8B7E74", margin: "0 0 36px 0", fontFamily: "'Noto Serif KR', serif", fontStyle: "italic" }}>
-            기하학의 아름다움을 만나다
+            뭐,왜.
           </p>
 
           <input
