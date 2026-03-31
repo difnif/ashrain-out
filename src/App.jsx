@@ -16,6 +16,7 @@ import {
   renderAdminScreen, renderAdminStudentsScreen, renderAdminPermsScreen,
   renderAdminSignupsScreen, renderAdminScriptsScreen,
 } from "./screens/AdminScreens";
+import { renderProblemScreen } from "./screens/ProblemScreen";
 import { renderCongruenceScreen } from "./screens/CongruenceScreen";
 import { renderSettingsScreen } from "./screens/SettingsScreen";
 import { renderDrawScreen } from "./screens/DrawScreen";
@@ -27,12 +28,12 @@ import { useJakdoCanvas } from "./hooks/useJakdoCanvas";
 // ashrain.out — Interactive Geometry Education App (v5.1)
 // ============================================================
 
-// Extracted outside AppInner to prevent remount on state change (fixes input bouncing)
 function ScreenWrapOuter({ children, title, back, backTo, theme, playSfx, setScreen, themeKey }) {
   return (
     <div style={{ height: "100vh", maxHeight: "100dvh", display: "flex", flexDirection: "column", background: theme.bg, fontFamily: "'Noto Serif KR', serif", overflow: "hidden" }}>
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Noto+Serif+KR:wght@400;700&display=swap" rel="stylesheet" />
       <style>{`@keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes blink { 0%,100%{opacity:1}50%{opacity:0.3} } .blink{animation:blink 1.2s ease-in-out infinite}
         @keyframes float { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-6px); } }`}</style>
       {title && (
         <div style={{ flexShrink: 0, display:"flex", alignItems:"center", padding:"16px 20px", borderBottom:`1px solid ${theme.border}` }}>
@@ -179,6 +180,7 @@ function AppInner() {
   const [signupMsg, setSignupMsg] = useState("");
   const [signupDone, setSignupDone] = useState(false);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
+  const [compareSelected, setCompareSelected] = useState(null);
   const [drawGoal, setDrawGoal] = useState("construct");
   const [proofStep, setProofStep] = useState(0); // "construct" | "compare" | "combined"
   const [chatMsg, setChatMsg] = useState("");
@@ -480,7 +482,7 @@ function AppInner() {
       title={title} back={back} backTo={backTo}>{children}</ScreenWrapOuter>
   ), [theme, themeKey, playSfx, setScreen]);
 
-  const MenuGrid = ({ items, cols = 2 }) => (
+  const MenuGrid = useMemo(() => ({ items, cols = 2 }) => (
     <div style={{ display:"grid", gridTemplateColumns:`repeat(${cols},1fr)`, gap:14, width:"min(440px,90vw)", padding:"0 16px", margin:"0 auto" }}>
       {items.map((item, i) => (
         <button key={i} onClick={() => { playSfx("click"); item.action?.(); }} disabled={item.disabled} style={{
@@ -501,7 +503,7 @@ function AppInner() {
         </button>
       ))}
     </div>
-  );
+  ), [theme, themeKey, playSfx, PASTEL]);
 
 
   // Context object for extracted screen render functions
@@ -522,7 +524,7 @@ function AppInner() {
     bgmOn, setBgmOn, sfxOn, setSfxOn, bgmVol, setBgmVol, sfxVol, setSfxVol,
     handleLogout,
     editToneKey, setEditToneKey, customScripts, setCustomScripts,
-    drawGoal, setDrawGoal,
+    drawGoal, setDrawGoal, compareSelected, setCompareSelected,
     triangle, setTriangle, triMode, setTriMode, inputMode, setInputMode,
     buildPhase, setBuildPhase, sssInput, setSssInput, animPhase, animProgress,
     jedoLines, jedoCenter, jedoCircle, jedoType,
@@ -563,6 +565,7 @@ function AppInner() {
   // --- Menu Screen ---
   if (screen === "menu") {
     const menuItems = [
+      { icon: "📐", label: "문제 분석", desc: "AI 조건추출 · 풀이방향", action: () => setScreen("problem") },
       { icon: "📖", label: "복습하기", desc: "기하학 개념 학습", action: () => setScreen("study") },
       { icon: "◎", label: "아카이브", desc: "나만의 작품 갤러리", disabled: !canArchive, action: canArchive ? () => {} : undefined },
       { icon: "🏛️", label: "광장", desc: "실시간 채팅 · 순위", action: () => setScreen("plaza") },
@@ -631,6 +634,9 @@ function AppInner() {
     );
   }
 
+
+  // --- Problem Analysis Screen ---
+  if (screen === "problem") return renderProblemScreen(ctx);
 
   // --- Congruence Screen ---
   if (screen === "congruence") return renderCongruenceScreen(ctx);
