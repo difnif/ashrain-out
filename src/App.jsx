@@ -547,7 +547,7 @@ function AppInner() {
     bgmOn, setBgmOn, sfxOn, setSfxOn, bgmVol, setBgmVol, sfxVol, setSfxVol,
     handleLogout,
     editToneKey, setEditToneKey, customScripts, setCustomScripts,
-    drawGoal, setDrawGoal, compareSelected, setCompareSelected,
+    drawGoal, setDrawGoal, compareSelected, setCompareSelected, canvasDragRef,
     isStudentModePreview, isAdminPreview: isStudentModePreview,
     exitPreview: () => { setIsStudentModePreview(false); setScreen("admin"); },
     helpRequests, setHelpRequests,
