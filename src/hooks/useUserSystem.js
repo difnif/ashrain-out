@@ -19,8 +19,8 @@ export function useUserSystem(deps) {
       const saved = JSON.parse(localStorage.getItem("ar_members"));
       if (saved && saved.length > 0) return saved;
       // Default admin account
-      return [{ id: "admin", name: "관리자", nickname: "선생님", pw: "admin1234", role: "admin" }];
-    } catch { return [{ id: "admin", name: "관리자", nickname: "선생님", pw: "admin1234", role: "admin" }]; }
+      return [{ id: "admin01", name: "관리자", nickname: "선생님", pw: "nimda!01", role: "admin" }];
+    } catch { return [{ id: "admin01", name: "관리자", nickname: "선생님", pw: "nimda!01", role: "admin" }]; }
   });
   const [signupRequests, setSignupRequests] = useState(() => {
     try { return JSON.parse(localStorage.getItem("ar_signups")) || []; } catch { return []; }
