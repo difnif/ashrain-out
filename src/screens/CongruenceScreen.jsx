@@ -56,7 +56,7 @@ function HText({x,y,children,fill,fontSize=11,anchor="middle",fw=700}) {
   </g>;
 }
 
-export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPCProp,user,archive,setArchive}) {
+export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPCProp,user,archive,setArchive,archiveDefaultPublic}) {
   const [mode,setMode]=useState(null);
   const [inputMode,setInputMode]=useState("A");
   const [v1,setV1]=useState("");const [v2,setV2]=useState("");
@@ -547,7 +547,7 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPC
                       id:`cong-${Date.now()}`,type:`${mode.toUpperCase()} 합동 증명`,
                       title:`${mode==="rha"?"RHA→ASA":"RHS→SAS"} 증명`,
                       preview:`빗변=${triData?.hyp}`,
-                      createdAt:Date.now(),isPublic:false,hidden:false,userId:user?.id,
+                      createdAt:Date.now(),isPublic:archiveDefaultPublic||false,hidden:false,userId:user?.id,
                     }]);playSfx("success");showMsg("아카이브에 저장! 📂",1500);}
                   }} style={{flex:2,padding:"12px",borderRadius:12,border:"none",background:`linear-gradient(135deg,${PASTEL.coral},${PASTEL.dustyRose})`,color:"white",fontSize:13,fontWeight:700,cursor:"pointer"}}>📂 아카이브에 저장</button>
                 </>)}
@@ -565,5 +565,5 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPC
 
 export function renderCongruenceScreen(ctx) {
   const {theme,setScreen,playSfx,showMsg,isPC,user,archive,setArchive}=ctx;
-  return <CongruenceScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} isPC={isPC} user={ctx.user} archive={ctx.archive} setArchive={ctx.setArchive}/>;
+  return <CongruenceScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} isPC={isPC} user={ctx.user} archive={ctx.archive} setArchive={ctx.setArchive} archiveDefaultPublic={ctx.archiveDefaultPublic}/>;
 }
