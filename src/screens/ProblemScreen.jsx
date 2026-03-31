@@ -6,8 +6,27 @@ const CMAP = { coral: PASTEL.coral, sky: PASTEL.sky, mint: PASTEL.mint, lavender
 // Clean up math symbols that don't render well on mobile
 function cleanMathText(text) {
   if (!text) return text;
-  // Remove combining overline (U+0305) - causes box rendering
-  return text.replace(/̅/g, "");
+  return text.replace(/\u0305/g, "");
+}
+
+function MathSpan({ children }) {
+  if (!children) return null;
+  const text = String(children);
+  const regex = /\[(seg|line|ray)\](.+?)\[\/\1\]/g;
+  const parts = []; let last = 0; let mm;
+  while ((mm = regex.exec(text)) !== null) {
+    if (mm.index > last) parts.push({ type: "text", val: text.slice(last, mm.index) });
+    parts.push({ type: mm[1], val: mm[2] });
+    last = regex.lastIndex;
+  }
+  if (last < text.length) parts.push({ type: "text", val: text.slice(last) });
+  if (parts.length === 0) return <>{text}</>;
+  return <>{parts.map((p, i) => {
+    if (p.type === "seg") return <span key={i} style={{ textDecoration: "overline", textDecorationColor: "#D95F4B", textDecorationThickness: "2px", fontWeight: 600 }}>{p.val}</span>;
+    if (p.type === "line") return <span key={i} style={{ textDecoration: "overline", textDecorationStyle: "double", fontWeight: 600 }}>{p.val}</span>;
+    if (p.type === "ray") return <span key={i}><span style={{ textDecoration: "overline", textDecorationThickness: "2px", fontWeight: 600 }}>{p.val.charAt(0)}</span>{p.val.slice(1)}→</span>;
+    return <span key={i}>{p.val}</span>;
+  })}</>;
 }
 
 function FigureCanvas({ figure, theme, highlights = [] }) {
@@ -47,7 +66,7 @@ function FigureCanvas({ figure, theme, highlights = [] }) {
 
 const CAT_ICON = { "조건": "📌", "관계": "🔗", "구하는것": "🎯", "공식힌트": "💡" };
 
-export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests }) {
+export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests, archive, setArchive }) {
   const [input, setInput] = useState("");
   const [imageData, setImageData] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -123,6 +142,16 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
 
   // Send help request via Firestore
   const sendHelp = () => {
+    // Save to archive too
+    if (setArchive && result) {
+      setArchive(prev => [...prev, {
+        id: `q-${Date.now()}`, type: "질문", title: result.type || "수학 문제",
+        preview: (result.problemText || input || "").slice(0, 60),
+        content: { problemText: result.problemText, steps: result.steps, equation: result.equation },
+        createdAt: Date.now(), isPublic: false, hidden: false, userId: user?.id,
+        isQuestion: true, helpStepIdx,
+      }]);
+    }
     try {
       const newReq = {
         id: `help-${Date.now()}`,
@@ -176,7 +205,7 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
             fontWeight: p.latest ? 700 : 500,
             transition: "all 0.3s",
           }}>{p.text}</span>
-        ) : <span key={i}>{p.text}</span>)}
+        ) : <span key={i}><MathSpan>{p.text}</MathSpan></span>)}
       </div>
     );
   };
@@ -517,6 +546,6 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
 }
 
 export function renderProblemScreen(ctx) {
-  const { theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests } = ctx;
-  return <ProblemScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} user={user} helpRequests={helpRequests} setHelpRequests={setHelpRequests} />;
+  const { archive, setArchive, theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests } = ctx;
+  return <ProblemScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} user={user} helpRequests={helpRequests} setHelpRequests={setHelpRequests} archive={archive} setArchive={setArchive} />;
 }
