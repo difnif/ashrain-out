@@ -101,15 +101,17 @@ export function useUserSystem(deps) {
 
   // Permission system — role-based access control
   const DEFAULT_PERMS = {
-    assistant: { study: true, draw: true, jedo: true, guide: true, plaza_read: true, plaza_write: true, plaza_call: true, archive_save: true, admin_members: true, admin_signups: true, admin_angles: false, admin_scripts: false },
-    student: { study: true, draw: true, jedo: true, guide: true, plaza_read: true, plaza_write: true, plaza_call: true, archive_save: true, admin_members: false, admin_signups: false, admin_angles: false, admin_scripts: false },
-    external: { study: true, draw: true, jedo: false, guide: false, plaza_read: true, plaza_write: false, plaza_call: false, archive_save: false, admin_members: false, admin_signups: false, admin_angles: false, admin_scripts: false },
+    assistant: { study: true, draw: true, jedo: true, guide: true, plaza_read: true, plaza_write: true, plaza_call: true, archive_save: true, admin_members: true, admin_signups: true, admin_scripts: false, viewStudentMode: true, questionInbox: true, assignHomework: true, diary: true, notifications: true },
+    student: { study: true, draw: true, jedo: true, guide: true, plaza_read: true, plaza_write: true, plaza_call: true, archive_save: true, diary: true, homework: true, notifications: true, askQuestion: true, admin_members: false, admin_signups: false, admin_scripts: false },
+    external: { study: true, draw: true, jedo: false, guide: false, plaza_read: true, plaza_write: false, plaza_call: false, archive_save: false, diary: false, homework: false, notifications: true, askQuestion: false, admin_members: false, admin_signups: false, admin_scripts: false },
   };
   const PERM_LABELS = {
-    study: "복습하기 접근", draw: "삼각형 그리기", jedo: "제도 모드", guide: "가이드 작도",
-    plaza_read: "광장 보기", plaza_write: "광장 채팅", plaza_call: "호출 기능",
-    archive_save: "아카이브 저장", admin_members: "회원 관리", admin_signups: "가입 신청 관리",
-    admin_angles: "앵글 데이터", admin_scripts: "대사 스크립트",
+    study: "학습", draw: "그리기", jedo: "제도", guide: "가이드",
+    plaza_read: "광장 읽기", plaza_write: "광장 글쓰기", plaza_call: "광장 호출",
+    archive_save: "아카이브 저장",
+    admin_members: "회원 관리", admin_signups: "가입 관리", admin_scripts: "대사 편집",
+    viewStudentMode: "학생 모드 보기", questionInbox: "질문함", assignHomework: "숙제 출제",
+    diary: "다이어리", homework: "숙제", notifications: "알림", askQuestion: "질문하기",
   };
   const PERM_GROUPS = [
     { label: "복습하기", keys: ["study", "draw", "jedo", "guide"] },
