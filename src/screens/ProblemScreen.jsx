@@ -4,7 +4,7 @@ import { PASTEL } from "../config";
 const CMAP = { coral: PASTEL.coral, sky: PASTEL.sky, mint: PASTEL.mint, lavender: PASTEL.lavender };
 const CAT_ICON = { "조건": "📌", "관계": "🔗", "구하는것": "🎯", "공식힌트": "💡" };
 
-export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user }) {
+export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests }) {
   const [input, setInput] = useState("");
   const [imageData, setImageData] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -68,20 +68,23 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user })
   const prevStep = () => { if (currentStep >= 0) setCurrentStep(s => s - 1); setHelpMode(null); };
 
   // Send help request via Firestore
-  const sendHelp = async () => {
+  const sendHelp = () => {
     try {
-      const { addDoc, collection, serverTimestamp } = await import("firebase/firestore");
-      const { db } = await import("../firebase");
-      await addDoc(collection(db, "ashrain", "data", "helpRequests"), {
-        userId: user?.id || "anonymous", userName: user?.name || "익명",
-        timestamp: serverTimestamp(),
+      const newReq = {
+        id: `help-${Date.now()}`,
+        userId: user?.id || "anonymous",
+        userName: user?.name || "익명",
+        timestamp: Date.now(),
         problemText: result?.problemText || input,
-        imageBase64: imageData ? imageData.slice(0, 500) + "..." : null, // truncate for storage
-        type: result?.type, grade: result?.grade,
+        type: result?.type || "",
+        grade: result?.grade || "",
         stuckAtStep: helpStepIdx,
         stuckStepTitle: result?.steps?.[helpStepIdx]?.title || "",
         stuckStepExplain: result?.steps?.[helpStepIdx]?.explain || "",
-      });
+        analysisResult: result,
+        status: "pending",
+      };
+      setHelpRequests(prev => [...prev, newReq]);
       setHelpMode("sent"); playSfx("success");
     } catch (e) { showMsg("전달 실패: " + e.message, 2000); }
   };
@@ -441,6 +444,6 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user })
 }
 
 export function renderProblemScreen(ctx) {
-  const { theme, setScreen, playSfx, showMsg, user } = ctx;
-  return <ProblemScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} user={user} />;
+  const { theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests } = ctx;
+  return <ProblemScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} user={user} helpRequests={helpRequests} setHelpRequests={setHelpRequests} />;
 }
