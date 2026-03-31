@@ -9,7 +9,41 @@ function cleanMathText(text) {
   return text.replace(/\u0305/g, "");
 }
 
-function MathSpan({ children }) {
+function FracSpan({ num, den, color }) {
+  return (
+    <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", verticalAlign: "middle", margin: "0 3px", lineHeight: 1.2 }}>
+      <span style={{ fontSize: "0.85em", padding: "0 4px", color }}>{num}</span>
+      <span style={{ width: "100%", height: 1.5, background: color || "currentColor", margin: "1px 0" }} />
+      <span style={{ fontSize: "0.85em", padding: "0 4px", color }}>{den}</span>
+    </span>
+  );
+}
+
+function MathSpan({ children, highlightColor }) {
+  if (!children) return null;
+  const text = String(children);
+  // First handle fractions
+  const fracRegex = /\[frac\](.+?)\|(.+?)\[\/frac\]/g;
+  const hasFrac = fracRegex.test(text);
+  fracRegex.lastIndex = 0;
+  
+  if (hasFrac) {
+    const parts = []; let last = 0; let fm;
+    while ((fm = fracRegex.exec(text)) !== null) {
+      if (fm.index > last) parts.push({ type: "text", val: text.slice(last, fm.index) });
+      parts.push({ type: "frac", num: fm[1], den: fm[2] });
+      last = fracRegex.lastIndex;
+    }
+    if (last < text.length) parts.push({ type: "text", val: text.slice(last) });
+    return <>{parts.map((p, i) =>
+      p.type === "frac" ? <FracSpan key={i} num={p.num} den={p.den} color={highlightColor} /> :
+      <MathInner key={i}>{p.val}</MathInner>
+    )}</>;
+  }
+  return <MathInner>{text}</MathInner>;
+}
+
+function MathInner({ children }) {
   if (!children) return null;
   const text = String(children);
   const regex = /\[(seg|line|ray)\](.+?)\[\/\1\]/g;
@@ -66,7 +100,7 @@ function FigureCanvas({ figure, theme, highlights = [] }) {
 
 const CAT_ICON = { "조건": "📌", "관계": "🔗", "구하는것": "🎯", "공식힌트": "💡" };
 
-export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests, archive, setArchive }) {
+export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests, archive, setArchive, archiveDefaultPublic }) {
   const [input, setInput] = useState("");
   const [imageData, setImageData] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -124,7 +158,7 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
       id: `prob-${Date.now()}`, type: "문제분석", title: result.type || "수학 문제",
       preview: (result.problemText || "").slice(0, 60),
       content: { problemText: result.problemText, steps: result.steps, equation: result.equation, figure: result.figure },
-      createdAt: Date.now(), isPublic: false, hidden: false, userId: user?.id,
+      createdAt: Date.now(), isPublic: archiveDefaultPublic || false, hidden: false, userId: user?.id,
     }]);
     playSfx("success"); showMsg("아카이브에 저장했어요! 📂", 2000);
   };
@@ -148,7 +182,7 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
         id: `q-${Date.now()}`, type: "질문", title: result.type || "수학 문제",
         preview: (result.problemText || input || "").slice(0, 60),
         content: { problemText: result.problemText, steps: result.steps, equation: result.equation },
-        createdAt: Date.now(), isPublic: false, hidden: false, userId: user?.id,
+        createdAt: Date.now(), isPublic: archiveDefaultPublic || false, hidden: false, userId: user?.id,
         isQuestion: true, helpStepIdx,
       }]);
     }
@@ -547,5 +581,5 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
 
 export function renderProblemScreen(ctx) {
   const { archive, setArchive, theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests } = ctx;
-  return <ProblemScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} user={user} helpRequests={helpRequests} setHelpRequests={setHelpRequests} archive={archive} setArchive={setArchive} />;
+  return <ProblemScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} user={user} helpRequests={helpRequests} setHelpRequests={setHelpRequests} archive={archive} setArchive={setArchive} archiveDefaultPublic={ctx.archiveDefaultPublic} />;
 }
