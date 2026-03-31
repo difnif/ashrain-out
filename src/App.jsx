@@ -200,6 +200,10 @@ function AppInner() {
   const [archiveDefaultPublic, setArchiveDefaultPublic] = useState(() => localStorage.getItem("ar_archive_public") === "true");
   useEffect(() => { localStorage.setItem("ar_archive_public", archiveDefaultPublic); }, [archiveDefaultPublic]);
 
+  const [helpPopupData, setHelpPopupData] = useState(null);
+  const [canvasWidth, setCanvasWidth] = useState(null);
+  const svgPanRef = useRef(null);
+
   const [dndStart, setDndStart] = useState(() => localStorage.getItem("ar_dnd_start") || "23:00");
   const [dndEnd, setDndEnd] = useState(() => localStorage.getItem("ar_dnd_end") || "07:00");
 
@@ -564,6 +568,7 @@ function AppInner() {
     notifications: studentNotifications, setNotifications: setStudentNotifications,
     diary: studentDiary, setDiary: setStudentDiary,
     archiveDefaultPublic, setArchiveDefaultPublic,
+    helpPopupData, setHelpPopupData, canvasWidth, setCanvasWidth, svgPanRef,
     dndStart, dndEnd, setDndStart, setDndEnd,
     triangle, setTriangle, triMode, setTriMode, inputMode, setInputMode,
     buildPhase, setBuildPhase, sssInput, setSssInput, animPhase, animProgress,
