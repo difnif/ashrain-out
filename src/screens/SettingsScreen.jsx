@@ -101,7 +101,36 @@ export function renderSettingsScreen(ctx) {
             </div>
           </div>
         </div>
-      </ScreenWrap>
+          {/* 아카이브 설정 */}
+        <div style={{ marginBottom: 16, marginTop: 16 }}>
+          <div style={{ fontSize: 11, color: theme.textSec, marginBottom: 8, fontWeight: 700, letterSpacing: 1 }}>아카이브</div>
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "14px 16px", background: theme.card, borderRadius: 14,
+            border: `1px solid ${theme.border}`,
+          }}>
+            <div>
+              <div style={{ fontSize: 13, color: theme.text }}>저장 시 기본 공개 여부</div>
+              <div style={{ fontSize: 10, color: theme.textSec, marginTop: 2 }}>
+                {archiveDefaultPublic ? "🌍 공개로 저장됩니다" : "🔒 비공개로 저장됩니다"}
+              </div>
+            </div>
+            <button onClick={() => { setArchiveDefaultPublic(!archiveDefaultPublic); playSfx("click"); }}
+              style={{
+                width: 48, height: 26, borderRadius: 13, border: "none", cursor: "pointer",
+                background: archiveDefaultPublic ? PASTEL.mint : theme.border,
+                position: "relative", transition: "background 0.3s",
+              }}>
+              <div style={{
+                width: 20, height: 20, borderRadius: 10, background: "white",
+                position: "absolute", top: 3,
+                left: archiveDefaultPublic ? 25 : 3, transition: "left 0.3s",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+              }} />
+            </button>
+          </div>
+        </div>
+    </ScreenWrap>
     );
 
 }
