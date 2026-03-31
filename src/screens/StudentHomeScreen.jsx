@@ -109,7 +109,7 @@ function HomeTab({ theme, user, setScreen, playSfx, homework, notifications, arc
 }
 
 // ===== Archive Tab =====
-function ArchiveTab({ theme, archive, setArchive, playSfx, showMsg }) {
+function ArchiveTab({ theme, archive, setArchive, playSfx, showMsg, diary, setDiary }) {
   const [filter, setFilter] = useState("visible"); // visible|hidden|all
   const [selectedItem, setSelectedItem] = useState(null);
   const filtered = filter === "all" ? archive : filter === "hidden" ? archive.filter(a => a.hidden) : archive.filter(a => !a.hidden);
@@ -172,6 +172,19 @@ function ArchiveTab({ theme, archive, setArchive, playSfx, showMsg }) {
 
           {/* Actions */}
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button onClick={() => {
+              const today = new Date().toISOString().slice(0, 10);
+              const importText = item.content?.problemText || item.preview || item.title || "";
+              setDiary(prev => {
+                const ex = prev.find(d => d.date === today);
+                const addText = `\n\n[${item.type || "아카이브"}] ${importText}`;
+                if (ex) return prev.map(d => d.date === today ? { ...d, content: (d.content || "") + addText, updatedAt: Date.now() } : d);
+                return [...prev, { id: `diary-${today}`, date: today, content: addText.trim(), paths: [], createdAt: Date.now(), updatedAt: Date.now() }];
+              });
+              playSfx("success"); showMsg("오늘 다이어리에 추가했어요! 📓", 2000);
+            }} style={{ padding: "8px 14px", borderRadius: 10, border: `1px solid ${PASTEL.lavender}30`, background: `${PASTEL.lavender}08`, color: PASTEL.lavender, fontSize: 11, cursor: "pointer" }}>
+              📓 다이어리로 보내기
+            </button>
             <button onClick={() => { toggleHidden(item.id); playSfx("click"); }}
               style={{ padding: "8px 14px", borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 11, cursor: "pointer" }}>
               {item.hidden ? "📂 피드로 복원" : "👁️‍🗨️ 숨기기"}
@@ -243,30 +256,94 @@ function ArchiveTab({ theme, archive, setArchive, playSfx, showMsg }) {
 }
 
 // ===== Diary Tab =====
-function DiaryTab({ theme, diary, setDiary, playSfx }) {
+function DiaryTab({ theme, diary, setDiary, playSfx, showMsg, archive }) {
   const today = todayKey();
   const sortedDates = [...new Set(diary.map(d => d.date))].sort().reverse();
   const [viewDate, setViewDate] = useState(today);
   const [text, setText] = useState("");
   const [editing, setEditing] = useState(false);
+  // Drawing
+  const [drawing, setDrawing] = useState(false);
+  const [paths, setPaths] = useState([]);
+  const [currentPath, setCurrentPath] = useState([]);
+  const [penColor, setPenColor] = useState("#333");
+  const [penSize, setPenSize] = useState(2);
+  const [canvasScale, setCanvasScale] = useState(1);
+  const canvasRef = useRef(null);
+  const [showArchivePopup, setShowArchivePopup] = useState(false);
+  const [pageHeight, setPageHeight] = useState(500);
 
-  useEffect(() => { setText(diary.find(d => d.date === viewDate)?.content || ""); setEditing(false); }, [viewDate, diary]);
+  const canEdit = viewDate === today;
+
+  // Load diary entry
+  useEffect(() => {
+    const entry = diary.find(d => d.date === viewDate);
+    setText(entry?.content || "");
+    setPaths(entry?.paths || []);
+    setEditing(false);
+    setDrawing(false);
+  }, [viewDate, diary]);
 
   const save = () => {
     setDiary(prev => {
       const ex = prev.find(d => d.date === viewDate);
-      if (ex) return prev.map(d => d.date === viewDate ? { ...d, content: text, updatedAt: Date.now() } : d);
-      return [...prev, { id: `diary-${viewDate}`, date: viewDate, content: text, createdAt: Date.now(), updatedAt: Date.now() }];
+      if (ex) return prev.map(d => d.date === viewDate ? { ...d, content: text, paths, updatedAt: Date.now() } : d);
+      return [...prev, { id: `diary-${viewDate}`, date: viewDate, content: text, paths, createdAt: Date.now(), updatedAt: Date.now() }];
     });
-    setEditing(false); playSfx("success");
+    setEditing(false); setDrawing(false);
+    playSfx("success"); showMsg("저장했어요!", 1500);
   };
-  const canEdit = viewDate === today;
+
+  // Drawing handlers
+  const getPos = (e) => {
+    const svg = canvasRef.current;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return { x: (t.clientX - rect.left) / canvasScale, y: (t.clientY - rect.top) / canvasScale };
+  };
+
+  const startDraw = (e) => {
+    if (!drawing || !canEdit) return;
+    e.preventDefault();
+    const p = getPos(e);
+    if (p) setCurrentPath([p]);
+  };
+  const moveDraw = (e) => {
+    if (!drawing || !currentPath.length) return;
+    e.preventDefault();
+    const p = getPos(e);
+    if (p) setCurrentPath(prev => [...prev, p]);
+  };
+  const endDraw = () => {
+    if (currentPath.length > 1) {
+      setPaths(prev => [...prev, { points: currentPath, color: penColor, size: penSize }]);
+    }
+    setCurrentPath([]);
+  };
+
+  const undoPath = () => setPaths(prev => prev.slice(0, -1));
+  const clearPaths = () => { if (confirm("모든 그림을 지울까요?")) setPaths([]); };
+
+  // Import from archive
+  const todayArchive = (archive || []).filter(a => {
+    if (!a.createdAt) return false;
+    return new Date(a.createdAt).toISOString().slice(0, 10) === viewDate;
+  });
+
+  const importItem = (item) => {
+    const importText = item.content?.problemText || item.preview || item.title || "";
+    setText(prev => prev + (prev ? "\n\n" : "") + `[${item.type || "아카이브"}] ${importText}`);
+    setShowArchivePopup(false);
+    playSfx("click"); showMsg("불러왔어요!", 1500);
+  };
 
   return (
     <div style={{ padding: "12px 16px", animation: "fadeIn 0.3s ease" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+      {/* Date nav */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <button onClick={() => { const d = new Date(viewDate); d.setDate(d.getDate()-1); setViewDate(d.toISOString().slice(0,10)); }}
-          style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: theme.text }}>◀</button>
+          style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: theme.text, padding: "4px 8px" }}>◀</button>
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>
             {new Date(viewDate).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short" })}
@@ -274,30 +351,95 @@ function DiaryTab({ theme, diary, setDiary, playSfx }) {
           {viewDate === today && <span style={{ fontSize: 10, color: PASTEL.coral, fontWeight: 700 }}>오늘</span>}
         </div>
         <button onClick={() => { const d = new Date(viewDate); d.setDate(d.getDate()+1); const n = d.toISOString().slice(0,10); if(n<=today) setViewDate(n); }}
-          style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: viewDate < today ? theme.text : theme.border }}>▶</button>
+          style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: viewDate < today ? theme.text : theme.border, padding: "4px 8px" }}>▶</button>
       </div>
+
+      {/* Page */}
       <div style={{
-        minHeight: 300, padding: 20, borderRadius: 16, background: theme.card, border: `1px solid ${theme.border}`,
-        backgroundImage: `repeating-linear-gradient(transparent, transparent 31px, ${theme.border}40 31px, ${theme.border}40 32px)`,
+        minHeight: pageHeight, borderRadius: 16, background: theme.card,
+        border: `1px solid ${theme.border}`, position: "relative", overflow: "hidden",
+        backgroundImage: `repeating-linear-gradient(transparent, transparent 31px, ${theme.border}30 31px, ${theme.border}30 32px)`,
         backgroundPosition: "0 20px",
       }}>
-        {editing ? (
-          <textarea value={text} onChange={e => setText(e.target.value)}
-            style={{ width: "100%", minHeight: 260, border: "none", background: "transparent", color: theme.text, fontSize: 14, lineHeight: "32px", fontFamily: "'Noto Serif KR', serif", resize: "none", outline: "none" }}
-            placeholder="오늘 공부한 내용을 적어보세요..." autoFocus />
-        ) : (
-          <div onClick={() => canEdit && setEditing(true)}
-            style={{ fontSize: 14, lineHeight: "32px", color: text ? theme.text : theme.textSec, whiteSpace: "pre-wrap", minHeight: 260, cursor: canEdit ? "text" : "default" }}>
-            {text || (canEdit ? "터치해서 작성하기..." : "작성한 내용이 없어요")}
-          </div>
-        )}
+        {/* Drawing canvas (SVG overlay) */}
+        <svg ref={canvasRef} width="100%" height={pageHeight}
+          style={{ position: "absolute", top: 0, left: 0, touchAction: drawing ? "none" : "auto", zIndex: drawing ? 10 : 1 }}
+          onTouchStart={startDraw} onTouchMove={moveDraw} onTouchEnd={endDraw}
+          onMouseDown={startDraw} onMouseMove={moveDraw} onMouseUp={endDraw}>
+          {paths.map((p, i) => (
+            <polyline key={i} points={p.points.map(pt => `${pt.x},${pt.y}`).join(" ")}
+              fill="none" stroke={p.color} strokeWidth={p.size} strokeLinecap="round" strokeLinejoin="round" />
+          ))}
+          {currentPath.length > 1 && (
+            <polyline points={currentPath.map(pt => `${pt.x},${pt.y}`).join(" ")}
+              fill="none" stroke={penColor} strokeWidth={penSize} strokeLinecap="round" strokeLinejoin="round" />
+          )}
+        </svg>
+
+        {/* Text content */}
+        <div style={{ position: "relative", zIndex: drawing ? 0 : 5, padding: 20, minHeight: pageHeight - 40 }}>
+          {editing && !drawing ? (
+            <textarea value={text} onChange={e => setText(e.target.value)}
+              style={{ width: "100%", minHeight: pageHeight - 60, border: "none", background: "transparent", color: theme.text, fontSize: 14, lineHeight: "32px", fontFamily: "'Noto Serif KR', serif", resize: "none", outline: "none" }}
+              placeholder="오늘 공부한 내용을 적어보세요..." autoFocus />
+          ) : (
+            <div onClick={() => canEdit && !drawing && setEditing(true)}
+              style={{ fontSize: 14, lineHeight: "32px", color: text ? theme.text : theme.textSec, whiteSpace: "pre-wrap", cursor: canEdit ? "text" : "default" }}>
+              {text || (canEdit ? "터치해서 작성하기..." : "작성한 내용이 없어요")}
+            </div>
+          )}
+        </div>
       </div>
-      {canEdit && editing && (
-        <button onClick={save} style={{ width: "100%", marginTop: 10, padding: 12, borderRadius: 12, border: "none", background: PASTEL.coral, color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>저장</button>
+
+      {/* Drawing toolbar */}
+      {canEdit && (
+        <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button onClick={() => { setDrawing(!drawing); setEditing(false); }}
+            style={{ padding: "8px 14px", borderRadius: 10, border: drawing ? `2px solid ${PASTEL.coral}` : `1px solid ${theme.border}`, background: drawing ? `${PASTEL.coral}10` : theme.card, color: drawing ? PASTEL.coral : theme.text, fontSize: 11, cursor: "pointer", fontWeight: drawing ? 700 : 400 }}>
+            ✏️ {drawing ? "그리기 ON" : "그리기"}
+          </button>
+
+          {drawing && <>
+            {["#333", PASTEL.coral, PASTEL.sky, PASTEL.mint, "#FF9800"].map(color => (
+              <button key={color} onClick={() => setPenColor(color)}
+                style={{ width: 24, height: 24, borderRadius: 12, background: color, border: penColor === color ? "3px solid white" : "1px solid #ccc", boxShadow: penColor === color ? `0 0 0 2px ${color}` : "none", cursor: "pointer" }} />
+            ))}
+            <select value={penSize} onChange={e => setPenSize(Number(e.target.value))}
+              style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.card, color: theme.text, fontSize: 10 }}>
+              <option value={1}>가늘게</option>
+              <option value={2}>보통</option>
+              <option value={4}>굵게</option>
+              <option value={8}>아주 굵게</option>
+            </select>
+            <button onClick={undoPath} style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 10, cursor: "pointer" }}>↩ 되돌리기</button>
+            <button onClick={clearPaths} style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${PASTEL.coral}30`, background: "transparent", color: PASTEL.coral, fontSize: 10, cursor: "pointer" }}>🗑️ 전체 지우기</button>
+          </>}
+
+          {!drawing && <>
+            <button onClick={() => setShowArchivePopup(true)}
+              style={{ padding: "8px 14px", borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.card, color: theme.text, fontSize: 11, cursor: "pointer" }}>
+              📂 아카이브 불러오기
+            </button>
+            <button onClick={save}
+              style={{ padding: "8px 14px", borderRadius: 10, border: "none", background: PASTEL.coral, color: "white", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+              💾 저장
+            </button>
+          </>}
+        </div>
       )}
+
+      {/* Page height control */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+        <span style={{ fontSize: 10, color: theme.textSec }}>페이지 크기</span>
+        <input type="range" min={300} max={1500} value={pageHeight} onChange={e => setPageHeight(Number(e.target.value))}
+          style={{ flex: 1 }} />
+        <span style={{ fontSize: 10, color: theme.textSec }}>{pageHeight}px</span>
+      </div>
+
+      {/* Recent dates */}
       {sortedDates.length > 0 && (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 11, color: theme.textSec, marginBottom: 8 }}>최근 기록</div>
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 11, color: theme.textSec, marginBottom: 6 }}>최근 기록</div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {sortedDates.slice(0, 14).map(d => (
               <button key={d} onClick={() => setViewDate(d)} style={{
@@ -306,6 +448,38 @@ function DiaryTab({ theme, diary, setDiary, playSfx }) {
                 background: viewDate === d ? `${PASTEL.coral}10` : theme.card, color: d === today ? PASTEL.coral : theme.text,
               }}>{d.slice(5)}</button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Archive import popup */}
+      {showArchivePopup && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 9999 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowArchivePopup(false); }}>
+          <div style={{ width: "100%", maxWidth: 500, maxHeight: "60vh", background: theme.bg, borderRadius: "20px 20px 0 0", overflow: "hidden", display: "flex", flexDirection: "column", animation: "slideUp 0.3s ease" }}>
+            <div style={{ padding: "16px 20px", borderBottom: `1px solid ${theme.border}`, display: "flex", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>📂 아카이브에서 불러오기</span>
+              <button onClick={() => setShowArchivePopup(false)} style={{ background: "none", border: "none", color: theme.textSec, fontSize: 18, cursor: "pointer" }}>✕</button>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+              {todayArchive.length === 0 && (
+                <p style={{ textAlign: "center", color: theme.textSec, fontSize: 12, padding: 20 }}>
+                  {viewDate === today ? "오늘 공부한 아카이브가 없어요" : "이 날 공부한 아카이브가 없어요"}
+                </p>
+              )}
+              {todayArchive.map(item => (
+                <button key={item.id} onClick={() => importItem(item)}
+                  style={{ width: "100%", textAlign: "left", padding: "12px 14px", marginBottom: 6, borderRadius: 12, border: `1px solid ${theme.border}`, background: theme.card, cursor: "pointer" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: theme.text }}>{item.title}</div>
+                  <div style={{ fontSize: 10, color: theme.textSec, marginTop: 2 }}>{item.preview?.slice(0, 50) || item.type}</div>
+                </button>
+              ))}
+              {(archive || []).length > todayArchive.length && (
+                <p style={{ fontSize: 10, color: theme.textSec, textAlign: "center", marginTop: 8 }}>
+                  해당 날짜의 아카이브만 표시됩니다
+                </p>
+              )}
+            </div>
           </div>
         </div>
       )}
