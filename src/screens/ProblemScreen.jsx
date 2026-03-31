@@ -3,6 +3,13 @@ import { PASTEL } from "../config";
 
 const CMAP = { coral: PASTEL.coral, sky: PASTEL.sky, mint: PASTEL.mint, lavender: PASTEL.lavender };
 
+// Clean up math symbols that don't render well on mobile
+function cleanMathText(text) {
+  if (!text) return text;
+  // Remove combining overline (U+0305) - causes box rendering
+  return text.replace(/̅/g, "");
+}
+
 function FigureCanvas({ figure, theme, highlights = [] }) {
   if (!figure || figure.type === "none" || !figure.vertices?.length) return null;
   const verts = figure.vertices;
@@ -138,7 +145,7 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
 
   // Render highlighted problem text
   const renderProblemText = () => {
-    const text = result?.problemText || input;
+    const text = cleanMathText(result?.problemText || input);
     if (!text) return null;
     const steps = result?.steps || [];
     const activeSteps = steps.slice(0, Math.max(currentStep + 1, 0));
@@ -160,7 +167,7 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
     });
 
     return (
-      <div style={{ fontSize: 15, lineHeight: 2.4, color: theme.text, padding: "14px 18px" }}>
+      <div style={{ fontSize: 15, lineHeight: 2.4, color: theme.text, padding: "14px 18px", whiteSpace: "pre-line" }}>
         {parts.map((p, i) => p.hl ? (
           <span key={i} style={{
             background: `${p.color}${p.latest ? "35" : "18"}`,
