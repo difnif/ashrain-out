@@ -1,8 +1,11 @@
+import { HelpPopup, PROPERTY_HELP } from "../components/HelpPopup";
 import { PASTEL, dist } from "../config";
 import FloatingMsg from "../components/FloatingMsg";
 import InfoPanel from "../components/InfoPanel";
 
 export function renderDrawScreen(ctx) {
+  const [helpPopupData, setHelpPopupData] = useState(null);
+
   const {
     theme, themeKey, setScreen, playSfx, showMsg, activeTone, isPC,
     triangle, setTriangle, triMode, setTriMode, inputMode, setInputMode,
@@ -30,6 +33,7 @@ export function renderDrawScreen(ctx) {
     compareSelected, setCompareSelected,
     renderTriangleAnim, renderHighlight, getProperties,
     archive, setArchive, archiveDefaultPublic,
+    helpRequests, setHelpRequests,
     handleJedoClick, handleJakdoDown, handleJakdoMove, handleJakdoUp, handleUndo,
     resetAll, generateTriangleWithBase, drawGoal,
     failAnim, idleMsg, retryDraw, generateTriangle,
@@ -677,6 +681,34 @@ export function renderDrawScreen(ctx) {
             )}
           </svg>
 
+          {/* Help Popup */}
+          {helpPopupData && (
+            <HelpPopup
+              theme={theme} playSfx={playSfx} showMsg={showMsg}
+              title={helpPopupData.title} explain={helpPopupData.explain}
+              example={helpPopupData.example} analogy={helpPopupData.analogy}
+              contextData={helpPopupData.contextData}
+              onClose={() => setHelpPopupData(null)}
+              onSendQuestion={(qData) => {
+                if (setHelpRequests) {
+                  setHelpRequests(prev => [...prev, {
+                    id: `help-${Date.now()}`, userId: user?.id || "anon", userName: user?.name || "익명",
+                    timestamp: Date.now(), status: "pending",
+                    ...qData,
+                  }]);
+                }
+                if (setArchive) {
+                  setArchive(prev => [...prev, {
+                    id: `q-${Date.now()}`, type: "질문", title: qData.helpTitle,
+                    preview: qData.helpExplain?.slice(0, 60),
+                    createdAt: Date.now(), isPublic: false, hidden: false, userId: user?.id,
+                    isQuestion: true, contextData: qData,
+                  }]);
+                }
+              }}
+            />
+          )}
+
           {/* Drag handle to resize canvas */}
           {triangle && buildPhase !== "animating" && buildPhase !== "input" && (
             <div
@@ -801,8 +833,12 @@ export function renderDrawScreen(ctx) {
                           <div style={{ fontSize: 11, color: theme.textSec, fontFamily: "'Noto Serif KR', serif", marginBottom: 6 }}>
                             ↑ 위 도형에서 확인하세요
                           </div>
-                          <button onClick={(e) => { e.stopPropagation(); showMsg("질문함 기능 연동 예정!", 2000); playSfx("click"); }}
-                            style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 10, cursor: "pointer" }}>
+                          <button onClick={(e) => {
+                            e.stopPropagation();
+                            const help = PROPERTY_HELP[item.highlight] || { title: item.text?.slice(0, 20), explain: item.text + "\n\n이 성질이 이해가 안 되면 선생님께 질문해보세요!" };
+                            setHelpPopupData({ ...help, contextData: { screenName: "그려서 기억하기", propertyId: item.id, type: jedoType === "circum" ? "외접원" : "내접원" } });
+                            playSfx("click");
+                          }} style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 10, cursor: "pointer" }}>
                             ❓ 이해가 안 돼요
                           </button>
                         </div>
@@ -1352,8 +1388,10 @@ export function renderDrawScreen(ctx) {
                     <div style={{ fontSize: 16, fontWeight: 700, color: skyC, marginTop: 8, textAlign: "center" }}>
                       R ≈ {R_val.toFixed(2)}
                     </div>
-                    <button onClick={() => { showMsg("질문함 기능 연동 예정!", 2000); playSfx("click"); }}
-                      style={{ marginTop: 8, padding: "5px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 10, cursor: "pointer" }}>
+                    <button onClick={() => {
+                      setHelpPopupData({ ...(PROPERTY_HELP.formulaR || {}), title: "외접원 R 공식", contextData: { screenName: "외접원 공식", type: "외접원" } });
+                      playSfx("click");
+                    }} style={{ marginTop: 8, padding: "5px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 10, cursor: "pointer" }}>
                       ❓ 이해가 안 돼요
                     </button>
                   </div>
@@ -1395,7 +1433,7 @@ export function renderDrawScreen(ctx) {
                     <div style={{ fontSize: 16, fontWeight: 700, color: mintC, marginTop: 8, textAlign: "center" }}>
                       r ≈ {r_val.toFixed(2)}
                     </div>
-                    <button onClick={() => { showMsg("질문함 기능 연동 예정!", 2000); playSfx("click"); }}
+                    <button onClick={() => { setHelpPopupData({ ...(PROPERTY_HELP.formulaR_r || {}), title: "내접원 r 공식", contextData: { screenName: "내접원 공식", type: "내접원" } }); playSfx("click"); }}
                       style={{ marginTop: 8, padding: "5px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 10, cursor: "pointer" }}>
                       ❓ 이해가 안 돼요
                     </button>
