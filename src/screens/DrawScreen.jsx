@@ -1,13 +1,9 @@
-import { useState, useRef } from "react";
 import { HelpPopup, PROPERTY_HELP } from "../components/HelpPopup";
 import { PASTEL, dist } from "../config";
 import FloatingMsg from "../components/FloatingMsg";
 import InfoPanel from "../components/InfoPanel";
 
 export function renderDrawScreen(ctx) {
-  const [helpPopupData, setHelpPopupData] = useState(null);
-  const [canvasWidth, setCanvasWidth] = useState(null);
-  const svgPanRef = useRef(null);
 
   const {
     theme, themeKey, setScreen, playSfx, showMsg, activeTone, isPC,
@@ -37,6 +33,7 @@ export function renderDrawScreen(ctx) {
     renderTriangleAnim, renderHighlight, getProperties,
     archive, setArchive, archiveDefaultPublic,
     helpRequests, setHelpRequests,
+    helpPopupData, setHelpPopupData, canvasWidth, setCanvasWidth, svgPanRef,
     handleJedoClick, handleJakdoDown, handleJakdoMove, handleJakdoUp, handleUndo,
     resetAll, generateTriangleWithBase, drawGoal,
     failAnim, idleMsg, retryDraw, generateTriangle,
