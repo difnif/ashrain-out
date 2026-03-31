@@ -56,7 +56,7 @@ function HText({x,y,children,fill,fontSize=11,anchor="middle",fw=700}) {
   </g>;
 }
 
-export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPCProp,user,archive,setArchive,archiveDefaultPublic}) {
+export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPCProp,user,archive,setArchive,archiveDefaultPublic,helpRequests,setHelpRequests}) {
   const [mode,setMode]=useState(null);
   const [inputMode,setInputMode]=useState("A");
   const [v1,setV1]=useState("");const [v2,setV2]=useState("");
@@ -67,7 +67,8 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPC
   const [proofStep,setProofStep]=useState(0);
   const [flipAnim,setFlipAnim]=useState(0);
   // Pinch-to-zoom
-  const [vb,setVb]=useState(null); // {x,y,w,h}
+  const [vb,setVb]=useState(null);
+  const [helpPopupData,setHelpPopupData]=useState(null); // {x,y,w,h}
   const pinchRef=useRef(null);
   // Drawing
   const svgRef=useRef(null);
@@ -531,7 +532,7 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPC
                 <div style={{fontSize:13,color:theme.text,lineHeight:2.2,whiteSpace:"pre-line"}}>
                   <RT>{steps[proofStep].d}</RT>
                 </div>
-                <button onClick={(e)=>{e.stopPropagation();showMsg("선생님께 질문하기 기능 연동 예정!",2000);playSfx("click");}}
+                <button onClick={(e)=>{e.stopPropagation();const help=PROPERTY_HELP[mode]||{title:mode==="rha"?"RHA 합동":"RHS 합동",explain:"직각삼각형의 합동 조건에 대해 선생님께 질문해보세요!"};setHelpPopupData({...help,contextData:{screenName:"합동 증명",type:mode}});playSfx("click");}}
                   style={{marginTop:6,padding:"5px 10px",borderRadius:8,border:`1px solid ${theme.border}`,background:theme.card,color:theme.textSec,fontSize:10,cursor:"pointer"}}>
                   ❓ 이해가 안 돼요
                 </button>
@@ -559,11 +560,20 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPC
           </div>
         )}
       </div>
+    {helpPopupData&&<HelpPopup theme={theme} playSfx={playSfx} showMsg={showMsg}
+        title={helpPopupData.title} explain={helpPopupData.explain}
+        example={helpPopupData.example} analogy={helpPopupData.analogy}
+        contextData={helpPopupData.contextData}
+        onClose={()=>setHelpPopupData(null)}
+        onSendQuestion={(qData)=>{
+          if(setHelpRequests)setHelpRequests(prev=>[...prev,{id:`help-${Date.now()}`,userId:user?.id||"anon",userName:user?.name||"익명",timestamp:Date.now(),status:"pending",...qData}]);
+          if(setArchive)setArchive(prev=>[...prev,{id:`q-${Date.now()}`,type:"질문",title:qData.helpTitle,preview:qData.helpExplain?.slice(0,60),createdAt:Date.now(),isPublic:false,hidden:false,userId:user?.id,isQuestion:true}]);
+        }}/>}
     </div>
   );
 }
 
 export function renderCongruenceScreen(ctx) {
   const {theme,setScreen,playSfx,showMsg,isPC,user,archive,setArchive}=ctx;
-  return <CongruenceScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} isPC={isPC} user={ctx.user} archive={ctx.archive} setArchive={ctx.setArchive} archiveDefaultPublic={ctx.archiveDefaultPublic}/>;
+  return <CongruenceScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} isPC={isPC} user={ctx.user} archive={ctx.archive} setArchive={ctx.setArchive} archiveDefaultPublic={ctx.archiveDefaultPublic} helpRequests={ctx.helpRequests} setHelpRequests={ctx.setHelpRequests}/>;
 }
