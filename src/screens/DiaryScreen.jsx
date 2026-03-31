@@ -2,8 +2,26 @@
 // Full-featured diary: bezier drawing, KaTeX, slash commands, archive embeds
 import { useState, useRef, useEffect, useCallback } from "react";
 import { PASTEL } from "../config";
-import katex from "katex";
-import "katex/dist/katex.min.css";
+// KaTeX loaded from CDN to avoid Vercel rolldown bundling issues
+let _katex = null;
+function loadKatex() {
+  if (_katex) return Promise.resolve(_katex);
+  return new Promise(resolve => {
+    if (document.getElementById("katex-css")) { /* already loading */ }
+    else {
+      const link = document.createElement("link");
+      link.id = "katex-css";
+      link.rel = "stylesheet";
+      link.href = "https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css";
+      document.head.appendChild(link);
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js";
+    script.onload = () => { _katex = window.katex; resolve(_katex); };
+    script.onerror = () => resolve(null);
+    document.head.appendChild(script);
+  });
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const CANVAS_W = 800;
@@ -66,8 +84,11 @@ function MathRender({ tex, display = true }) {
   const ref = useRef(null);
   useEffect(() => {
     if (!ref.current) return;
-    try { katex.render(tex || "\\square", ref.current, { throwOnError: false, displayMode: display }); }
-    catch { ref.current.textContent = tex; }
+    loadKatex().then(k => {
+      if (!k || !ref.current) return;
+      try { k.render(tex || "\\square", ref.current, { throwOnError: false, displayMode: display }); }
+      catch { if(ref.current) ref.current.textContent = tex; }
+    });
   }, [tex, display]);
   return <span ref={ref} />;
 }
@@ -78,8 +99,11 @@ function MathDialog({ theme, initial, onConfirm, onCancel }) {
   const previewRef = useRef(null);
   useEffect(() => {
     if (!previewRef.current) return;
-    try { katex.render(tex || "\\square", previewRef.current, { throwOnError: false, displayMode: true }); }
-    catch { previewRef.current.textContent = tex; }
+    loadKatex().then(k => {
+      if (!k || !previewRef.current) return;
+      try { k.render(tex || "\\square", previewRef.current, { throwOnError: false, displayMode: true }); }
+      catch { if(previewRef.current) previewRef.current.textContent = tex; }
+    });
   }, [tex]);
   return (
     <div style={{ position:"fixed",inset:0,zIndex:400,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:16 }}>
