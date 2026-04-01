@@ -18,6 +18,7 @@ import {
 } from "./screens/AdminScreens";
 import { renderProblemScreen } from "./screens/ProblemScreen";
 import { renderStudentHomeScreen } from "./screens/StudentHomeScreen";
+import { renderLearningDashboard } from "./screens/LearningDashboard";
 import { renderQuestionInboxScreen } from "./screens/QuestionInboxScreen";
 import { renderCongruenceScreen } from "./screens/CongruenceScreen";
 import { renderSettingsScreen } from "./screens/SettingsScreen";
@@ -678,6 +679,9 @@ function AppInner() {
     return renderStudentHomeScreen(ctx);
   }
   if (screen === "student-home") return renderStudentHomeScreen(ctx);
+
+  // --- Learning Dashboard ---
+  if (screen === "learning-dashboard") return renderLearningDashboard(ctx);
 
   // --- Question Inbox ---
   if (screen === "question-inbox") return renderQuestionInboxScreen(ctx);
