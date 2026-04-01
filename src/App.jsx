@@ -22,6 +22,7 @@ import { renderLearningDashboard } from "./screens/LearningDashboard";
 import { renderQuestionInboxScreen } from "./screens/QuestionInboxScreen";
 import { renderCongruenceScreen } from "./screens/CongruenceScreen";
 import { renderSettingsScreen } from "./screens/SettingsScreen";
+import { renderParentHomeScreen } from "./screens/ParentHomeScreen";
 import { renderDrawScreen } from "./screens/DrawScreen";
 import { getProperties as getPropertiesFn, renderHighlight as renderHighlightFn, renderTriangleAnim as renderTriangleAnimFn } from "./rendering/TriangleRenderer";
 import { useUserSystem } from "./hooks/useUserSystem";
@@ -182,6 +183,7 @@ function AppInner() {
   const [signupPwConfirm, setSignupPwConfirm] = useState("");
   const [signupMsg, setSignupMsg] = useState("");
   const [signupDone, setSignupDone] = useState(false);
+  const [signupRole, setSignupRole] = useState("student");
   const [showLoadDialog, setShowLoadDialog] = useState(false);
   const [compareSelected, setCompareSelected] = useState(null);
 
@@ -201,6 +203,7 @@ function AppInner() {
   const [analysisModel, setAnalysisModel] = useState(() => localStorage.getItem("ar_analysis_model") || "claude-sonnet-4-20250514");
   useEffect(() => { localStorage.setItem("ar_analysis_model", analysisModel); }, [analysisModel]);
 
+  const [crossTalkPosts, setCrossTalkPosts] = useState([]);
   const [archiveDefaultPublic, setArchiveDefaultPublic] = useState(() => localStorage.getItem("ar_archive_public") === "true");
   useEffect(() => { localStorage.setItem("ar_archive_public", archiveDefaultPublic); }, [archiveDefaultPublic]);
 
@@ -546,12 +549,28 @@ function AppInner() {
 
 
   // Context object for extracted screen render functions
+
+  // 학부모용: 공개 아카이브 (익명화)
+  const publicArchive = useMemo(() => {
+    return (studentArchive || [])
+      .filter(a => a.isPublic || archiveDefaultPublic)
+      .map(a => ({ ...a, studentId: undefined, studentName: undefined }))
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+      .slice(0, 50);
+  }, [studentArchive, archiveDefaultPublic]);
+
+  // 학부모 → 자녀 숙제 보내기
+  const sendHomeworkToChild = useCallback((hw) => {
+    setStudentHomework(prev => [...prev, hw]);
+  }, []);
+
   const ctx = {
     theme, themeKey, setThemeKey, toneKey, setToneKey, PASTEL,
     user, userRole, isAdmin, setScreen, setScreenRaw, playSfx, showMsg, activeTone, isPC,
     loginId, setLoginId, loginPw, setLoginPw, loginError, setLoginError, handleLogin,
     signupName, setSignupName, signupId, setSignupId, signupPw, setSignupPw,
     signupPwConfirm, setSignupPwConfirm, signupMsg, setSignupMsg, signupDone, setSignupDone,
+    signupRole, setSignupRole,
     handleSignupRequest, autoApprove, setAutoApprove,
     members, setMembers, ROLES, students,
     editingMemberId, setEditingMemberId, newMemberForm, setNewMemberForm, memberFilter, setMemberFilter,
@@ -573,6 +592,7 @@ function AppInner() {
     diary: studentDiary, setDiary: setStudentDiary,
     analysisModel, setAnalysisModel,
     archiveDefaultPublic, setArchiveDefaultPublic,
+    publicArchive, crossTalkPosts, setCrossTalkPosts, sendHomeworkToChild,
     helpPopupData, setHelpPopupData, canvasWidth, setCanvasWidth, svgPanRef,
     dndStart, dndEnd, setDndStart, setDndEnd,
     triangle, setTriangle, triMode, setTriMode, inputMode, setInputMode,
@@ -613,6 +633,12 @@ function AppInner() {
   // --- Signup Screen ---
 
   // --- Menu Screen ---
+  // Parent users → parent home
+  if (screen === "menu" && userRole === "parent") {
+    return renderParentHomeScreen(ctx);
+  }
+  if (screen === "parent-home") return renderParentHomeScreen(ctx);
+
   // Student/External users → student home instead of admin menu
   if (screen === "menu" && userRole && userRole !== "admin" && userRole !== "assistant") {
     return renderStudentHomeScreen(ctx);
