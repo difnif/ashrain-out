@@ -131,13 +131,13 @@ export function renderLoginScreen(ctx) {
 export function renderSignupScreen(ctx) {
   const { theme, signupName, setSignupName, signupId, setSignupId, signupPw, setSignupPw,
     signupPwConfirm, setSignupPwConfirm, signupMsg, setSignupMsg, signupDone, setSignupDone,
-    handleSignupRequest, setScreen, setScreenRaw, playSfx, autoApprove } = ctx;
+    handleSignupRequest, setScreen, setScreenRaw, playSfx, autoApprove, signupRole, setSignupRole } = ctx;
 
     const doSignup = () => {
       if (signupPw !== signupPwConfirm) { setSignupMsg("비밀번호가 일치하지 않아요."); return; }
       if (signupPw.length < 4) { setSignupMsg("비밀번호는 4자 이상으로 해주세요."); return; }
       if (signupId.length < 3) { setSignupMsg("아이디는 3자 이상으로 해주세요."); return; }
-      const result = handleSignupRequest(signupName, signupId, signupPw);
+      const result = handleSignupRequest(signupName, signupId, signupPw, signupRole || "student");
       if (result === "auto") {
         setSignupMsg(""); setSignupDone(true);
       } else if (result === "pending") {
@@ -190,6 +190,25 @@ export function renderSignupScreen(ctx) {
             </div>
           ) : (
             <>
+              {/* 가입 유형 선택 */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                {[
+                  { value: "student", label: "🎓 학생", desc: "공부하러 왔어요" },
+                  { value: "parent", label: "👨‍👩‍👧 학부모", desc: "자녀 학습 관리" },
+                ].map(opt => (
+                  <button key={opt.value} onClick={() => setSignupRole(opt.value)} style={{
+                    flex: 1, padding: "12px 8px", borderRadius: 14, cursor: "pointer",
+                    border: (signupRole || "student") === opt.value ? `2.5px solid ${PASTEL.coral}` : `1.5px solid ${PASTEL.blush}`,
+                    background: (signupRole || "student") === opt.value ? `${PASTEL.coral}10` : "rgba(255,248,240,0.6)",
+                    textAlign: "center", transition: "all 0.2s",
+                  }}>
+                    <div style={{ fontSize: 20, marginBottom: 4 }}>{opt.label.split(" ")[0]}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: (signupRole || "student") === opt.value ? PASTEL.coral : "#4A3F35" }}>{opt.label.split(" ")[1]}</div>
+                    <div style={{ fontSize: 9, color: "#8B7E74", marginTop: 2 }}>{opt.desc}</div>
+                  </button>
+                ))}
+              </div>
+
               <input placeholder="이름 (실명)" value={signupName} onChange={e => setSignupName(e.target.value)}
                 style={{ width: "100%", padding: "13px 16px", borderRadius: 14, border: `1.5px solid ${PASTEL.blush}`,
                   fontSize: 14, marginBottom: 10, background: "rgba(255,248,240,0.6)", color: "#4A3F35",
