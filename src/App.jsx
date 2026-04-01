@@ -200,6 +200,11 @@ function AppInner() {
   });
   useEffect(() => { localStorage.setItem("ar_diary", JSON.stringify(studentDiary)); }, [studentDiary]);
 
+  const [crossTalkPosts, setCrossTalkPosts] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ar_crosstalk")) || []; } catch { return []; }
+  });
+  useEffect(() => { localStorage.setItem("ar_crosstalk", JSON.stringify(crossTalkPosts)); }, [crossTalkPosts]);
+
   const [signupRole, setSignupRole] = useState("student");
 
   const [analysisModel, setAnalysisModel] = useState(() => localStorage.getItem("ar_analysis_model") || "claude-sonnet-4-20250514");
@@ -211,6 +216,19 @@ function AppInner() {
   const [helpPopupData, setHelpPopupData] = useState(null);
   const [canvasWidth, setCanvasWidth] = useState(null);
   const svgPanRef = useRef(null);
+
+  const sendHomeworkToChild = useCallback((hwData) => {
+    if (!hwData) return;
+    setStudentHomework(prev => [...prev, {
+      id: `hw-${Date.now()}`, ...hwData,
+      assignedAt: Date.now(), status: "assigned", reviewCount: 0,
+    }]);
+    setStudentNotifications(prev => [...prev, {
+      id: `notif-hw-${Date.now()}`, userId: hwData.studentId,
+      title: "📝 새 숙제!", message: hwData.problemType || "복습 숙제",
+      time: Date.now(), read: false, type: "homework",
+    }]);
+  }, []);
 
   const tutorial = useTutorial();
 
@@ -586,6 +604,7 @@ function AppInner() {
     notifications: studentNotifications, setNotifications: setStudentNotifications,
     diary: studentDiary, setDiary: setStudentDiary,
     signupRole, setSignupRole,
+    crossTalkPosts, setCrossTalkPosts, sendHomeworkToChild,
     publicArchive: (studentArchive || []).filter(a => a.isPublic && !a.hidden).map(a => ({ ...a, userId: undefined, userName: undefined })),
     analysisModel, setAnalysisModel,
     tutorial,
