@@ -163,98 +163,145 @@ function darken(hex,t) {
   return `rgba(${(r*(1-t))|0},${(g*(1-t))|0},${(b*(1-t))|0},1)`;
 }
 
+// pressure-aware width for a point (p: 0..1, default 0.5)
+function pressW(size, p=0.5) { return size * Math.max(0.18, Math.min(2.2, 0.28 + p*1.9)); }
+
+// Draw variable-width pressure stroke as filled polygon
+function drawPressurePoly(ctx, pts, size, color, alpha=1) {
+  if (!pts||pts.length<2) return;
+  const left=[], right=[];
+  for (let i=0; i<pts.length; i++) {
+    const w = pressW(size, pts[i].p) / 2;
+    const nx_i = pts[Math.min(i+1,pts.length-1)];
+    const pr_i = pts[Math.max(i-1,0)];
+    const dx=nx_i.x-pr_i.x, dy=nx_i.y-pr_i.y, len=Math.hypot(dx,dy)||1;
+    const nx=-dy/len, ny=dx/len;
+    left.push({x:pts[i].x+nx*w, y:pts[i].y+ny*w});
+    right.push({x:pts[i].x-nx*w, y:pts[i].y-ny*w});
+  }
+  ctx.beginPath();
+  ctx.moveTo(left[0].x, left[0].y);
+  for (let i=1;i<left.length;i++) ctx.lineTo(left[i].x,left[i].y);
+  // rounded tip at end
+  const ep=pts[pts.length-1], ew=pressW(size,ep.p)/2;
+  ctx.arc(ep.x,ep.y,ew,Math.atan2(right[right.length-1].y-ep.y,right[right.length-1].x-ep.x),Math.atan2(left[left.length-1].y-ep.y,left[left.length-1].x-ep.x),true);
+  for (let i=right.length-1;i>=0;i--) ctx.lineTo(right[i].x,right[i].y);
+  // rounded tip at start
+  const sp=pts[0], sw=pressW(size,sp.p)/2;
+  ctx.arc(sp.x,sp.y,sw,Math.atan2(left[0].y-sp.y,left[0].x-sp.x),Math.atan2(right[0].y-sp.y,right[0].x-sp.x),true);
+  ctx.closePath();
+  ctx.fillStyle=color; ctx.globalAlpha=alpha; ctx.fill();
+}
+
 function drawStroke(ctx, {pts, tool, color, size}) {
   if (!pts||pts.length<2) return;
   const rng=seededRng(pts[0].x*997+pts[0].y*389+size*31);
   ctx.save(); ctx.lineCap="round"; ctx.lineJoin="round";
 
   if (tool==="PEN") {
-    ctxBezier(ctx,pts); ctx.strokeStyle=color; ctx.lineWidth=size; ctx.globalAlpha=1; ctx.stroke();
+    // Pressure polygon — real calligraphic feel
+    drawPressurePoly(ctx, pts, size, color, 0.97);
   }
 
   else if (tool==="PENCIL") {
-    // Graphite feel: grain + multiple scratchy strands + dark core
-    const s=interpPath(pts, Math.max(0.6,size*0.45));
+    // Graphite: pressure-sensitive grain density + variable core width
+    const s=interpPath(pts, Math.max(0.6,size*0.42));
     ctx.globalCompositeOperation = (color==="#ffffff")?"source-over":"multiply";
-    // 6 rough passes — each offset, thin, translucent
-    for (let pass=0; pass<6; pass++) {
+    // Scratchy strands — count and opacity scale with pressure
+    for (let pass=0; pass<7; pass++) {
       ctx.beginPath();
       for (let i=0;i<s.length;i++) {
-        const ox=(rng()-0.5)*size*1.6, oy=(rng()-0.5)*size*1.6;
+        const pr=s[i].p??0.5;
+        const spread=size*(0.8+pr*0.9);
+        const ox=(rng()-0.5)*spread, oy=(rng()-0.5)*spread*0.6;
         if (i===0) ctx.moveTo(s[i].x+ox,s[i].y+oy); else ctx.lineTo(s[i].x+ox,s[i].y+oy);
       }
-      ctx.strokeStyle=color; ctx.lineWidth=rng()*size*0.45+0.25; ctx.globalAlpha=rng()*0.22+0.06; ctx.stroke();
+      ctx.strokeStyle=color; ctx.lineWidth=rng()*size*0.38+0.18; ctx.globalAlpha=rng()*0.19+0.05; ctx.stroke();
     }
-    // Fine grain particles
+    // Grain particles — density ~ pressure
     for (const pt of s) {
-      if (rng()>0.6) {
-        ctx.beginPath(); ctx.arc(pt.x+(rng()-0.5)*size,pt.y+(rng()-0.5)*size,rng()*size*0.28+0.1,0,Math.PI*2);
-        ctx.fillStyle=color; ctx.globalAlpha=rng()*0.18+0.04; ctx.fill();
+      const pr=pt.p??0.5; const thresh=0.75-pr*0.35;
+      if (rng()>thresh) {
+        ctx.beginPath(); ctx.arc(pt.x+(rng()-0.5)*size*(0.8+pr),pt.y+(rng()-0.5)*size*(0.8+pr),rng()*size*0.22+0.08,0,Math.PI*2);
+        ctx.fillStyle=color; ctx.globalAlpha=rng()*0.15*(0.5+pr)+0.03; ctx.fill();
       }
     }
-    // Core line — darker, thinner
-    ctx.globalAlpha=0.58; ctx.lineWidth=size*0.35; ctx.strokeStyle=color;
-    ctxBezier(ctx,pts); ctx.stroke();
+    // Pressure-variable core
+    for (let i=0;i<s.length-1;i++) {
+      const pr=(s[i].p??0.5+s[i+1].p??0.5)/2;
+      ctx.beginPath(); ctx.moveTo(s[i].x,s[i].y); ctx.lineTo(s[i+1].x,s[i+1].y);
+      ctx.strokeStyle=color; ctx.lineWidth=size*(0.22+pr*0.5); ctx.globalAlpha=0.42+pr*0.3; ctx.stroke();
+    }
     ctx.globalCompositeOperation="source-over";
   }
 
   else if (tool==="CHARCOAL") {
     const dark=(color==="#ffffff")?"#d8d8d8":"#111111";
-    const s=interpPath(pts,1.0);
-    // Outer blur haze
-    ctx.filter=`blur(${Math.min(8,size*1.6)}px)`;
-    ctx.globalAlpha=0.08; ctx.strokeStyle=dark; ctx.lineWidth=size*5;
+    const s=interpPath(pts,0.9);
+    const avgP=s.reduce((a,p)=>a+(p.p??0.5),0)/s.length;
+    // Blur haze — scales with pressure
+    ctx.filter=`blur(${Math.min(8,size*(1.0+avgP*0.8))}px)`;
+    ctx.globalAlpha=0.06+avgP*0.07; ctx.strokeStyle=dark; ctx.lineWidth=size*(3+avgP*3);
     ctxBezier(ctx,pts); ctx.stroke();
-    // Mid smear
-    ctx.filter=`blur(${Math.min(5,size*0.75)}px)`;
-    ctx.globalAlpha=0.16; ctx.lineWidth=size*2.5; ctxBezier(ctx,pts); ctx.stroke();
+    ctx.filter=`blur(${Math.min(4,size*0.55)}px)`;
+    ctx.globalAlpha=0.12+avgP*0.1; ctx.lineWidth=size*(1.5+avgP*1.5); ctxBezier(ctx,pts); ctx.stroke();
     ctx.filter="none";
-    // Gritty scatter
+    // Gritty scatter — more particles under heavy pressure
     for (const pt of s) {
-      if (rng()>0.42) {
-        const a=rng()*Math.PI*2, d=rng()*size*1.0;
-        ctx.beginPath(); ctx.arc(pt.x+Math.cos(a)*d,pt.y+Math.sin(a)*d,rng()*size*0.55+0.15,0,Math.PI*2);
-        ctx.fillStyle=dark; ctx.globalAlpha=rng()*0.32+0.06; ctx.fill();
+      const pr=pt.p??0.5; const thresh=0.55-pr*0.4;
+      if (rng()>thresh) {
+        const a=rng()*Math.PI*2, d=rng()*size*(0.7+pr*0.7);
+        ctx.beginPath(); ctx.arc(pt.x+Math.cos(a)*d,pt.y+Math.sin(a)*d,rng()*size*(0.3+pr*0.4)+0.1,0,Math.PI*2);
+        ctx.fillStyle=dark; ctx.globalAlpha=rng()*(0.2+pr*0.2)+0.04; ctx.fill();
       }
     }
-    // Side-stroke texture strands
-    for (let pass=0; pass<3; pass++) {
+    // Side strands — wider under pressure
+    for (let pass=0;pass<3;pass++) {
       ctx.beginPath();
       for (let i=0;i<s.length;i++) {
-        const ox=(rng()-0.5)*size*1.2, oy=(rng()-0.5)*size*0.5;
+        const pr=s[i].p??0.5;
+        const ox=(rng()-0.5)*size*(0.8+pr*0.8), oy=(rng()-0.5)*size*0.4;
         if (i===0) ctx.moveTo(s[i].x+ox,s[i].y+oy); else ctx.lineTo(s[i].x+ox,s[i].y+oy);
       }
-      ctx.strokeStyle=dark; ctx.lineWidth=rng()*size*0.5+0.3; ctx.globalAlpha=rng()*0.2+0.08; ctx.stroke();
+      ctx.strokeStyle=dark; ctx.lineWidth=rng()*size*0.5+0.2; ctx.globalAlpha=rng()*0.18+0.07; ctx.stroke();
     }
-    // Core
-    ctx.globalAlpha=0.62; ctx.lineWidth=size*0.55; ctx.strokeStyle=dark;
-    ctxBezier(ctx,pts); ctx.stroke();
+    // Pressure-variable core
+    for (let i=0;i<s.length-1;i++) {
+      const pr=(s[i].p??0.5+s[i+1].p??0.5)/2;
+      ctx.beginPath(); ctx.moveTo(s[i].x,s[i].y); ctx.lineTo(s[i+1].x,s[i+1].y);
+      ctx.strokeStyle=dark; ctx.lineWidth=size*(0.3+pr*0.55); ctx.globalAlpha=0.5+pr*0.35; ctx.stroke();
+    }
   }
 
   else if (tool==="PASTEL") {
-    // Chalky bloom + powder dust
-    const s=interpPath(pts, Math.max(0.7,size*0.35));
-    // Bloom
-    ctx.filter=`blur(${Math.min(7,size*1.4)}px)`;
-    ctx.globalAlpha=0.07; ctx.strokeStyle=color; ctx.lineWidth=size*10;
+    // Chalk: pressure determines bloom size and particle density
+    const s=interpPath(pts, Math.max(0.6,size*0.32));
+    const avgP=s.reduce((a,p)=>a+(p.p??0.5),0)/s.length;
+    // Bloom — bigger and softer under more pressure
+    ctx.filter=`blur(${Math.min(9,size*(1.0+avgP*1.2))}px)`;
+    ctx.globalAlpha=0.05+avgP*0.06; ctx.strokeStyle=color; ctx.lineWidth=size*(7+avgP*6);
     ctxBezier(ctx,pts); ctx.stroke();
-    ctx.filter=`blur(${Math.min(4,size*0.6)}px)`;
-    ctx.globalAlpha=0.1; ctx.lineWidth=size*6; ctxBezier(ctx,pts); ctx.stroke();
+    ctx.filter=`blur(${Math.min(4,size*0.45+avgP*1.5)}px)`;
+    ctx.globalAlpha=0.08+avgP*0.06; ctx.lineWidth=size*(4+avgP*3); ctxBezier(ctx,pts); ctx.stroke();
     ctx.filter="none";
-    // Powdery chalk particles — key to pastel feel
+    // Chalk dust particles — more under pressure, wider scatter
     for (const pt of s) {
-      const n=Math.floor(rng()*5)+4;
+      const pr=pt.p??0.5;
+      const n=Math.floor(3+pr*7)+Math.floor(rng()*3);
       for (let j=0;j<n;j++) {
-        const a=rng()*Math.PI*2, d=rng()*size*2.2;
-        const r=rng()*size*0.7+0.3;
+        const a=rng()*Math.PI*2, d=rng()*size*(1.8+pr*1.6);
+        const r=rng()*size*(0.5+pr*0.4)+0.2;
         ctx.beginPath(); ctx.arc(pt.x+Math.cos(a)*d,pt.y+Math.sin(a)*d,r,0,Math.PI*2);
-        ctx.fillStyle=color; ctx.globalAlpha=rng()*0.06+0.015; ctx.fill();
+        ctx.fillStyle=color; ctx.globalAlpha=rng()*(0.04+pr*0.035)+0.01; ctx.fill();
       }
     }
-    // Soft core
-    ctx.filter=`blur(${Math.max(0.5,size*0.25)}px)`;
-    ctx.globalAlpha=0.22; ctx.lineWidth=size*2.2; ctx.strokeStyle=color;
-    ctxBezier(ctx,pts); ctx.stroke();
+    // Pressure-sensitive core
+    ctx.filter=`blur(${Math.max(0.3,size*0.2)}px)`;
+    for (let i=0;i<s.length-1;i++) {
+      const pr=(s[i].p??0.5+s[i+1].p??0.5)/2;
+      ctx.beginPath(); ctx.moveTo(s[i].x,s[i].y); ctx.lineTo(s[i+1].x,s[i+1].y);
+      ctx.strokeStyle=color; ctx.lineWidth=size*(1.2+pr*1.4); ctx.globalAlpha=0.15+pr*0.18; ctx.stroke();
+    }
     ctx.filter="none";
   }
 
@@ -305,17 +352,20 @@ function drawStroke(ctx, {pts, tool, color, size}) {
   }
 
   else if (tool==="INK") {
-    // 수묵 — speed-sensitive variable width, bleed edge
-    const s=interpPath(pts,0.7);
+    // 수묵 — speed + pressure both control width (calligraphic)
+    const s=interpPath(pts,0.6);
     for (let i=0;i<s.length-1;i++) {
-      const spd=Math.hypot(s[i+1].x-s[i].x,s[i+1].y-s[i].y);
-      const w=Math.max(0.4, size*Math.max(0.18,2.4-spd*0.055));
-      ctx.beginPath(); ctx.moveTo(s[i].x,s[i].y); ctx.lineTo(s[i+1].x,s[i+1].y);
-      ctx.strokeStyle=color; ctx.lineWidth=w; ctx.globalAlpha=0.9; ctx.stroke();
+      const p1=s[i],p2=s[i+1];
+      const spd=Math.hypot(p2.x-p1.x,p2.y-p1.y);
+      const pr=(p1.p??0.5+p2.p??0.5)/2;
+      // Fast+light → thin; slow+heavy → thick
+      const speedFactor=Math.max(0.18,2.2-spd*0.06);
+      const w=Math.max(0.4, size*speedFactor*(0.3+pr*1.4));
+      ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y);
+      ctx.strokeStyle=color; ctx.lineWidth=w; ctx.globalAlpha=0.85+pr*0.1; ctx.stroke();
     }
-    // Bleed halo
-    ctx.filter=`blur(1px)`;
-    ctx.globalAlpha=0.13; ctx.strokeStyle=color; ctx.lineWidth=size*0.5;
+    ctx.filter=`blur(0.8px)`;
+    ctx.globalAlpha=0.12; ctx.strokeStyle=color; ctx.lineWidth=size*0.45;
     ctxBezier(ctx,pts); ctx.stroke(); ctx.filter="none";
   }
 
@@ -518,8 +568,11 @@ export default function DiaryTab({theme,diary,setDiary,playSfx,showMsg,archive,s
   const swipeRef=useRef(null);
   const undoStack=useRef([]);
   const redoStack=useRef([]);
+  const penEraserRef=useRef(false);    // true when pen eraser-end is active
+  const activePointers=useRef(new Map()); // pointerId→{x,y} for pinch tracking
 
-  const isEraser=brushId==="ERASER";
+  // Effective eraser = brush ERASER or pen physical eraser end
+  const isEraser=brushId==="ERASER"||penEraserRef.current;
   const deskTheme=DESK_THEMES.find(d=>d.id===deskId)||DESK_THEMES[0];
   const coverStyle=COVER_STYLES.find(c=>c.id===coverId)||COVER_STYLES[0];
 
@@ -586,71 +639,117 @@ export default function DiaryTab({theme,diary,setDiary,playSfx,showMsg,archive,s
 
   const updBlock=useCallback((id,patch)=>updPage({blocks:curPage.blocks.map(b=>b.id===id?{...b,...patch}:b)}),[curPage.blocks,updPage]);
 
-  // Pointer
+  // ── Pointer Events (replaces touch+mouse) ──────────────────────────────────
   const onDown=useCallback(e=>{
     if(!canEdit) return;
-    if(e.touches?.length>=2){
-      clearTimeout(lpRef.current);
+    e.preventDefault();
+    const {pointerId,pointerType,clientX,clientY,buttons}=e;
+
+    // ── Samsung S Pen / Wacom eraser end: buttons bit 5 (32) ──────────────
+    if (pointerType==="pen" && (buttons & 32)) {
+      penEraserRef.current=true;
+      const pos=s2c(clientX,clientY);
+      setCurPts([{x:pos.x,y:pos.y,p:1}]);
+      setEraserPos(pos); return;
+    }
+    penEraserRef.current=false;
+
+    // Track active pointers
+    activePointers.current.set(pointerId,{x:clientX,y:clientY});
+
+    // ── Two-finger pinch ──────────────────────────────────────────────────
+    if (activePointers.current.size>=2) {
+      const pts=[...activePointers.current.values()];
+      const d=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);
       const r=pageCardRef.current?.getBoundingClientRect();
-      const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-      const mx=((e.touches[0].clientX+e.touches[1].clientX)/2)-(r?.left||0);
-      const my=((e.touches[0].clientY+e.touches[1].clientY)/2)-(r?.top||0);
+      const mx=((pts[0].x+pts[1].x)/2)-(r?.left||0);
+      const my=((pts[0].y+pts[1].y)/2)-(r?.top||0);
       pinchRef.current={d0:d,z0:zoom,tx0:pan.x,ty0:pan.y,mx0:mx,my0:my};
       setCurPts([]); swipeRef.current=null; return;
     }
+
     if(drawMode){
-      e.preventDefault();
-      const t=e.touches?.[0]||e;
-      const pos=s2c(t.clientX,t.clientY);
-      lpStart.current={sx:t.clientX,sy:t.clientY,cx:pos.x,cy:pos.y};
+      // Pressure: pen gives real value, touch defaults to 0.5
+      const p=pointerType==="pen"?(e.pressure||0.5):0.5;
+      const pos=s2c(clientX,clientY);
+      lpStart.current={sx:clientX,sy:clientY,cx:pos.x,cy:pos.y};
       lpRef.current=setTimeout(()=>{
         setCtxMenu({sx:lpStart.current.sx,sy:lpStart.current.sy,cx:lpStart.current.cx,cy:lpStart.current.cy});
         setCurPts([]); lpStart.current=null;
       },650);
-      setCurPts([{x:pos.x,y:pos.y}]); return;
+      setCurPts([{x:pos.x,y:pos.y,p}]); return;
     }
-    const t=e.touches?.[0]||e;
-    swipeRef.current={x:t.clientX,y:t.clientY,time:Date.now()};
+    swipeRef.current={x:clientX,y:clientY,time:Date.now()};
   },[canEdit,drawMode,zoom,pan,s2c]);
 
   const onMove=useCallback(e=>{
     if(!canEdit) return;
-    if(e.touches?.length>=2&&pinchRef.current){
+    const {pointerId,pointerType,clientX,clientY,buttons}=e;
+
+    // Update pointer tracking
+    if(activePointers.current.has(pointerId))
+      activePointers.current.set(pointerId,{x:clientX,y:clientY});
+
+    // ── Pen eraser end ───────────────────────────────────────────────────
+    if (pointerType==="pen" && (buttons & 32)) {
       e.preventDefault();
+      const pos=s2c(clientX,clientY); setEraserPos(pos);
+      updPage({paths:curPage.paths.filter(p=>!p.pts.some(pt=>Math.hypot(pt.x-pos.x,pt.y-pos.y)<ERASER_R))});
+      return;
+    }
+
+    // ── Pinch zoom ───────────────────────────────────────────────────────
+    if(activePointers.current.size>=2&&pinchRef.current){
+      e.preventDefault();
+      const pts=[...activePointers.current.values()];
+      const d=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);
       const r=pageCardRef.current?.getBoundingClientRect();
-      const mx=((e.touches[0].clientX+e.touches[1].clientX)/2)-(r?.left||0);
-      const my=((e.touches[0].clientY+e.touches[1].clientY)/2)-(r?.top||0);
-      const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+      const mx=((pts[0].x+pts[1].x)/2)-(r?.left||0);
+      const my=((pts[0].y+pts[1].y)/2)-(r?.top||0);
       const {d0,z0,tx0,ty0,mx0,my0}=pinchRef.current;
       const newZ=Math.max(1,Math.min(MAX_ZOOM,z0*(d/d0)));
       const cx=(mx0-tx0)/z0,cy=(my0-ty0)/z0;
       const np=clampPan(mx-cx*newZ+(mx-mx0),my-cy*newZ+(my-my0),newZ);
       setZoom(newZ); setPan(np); return;
     }
-    const t=e.touches?.[0]||e;
-    const pos=s2c(t.clientX,t.clientY);
-    if(lpStart.current&&Math.hypot(t.clientX-lpStart.current.sx,t.clientY-lpStart.current.sy)>8){ clearTimeout(lpRef.current); lpStart.current=null; }
-    if(drawMode&&isEraser&&curPts.length>0){
+
+    const pos=s2c(clientX,clientY);
+    if(lpStart.current&&Math.hypot(clientX-lpStart.current.sx,clientY-lpStart.current.sy)>8){clearTimeout(lpRef.current);lpStart.current=null;}
+
+    // ── Eraser brush ─────────────────────────────────────────────────────
+    if(drawMode&&brushId==="ERASER"&&curPts.length>0){
       e.preventDefault(); setEraserPos(pos);
       updPage({paths:curPage.paths.filter(p=>!p.pts.some(pt=>Math.hypot(pt.x-pos.x,pt.y-pos.y)<ERASER_R))}); return;
     }
-    if(drawMode&&curPts.length>0){ e.preventDefault(); setCurPts(prev=>[...prev,{x:pos.x,y:pos.y}]); }
-  },[canEdit,drawMode,isEraser,curPts,zoom,pan,s2c,clampPan,curPage.paths,updPage]);
+    // ── Drawing ──────────────────────────────────────────────────────────
+    if(drawMode&&curPts.length>0){
+      e.preventDefault();
+      const p=pointerType==="pen"?(e.pressure||0.5):0.5;
+      setCurPts(prev=>[...prev,{x:pos.x,y:pos.y,p}]);
+    }
+  },[canEdit,drawMode,brushId,curPts,zoom,pan,s2c,clampPan,curPage.paths,updPage]);
 
   const onUp=useCallback(e=>{
+    activePointers.current.delete(e.pointerId);
     pinchRef.current=null; clearTimeout(lpRef.current); lpStart.current=null;
-    if(!drawMode&&swipeRef.current){
-      const t=e.changedTouches?.[0]||e;
-      const dx=t.clientX-swipeRef.current.x,dy=t.clientY-swipeRef.current.y;
+
+    // Pen eraser end lifted
+    if(e.pointerType==="pen"&&penEraserRef.current){
+      penEraserRef.current=false; setEraserPos(null); setCurPts([]); return;
+    }
+
+    // Swipe page turn (text mode, touch)
+    if(!drawMode&&swipeRef.current&&e.pointerType==="touch"){
+      const dx=e.clientX-swipeRef.current.x,dy=e.clientY-swipeRef.current.y;
       if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.4&&Date.now()-swipeRef.current.time<500) goPage(dx<0?"left":"right");
       swipeRef.current=null;
     }
-    if(isEraser){ setEraserPos(null); setCurPts([]); return; }
+    if(brushId==="ERASER"){ setEraserPos(null); setCurPts([]); return; }
     if(drawMode&&curPts.length>1){
       snap(); updPage({paths:[...curPage.paths,{id:`p${Date.now()}`,pts:curPts,tool:brushId,color:penColor,size:penSize}]});
     }
     setCurPts([]);
-  },[drawMode,isEraser,curPts,brushId,penColor,penSize,snap,curPage.paths,updPage,goPage]);
+  },[drawMode,brushId,curPts,brushId,penColor,penSize,snap,curPage.paths,updPage,goPage]);
 
   // Slash / blocks
   const handleText=val=>{ updPage({pageText:val}); const m=val.match(/\/([a-z]*)$/); if(m)setSlashMenu({query:m[1]});else setSlashMenu(null); };
@@ -816,10 +915,9 @@ export default function DiaryTab({theme,diary,setDiary,playSfx,showMsg,archive,s
           transform:pageAnim?`translateX(${pageAnim==="left"?"-30px":"30px"})`:"none",
           opacity:pageAnim?0:1,
           transition:pageAnim?"transform 0.26s ease,opacity 0.26s ease":"none",
-          touchAction:drawMode?"none":"pan-y",
           cursor:drawMode?(isEraser?"cell":"crosshair"):"text"}}
-          onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
-          onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}>
+          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}
+          onPointerCancel={onUp}>
 
           {/* Zoomed content */}
           <div style={{position:"absolute",width:cw,height:ch,transform:`matrix(${zoom},0,0,${zoom},${pan.x},${pan.y})`,transformOrigin:"0 0"}}>
@@ -857,8 +955,12 @@ export default function DiaryTab({theme,diary,setDiary,playSfx,showMsg,archive,s
           </button>
           {drawMode&&<button onClick={()=>{setShowBrushPanel(!showBrushPanel);setShowStylePanel(false);setShowDecoPanel(false);}}
             style={{padding:"6px 10px",borderRadius:10,border:`1px solid ${theme.border}`,background:showBrushPanel?theme.border:theme.card,color:theme.text,fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-            <span>{brushDef.icon}</span><span>{brushDef.name}</span><span style={{fontSize:9}}>▼</span>
+            <span>{brushDef.icon}</span><span>{brushDef.name}</span>
+            <span style={{fontSize:9,color:theme.textSec,marginLeft:2}}>▼</span>
           </button>}
+          {drawMode&&<div title="필압 인식 중 (펜 기기)" style={{fontSize:10,color:theme.textSec,display:"flex",alignItems:"center",gap:3,padding:"4px 7px",borderRadius:8,border:`1px solid ${theme.border}`,background:theme.card}}>
+            <span>✒️</span>
+          </div>}
           {drawMode&&<div style={{display:"flex",gap:3,flex:1,flexWrap:"wrap"}}>
             {PEN_COLORS.map(c=>(
               <button key={c} onClick={()=>setPenColor(c)} style={{width:20,height:20,borderRadius:10,background:c,border:penColor===c?"3px solid rgba(0,0,0,0.3)":"1px solid #ccc",boxShadow:penColor===c?`0 0 0 2px ${c}`:"none",cursor:"pointer",outline:c==="#ffffff"?`1px solid ${theme.border}`:"none"}}/>
