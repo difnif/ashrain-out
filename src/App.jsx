@@ -19,6 +19,7 @@ import {
 import { renderProblemScreen } from "./screens/ProblemScreen";
 import { renderStudentHomeScreen } from "./screens/StudentHomeScreen";
 import { TutorialOverlay, useTutorial } from "./components/TutorialOverlay";
+import { renderParentHomeScreen } from "./screens/ParentHomeScreen";
 import { renderLearningDashboard } from "./screens/LearningDashboard";
 import { renderQuestionInboxScreen } from "./screens/QuestionInboxScreen";
 import { renderCongruenceScreen } from "./screens/CongruenceScreen";
@@ -198,6 +199,8 @@ function AppInner() {
     try { return JSON.parse(localStorage.getItem("ar_diary")) || []; } catch { return []; }
   });
   useEffect(() => { localStorage.setItem("ar_diary", JSON.stringify(studentDiary)); }, [studentDiary]);
+
+  const [signupRole, setSignupRole] = useState("student");
 
   const [analysisModel, setAnalysisModel] = useState(() => localStorage.getItem("ar_analysis_model") || "claude-sonnet-4-20250514");
   useEffect(() => { localStorage.setItem("ar_analysis_model", analysisModel); }, [analysisModel]);
@@ -582,6 +585,8 @@ function AppInner() {
     archive: studentArchive, setArchive: setStudentArchive,
     notifications: studentNotifications, setNotifications: setStudentNotifications,
     diary: studentDiary, setDiary: setStudentDiary,
+    signupRole, setSignupRole,
+    publicArchive: (studentArchive || []).filter(a => a.isPublic && !a.hidden).map(a => ({ ...a, userId: undefined, userName: undefined })),
     analysisModel, setAnalysisModel,
     tutorial,
     archiveDefaultPublic, setArchiveDefaultPublic,
@@ -626,7 +631,13 @@ function AppInner() {
 
   // --- Menu Screen ---
   // Student/External users → student home instead of admin menu
-  if (screen === "menu" && userRole && userRole !== "admin" && userRole !== "assistant") {
+  // Parent users → parent home
+  if (screen === "menu" && userRole === "parent") {
+    return renderParentHomeScreen(ctx);
+  }
+
+  // Student/External users → student home
+  if (screen === "menu" && userRole && userRole !== "admin" && userRole !== "assistant" && userRole !== "parent") {
     return renderStudentHomeScreen(ctx);
   }
 
@@ -691,6 +702,9 @@ function AppInner() {
   const TutOverlay = () => tutorial.activeTutorial ? (
     <TutorialOverlay tutorialId={tutorial.activeTutorial} theme={theme} onComplete={() => tutorial.setActiveTutorial(null)} />
   ) : null;
+  // --- Parent Home ---
+  if (screen === "parent-home") return renderParentHomeScreen(ctx);
+
   // --- Student Mode ---
   if (screen === "student-mode") {
     if (!isStudentModePreview) setIsStudentModePreview(true);
