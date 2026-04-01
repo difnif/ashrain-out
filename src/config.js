@@ -6,7 +6,7 @@ export const PASTEL = {
   pink: "#F4B9B2", coral: "#E8A598", mint: "#A8D5BA",
   lavender: "#C3B1E1", yellow: "#F6E3BA", sky: "#B5D5E8",
   peach: "#FADADD", sage: "#D4E2D4", cream: "#FFF8F0",
-  blush: "#F7E1D7", dustyRose: "#DCAE96", lilac: "#E6E0F3",
+  blush: "#F7E1D7", dustyRose: "#DCAE96", lilac: "#E6E0F3", gold: "#F5C542",
 };
 
 export const THEMES = {
