@@ -1337,14 +1337,17 @@ export function renderDrawScreen(ctx) {
         {(buildPhase === "compare" || buildPhase === "combined") && triangle && (() => {
           const { A, B, C, sides } = triangle;
           const [a, b, cc2] = sides;
+          // R and r are measured from the actual construction, not calculated by formula
+          const R_val = jedoCircle && jedoType === "circum" ? jedoCircle.r / (triangle.scale || 1) : 0;
+          const r_val = jedoCircle && jedoType !== "circum" ? jedoCircle.r / (triangle.scale || 1) : 0;
+          // For archive preview, compute both
           const da = Math.sqrt((B.x-C.x)**2+(B.y-C.y)**2);
           const db = Math.sqrt((A.x-C.x)**2+(A.y-C.y)**2);
           const dc = Math.sqrt((A.x-B.x)**2+(A.y-B.y)**2);
-          const perim = da+db+dc;
-          const sp = perim/2;
-          const areaVal = Math.sqrt(sp*(sp-da)*(sp-db)*(sp-dc));
-          const R_val = (da*db*dc) / (4*areaVal);
-          const r_val = areaVal / sp;
+          const sp = (da+db+dc)/2;
+          const areaVal = Math.sqrt(Math.max(0, sp*(sp-da)*(sp-db)*(sp-dc)));
+          const R_archive = areaVal > 0 ? (da*db*dc) / (4*areaVal) : 0;
+          const r_archive = sp > 0 ? areaVal / sp : 0;
           const skyC = "#3B82F6", mintC = "#10B981";
           const sel = compareSelected;
 
@@ -1368,47 +1371,54 @@ export function renderDrawScreen(ctx) {
                 ))}
               </div>
 
-              {/* Circumscribed detail */}
+              {/* Circumscribed detail — 교과과정 범위 설명 */}
               {sel === "circum" && (
                 <div style={{ padding: "14px", borderRadius: 14, background: `${skyC}06`, border: `1px solid ${skyC}25`, marginBottom: 10, animation: "fadeIn 0.3s ease" }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: skyC, marginBottom: 8 }}>
-                    {buildPhase === "combined" ? "외심 O의 성질" : "외접원의 반지름 R"}
+                    {buildPhase === "combined" ? "외심 O의 성질" : "외접원이란?"}
                   </div>
                   <div style={{ fontSize: 12, color: theme.text, lineHeight: 2.2 }}>
-                    <div style={{ background: `${skyC}10`, padding: "6px 10px", borderRadius: 8, marginBottom: 6 }}>
-                      <b style={{color: skyC}}>핵심:</b> 외심에서 세 꼭짓점까지의 거리가 모두 같다
+                    <div style={{ background: `${skyC}10`, padding: "6px 10px", borderRadius: 8, marginBottom: 8 }}>
+                      <b style={{color: skyC}}>핵심:</b> 외심 = 세 변의 <b>수직이등분선</b>이 만나는 점
                     </div>
-                    <div>OA = OB = OC = <b style={{color: skyC}}>R</b></div>
-                    <div style={{ marginTop: 8 }}><b>공식:</b> R = abc / 4S</div>
-                    <div style={{ marginTop: 4, padding: "8px 10px", background: theme.bg, borderRadius: 8, fontSize: 11, lineHeight: 2 }}>
+
+                    <div style={{ padding: "8px 10px", background: theme.bg, borderRadius: 8, fontSize: 12, lineHeight: 2.2 }}>
                       <div style={{padding:"8px 0",borderBottom:`1px solid ${theme.border}20`}}>
-                        <div><b>① 세 변의 길이 (a, b, c):</b></div>
-                        <div style={{marginLeft: 8, marginTop: 4}}>
-                          <span style={{color:PASTEL.coral}}>a</span>(BC) = {a.toFixed(2)}, <span style={{color:PASTEL.sky}}>b</span>(AC) = {b.toFixed(2)}, <span style={{color:PASTEL.mint}}>c</span>(AB) = {cc2.toFixed(2)}
+                        <div><b>① 수직이등분선의 성질 (1학년 때 작도했지?)</b></div>
+                        <div style={{marginLeft: 8, marginTop: 4, fontSize: 11}}>
+                          수직이등분선 위의 점은 <b>양 끝점에서 같은 거리</b>에 있어
                         </div>
                       </div>
                       <div style={{padding:"8px 0",borderBottom:`1px solid ${theme.border}20`}}>
-                        <div><b>② (a + b + c) ÷ 2 = s:</b></div>
-                        <div style={{marginLeft: 8, marginTop: 4}}>s = ({a.toFixed(1)} + {b.toFixed(1)} + {cc2.toFixed(1)}) ÷ 2 = <b>{((a+b+cc2)/2).toFixed(2)}</b></div>
+                        <div><b>② 세 수직이등분선의 교점 → 외심 O</b></div>
+                        <div style={{marginLeft: 8, marginTop: 4, fontSize: 11}}>
+                          변 AB의 수직이등분선 위 → OA = OB<br/>
+                          변 BC의 수직이등분선 위 → OB = OC<br/>
+                          ∴ <b style={{color: skyC}}>OA = OB = OC = R</b>
+                        </div>
                       </div>
                       <div style={{padding:"8px 0",borderBottom:`1px solid ${theme.border}20`}}>
-                        <div><b>③ 넓이 S (헤론의 공식):</b></div>
-                        <div style={{marginLeft: 8, marginTop: 4}}>S = √(s × (s−a) × (s−b) × (s−c))</div>
-                        <div style={{marginLeft: 12, marginTop: 2}}>= √({((a+b+cc2)/2).toFixed(1)} × {(((a+b+cc2)/2)-a).toFixed(1)} × {(((a+b+cc2)/2)-b).toFixed(1)} × {(((a+b+cc2)/2)-cc2).toFixed(1)})</div>
-                        <div style={{marginLeft: 12}}>= <b>{areaVal.toFixed(2)}</b></div>
+                        <div><b>③ 이등변삼각형 3개 탄생!</b></div>
+                        <div style={{marginLeft: 8, marginTop: 4, fontSize: 11}}>
+                          △OAB, △OBC, △OCA 모두 OA=OB=OC=R이니까 이등변삼각형
+                        </div>
                       </div>
                       <div style={{padding:"8px 0"}}>
-                        <div><b>④ R 계산:</b></div>
-                        <div style={{marginLeft: 8, marginTop: 4}}>R = (a × b × c) ÷ (4 × S)</div>
-                        <div style={{marginLeft: 12, marginTop: 2}}>= ({a.toFixed(1)} × {b.toFixed(1)} × {cc2.toFixed(1)}) ÷ (4 × {areaVal.toFixed(1)})</div>
-                        <div style={{marginLeft: 12}}>= {(a*b*cc2).toFixed(1)} ÷ {(4*areaVal).toFixed(1)}</div>
+                        <div><b>④ 외접원 = 세 꼭짓점을 지나는 원</b></div>
+                        <div style={{marginLeft: 8, marginTop: 4, fontSize: 11}}>
+                          외심에 컴퍼스를 대고 아무 꼭짓점까지 벌려서 원을 그리면 → 외접원!
+                        </div>
                       </div>
                     </div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: skyC, marginTop: 8, textAlign: "center" }}>
-                      R ≈ {R_val.toFixed(2)}
+
+                    <div style={{ fontSize: 16, fontWeight: 700, color: skyC, marginTop: 10, textAlign: "center" }}>
+                      R = {R_archive.toFixed(2)}
+                      <div style={{ fontSize: 10, fontWeight: 400, color: theme.textSec, marginTop: 2 }}>
+                        (외심에서 꼭짓점까지 거리)
+                      </div>
                     </div>
                     <button onClick={() => {
-                      setHelpPopupData({ ...(PROPERTY_HELP.formulaR || {}), title: "외접원 R 공식", contextData: { screenName: "외접원 공식", type: "외접원" } });
+                      setHelpPopupData({ ...(PROPERTY_HELP.circumRadiiAll || {}), title: "외심은 왜 생길까?", contextData: { screenName: "외접원 설명", type: "외접원" } });
                       playSfx("click");
                     }} style={{ marginTop: 8, padding: "5px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 10, cursor: "pointer" }}>
                       ❓ 이해가 안 돼요
@@ -1417,43 +1427,57 @@ export function renderDrawScreen(ctx) {
                 </div>
               )}
 
-              {/* Inscribed detail */}
+              {/* Inscribed detail — 교과과정 범위 설명 */}
               {sel === "in" && (
                 <div style={{ padding: "14px", borderRadius: 14, background: `${mintC}06`, border: `1px solid ${mintC}25`, marginBottom: 10, animation: "fadeIn 0.3s ease" }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: mintC, marginBottom: 8 }}>
-                    {buildPhase === "combined" ? "내심 I의 성질" : "내접원의 반지름 r"}
+                    {buildPhase === "combined" ? "내심 I의 성질" : "내접원이란?"}
                   </div>
                   <div style={{ fontSize: 12, color: theme.text, lineHeight: 2.2 }}>
-                    <div style={{ background: `${mintC}10`, padding: "6px 10px", borderRadius: 8, marginBottom: 6 }}>
-                      <b style={{color: mintC}}>핵심:</b> 내심에서 세 변까지의 거리가 모두 같다
+                    <div style={{ background: `${mintC}10`, padding: "6px 10px", borderRadius: 8, marginBottom: 8 }}>
+                      <b style={{color: mintC}}>핵심:</b> 내심 = 세 각의 <b>이등분선</b>이 만나는 점
                     </div>
-                    <div>ID₁ = ID₂ = ID₃ = <b style={{color: mintC}}>r</b></div>
-                    <div style={{ marginTop: 8 }}><b>공식:</b> r = S / s</div>
-                    <div style={{ marginTop: 4, padding: "8px 10px", background: theme.bg, borderRadius: 8, fontSize: 11, lineHeight: 2 }}>
+
+                    <div style={{ padding: "8px 10px", background: theme.bg, borderRadius: 8, fontSize: 12, lineHeight: 2.2 }}>
                       <div style={{padding:"8px 0",borderBottom:`1px solid ${theme.border}20`}}>
-                        <div><b>① 세 변의 길이 (a, b, c):</b></div>
-                        <div style={{marginLeft: 8, marginTop: 4}}>
-                          <span style={{color:PASTEL.coral}}>a</span>(BC) = {a.toFixed(2)}, <span style={{color:PASTEL.sky}}>b</span>(AC) = {b.toFixed(2)}, <span style={{color:PASTEL.mint}}>c</span>(AB) = {cc2.toFixed(2)}
+                        <div><b>① 점과 직선 사이의 거리 (1학년 때 배웠지?)</b></div>
+                        <div style={{marginLeft: 8, marginTop: 4, fontSize: 11}}>
+                          점에서 직선까지의 <b>최단 거리 = 수직 거리</b>야
                         </div>
                       </div>
                       <div style={{padding:"8px 0",borderBottom:`1px solid ${theme.border}20`}}>
-                        <div><b>② (a + b + c) ÷ 2 = s:</b></div>
-                        <div style={{marginLeft: 8, marginTop: 4}}>s = <b>{((a+b+cc2)/2).toFixed(2)}</b></div>
+                        <div><b>② 각의 이등분선의 성질 (RHS 합동으로 증명!)</b></div>
+                        <div style={{marginLeft: 8, marginTop: 4, fontSize: 11}}>
+                          각의 이등분선 위의 점에서 두 변에 수선을 내리면<br/>
+                          직각삼각형 2개가 RHS 합동 → <b>두 수선의 길이가 같다!</b>
+                        </div>
                       </div>
                       <div style={{padding:"8px 0",borderBottom:`1px solid ${theme.border}20`}}>
-                        <div><b>③ 넓이 S:</b></div>
-                        <div style={{marginLeft: 8, marginTop: 4}}>S = {areaVal.toFixed(2)} (위와 동일)</div>
+                        <div><b>③ 세 이등분선의 교점 → 내심 I</b></div>
+                        <div style={{marginLeft: 8, marginTop: 4, fontSize: 11}}>
+                          ∠A의 이등분선 위 → AB, AC까지 거리 같다<br/>
+                          ∠B의 이등분선 위 → BA, BC까지 거리 같다<br/>
+                          ∴ <b style={{color: mintC}}>세 변까지의 수직 거리가 모두 같다 = r</b>
+                        </div>
                       </div>
                       <div style={{padding:"8px 0"}}>
-                        <div><b>④ r 계산:</b></div>
-                        <div style={{marginLeft: 8, marginTop: 4}}>r = S ÷ s = {areaVal.toFixed(2)} ÷ {((a+b+cc2)/2).toFixed(2)}</div>
+                        <div><b>④ 내접원 = 세 변에 접하는 원</b></div>
+                        <div style={{marginLeft: 8, marginTop: 4, fontSize: 11}}>
+                          내심에 컴퍼스를 대고 아무 변까지 벌려서 원을 그리면 → 내접원!
+                        </div>
                       </div>
                     </div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: mintC, marginTop: 8, textAlign: "center" }}>
-                      r ≈ {r_val.toFixed(2)}
+
+                    <div style={{ fontSize: 16, fontWeight: 700, color: mintC, marginTop: 10, textAlign: "center" }}>
+                      r = {r_archive.toFixed(2)}
+                      <div style={{ fontSize: 10, fontWeight: 400, color: theme.textSec, marginTop: 2 }}>
+                        (내심에서 변까지 수직 거리)
+                      </div>
                     </div>
-                    <button onClick={() => { setHelpPopupData({ ...(PROPERTY_HELP.formulaR_r || {}), title: "내접원 r 공식", contextData: { screenName: "내접원 공식", type: "내접원" } }); playSfx("click"); }}
-                      style={{ marginTop: 8, padding: "5px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 10, cursor: "pointer" }}>
+                    <button onClick={() => {
+                      setHelpPopupData({ ...(PROPERTY_HELP.inRadiiAll || {}), title: "내심은 왜 생길까?", contextData: { screenName: "내접원 설명", type: "내접원" } });
+                      playSfx("click");
+                    }} style={{ marginTop: 8, padding: "5px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 10, cursor: "pointer" }}>
                       ❓ 이해가 안 돼요
                     </button>
                   </div>
@@ -1477,7 +1501,7 @@ export function renderDrawScreen(ctx) {
                     setArchive(prev => [...prev, {
                       id: `draw-${Date.now()}`, type: buildPhase === "compare" ? "외접원↔내접원" : "외심↔내심",
                       title: `${jedoType === "circum" ? "외접원" : "내접원"} 비교`,
-                      preview: `R≈${R_val.toFixed(1)}, r≈${r_val.toFixed(1)}`,
+                      preview: `R≈${R_archive.toFixed(1)}, r≈${r_archive.toFixed(1)}`,
                       createdAt: Date.now(), isPublic: archiveDefaultPublic || false, hidden: false, userId: user?.id,
                     }]);
                     playSfx("success"); showMsg("아카이브에 저장! 📂", 1500);
