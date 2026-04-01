@@ -18,55 +18,74 @@ export function getProperties(ctx) {
 
     if (jedoType === "circum") {
       const r = jedoCircle.r;
-      props.push({ id: "cRadius", text: `외접원의 반지름 R = ${(r / (triangle.scale || 1)).toFixed(1)}`, color: PASTEL.sky,
-        highlight: "circumRadius" });
-      props.push({ id: "cEqual", text: `OA = OB = OC (외심에서 세 꼭지점까지 거리 동일)`, color: "#7EC8E3",
+
+      // 1) 외심이 왜 생기는지 — 수직이등분선 연결
+      props.push({ id: "circumWhy", text: `외심 O = 세 변의 수직이등분선이 만나는 점`, bold: true, color: PASTEL.sky,
         highlight: "circumRadiiAll" });
 
+      // 2) 수직이등분선의 성질 (1학년 2학기 작도와 연결)
+      props.push({ id: "circumPerpBis", text: `수직이등분선 위의 점 → 양 끝점에서 같은 거리 (1-2 작도에서 컴퍼스로 확인했지?)`, color: "#7EC8E3",
+        highlight: "circumRadiiAll" });
+
+      // 3) 그래서 OA = OB = OC
+      props.push({ id: "cEqual", text: `∴ OA = OB = OC — 세 수직이등분선의 교점이니까 세 꼭짓점에서 같은 거리!`, color: "#7EC8E3",
+        highlight: "circumRadiiAll" });
+
+      // 4) 외접원의 반지름
+      props.push({ id: "cRadius", text: `외접원의 반지름 R = ${(r / (triangle.scale || 1)).toFixed(1)} (OA = OB = OC = R)`, color: PASTEL.sky,
+        highlight: "circumRadius" });
+
+      // 5) 각도
       const angA = angleAtVertex(A, B, C) * 180 / Math.PI;
       const angB = angleAtVertex(B, A, C) * 180 / Math.PI;
       const angC = angleAtVertex(C, A, B) * 180 / Math.PI;
       props.push({ id: "angles", text: `∠A = ${angA.toFixed(1)}°, ∠B = ${angB.toFixed(1)}°, ∠C = ${angC.toFixed(1)}°`, color: PASTEL.yellow,
         highlight: "allAngles" });
-      props.push({ id: "central", text: `∠BOC = 2∠A = ${(2 * angA).toFixed(1)}° (중심각 = 2 × 원주각)`, color: PASTEL.mint, bold: true,
-        highlight: "centralAngle" });
 
-      const angOBC = angleAtVertex(B, O, C) * 180 / Math.PI / 2;
-      const angOCA = angleAtVertex(C, O, A) * 180 / Math.PI / 2;
-      const angOAB = angleAtVertex(A, O, B) * 180 / Math.PI / 2;
-      props.push({ id: "iso90", text: `∠OBC + ∠OCA + ∠OAB = ${(angOBC + angOCA + angOAB).toFixed(1)}° = 90°`, color: PASTEL.lavender, bold: true,
-        highlight: "isoTriangles" });
+      // 6) 이등변삼각형 — 외심이 만드는 세 이등변삼각형
+      props.push({ id: "isoOAB", text: `△OAB: OA = OB = R → 이등변삼각형`, color: "#F48FB1", highlight: "isoOAB" });
+      props.push({ id: "isoOBC", text: `△OBC: OB = OC = R → 이등변삼각형`, color: "#80CBC4", highlight: "isoOBC" });
+      props.push({ id: "isoOCA", text: `△OCA: OC = OA = R → 이등변삼각형`, color: "#CE93D8", highlight: "isoOCA" });
 
+      // 7) 조건별 외심의 위치
       if (types.includes("직각삼각형")) props.push({ id: "right", text: "→ 직각삼각형: 외심이 빗변의 중점에 위치!", bold: true, color: "#FF8A80", highlight: "rightHyp" });
       if (types.includes("둔각삼각형")) props.push({ id: "obtuse", text: "→ 둔각삼각형: 외심이 삼각형 바깥에 위치!", bold: true, color: "#FF8A80", highlight: "obtuseOut" });
       if (types.includes("예각삼각형")) props.push({ id: "acute", text: "→ 예각삼각형: 외심이 삼각형 내부에 위치!", bold: true, color: "#82C9A5", highlight: "acuteIn" });
       if (types.includes("이등변삼각형")) props.push({ id: "isoCircum", text: "→ 이등변삼각형: 외심이 꼭지각의 이등분선 위!", bold: true, color: "#FFB74D", highlight: "isoBisector" });
-
-      // Isosceles triangles formed by circumcenter
-      props.push({ id: "isoOAB", text: `△OAB: OA = OB = R → 이등변삼각형`, color: "#F48FB1", highlight: "isoOAB" });
-      props.push({ id: "isoOBC", text: `△OBC: OB = OC = R → 이등변삼각형`, color: "#80CBC4", highlight: "isoOBC" });
-      props.push({ id: "isoOCA", text: `△OCA: OC = OA = R → 이등변삼각형`, color: "#CE93D8", highlight: "isoOCA" });
     } else {
       const r = jedoCircle.r;
-      const a = dist(B, C), b = dist(A, C), c = dist(A, B);
-      props.push({ id: "iRadius", text: `내접원의 반지름 r = ${(r / (triangle.scale || 1)).toFixed(1)}`, color: PASTEL.lavender,
-        highlight: "inRadius" });
-      props.push({ id: "iEqual", text: `내심에서 세 변까지의 거리가 모두 같다 (= r)`, color: "#B39DDB",
+
+      // 1) 내심이 왜 생기는지 — 각의 이등분선 연결
+      props.push({ id: "incenterWhy", text: `내심 I = 세 각의 이등분선이 만나는 점`, bold: true, color: PASTEL.lavender,
         highlight: "inRadiiAll" });
 
+      // 2) 각의 이등분선의 성질 (직각삼각형 합동으로 증명)
+      props.push({ id: "incenterDist", text: `각의 이등분선 위의 점 → 두 변까지의 거리가 같다 (RHS 합동으로 증명!)`, color: "#B39DDB",
+        highlight: "inRadiiAll" });
+
+      // 3) 점과 직선 사이의 거리 연결 (1-2 연결)
+      props.push({ id: "incenterPerp", text: `1-2에서 배운 "점과 직선 사이의 거리 = 수직 거리(최단 거리)"를 기억해!`, color: PASTEL.peach,
+        highlight: "inRadiiAll" });
+
+      // 4) 그래서 내심에서 세 변까지 거리가 같다
+      props.push({ id: "iEqual", text: `∴ 내심에서 세 변까지의 수직 거리가 모두 같다 (= r)`, color: "#B39DDB",
+        highlight: "inRadiiAll" });
+
+      // 5) 내접원의 반지름
+      props.push({ id: "iRadius", text: `내접원의 반지름 r = ${(r / (triangle.scale || 1)).toFixed(1)}`, color: PASTEL.lavender,
+        highlight: "inRadius" });
+
+      // 6) ∠BIC (교과과정 내 성질)
       const angA = angleAtVertex(A, B, C) * 180 / Math.PI;
       const angBIC = 90 + angA / 2;
       props.push({ id: "bicAngle", text: `∠BIC = 90° + ½∠A = ${angBIC.toFixed(1)}°`, color: PASTEL.mint, bold: true,
         highlight: "bicAngle" });
 
-      const s = (a + b + c) / 2;
-      const area = Math.sqrt(s * (s - a) * (s - b) * (s - c));
-      props.push({ id: "area", text: `넓이 S = ½ × r × (a+b+c) = ${(area / ((triangle.scale || 1) ** 2)).toFixed(1)}`, color: PASTEL.yellow, bold: true,
-        highlight: "areaFill" });
+      // 7) 각의 이등분선이 대변을 나누는 비
       props.push({ id: "bisRatio", text: `각의 이등분선은 대변을 양 옆 변의 비로 나눈다`, color: PASTEL.peach,
         highlight: "bisectorRatio" });
 
-      // Congruent triangles formed by incenter
+      // 8) RHS 합동으로 증명 — 내심이 만드는 합동 삼각형들
       props.push({ id: "congA", text: `△AFI ≅ △AEI (RHS 합동: AI 공통, IF=IE=r, ∠F=∠E=90°)`, bold: true, color: "#FF8A65", highlight: "congA" });
       props.push({ id: "congB", text: `△BDI ≅ △BFI (RHS 합동: BI 공통, ID=IF=r, ∠D=∠F=90°)`, bold: true, color: "#4FC3F7", highlight: "congB" });
       props.push({ id: "congC", text: `△CDI ≅ △CEI (RHS 합동: CI 공통, ID=IE=r, ∠D=∠E=90°)`, bold: true, color: "#AED581", highlight: "congC" });
@@ -156,54 +175,10 @@ export function renderHighlight(ctx) {
           </g>
         );
       }
-      case "centralAngle": {
-        const angA = angleAtVertex(A, B, C);
-        const angBOC = angleAtVertex(O, B, C); // Angle at O between B and C? No, ∠BOC = angle at O
-        // Draw angle arc at O between OB and OC, and arc at A
-        const a1o = Math.atan2(B.y - O.y, B.x - O.x);
-        const a2o = Math.atan2(C.y - O.y, C.x - O.x);
-        let diffO = a2o - a1o; if (diffO < -Math.PI) diffO += 2*Math.PI; if (diffO > Math.PI) diffO -= 2*Math.PI;
-        const sweepO = diffO > 0 ? 1 : 0;
-        const rO = 25;
-        const a1a = Math.atan2(B.y - A.y, B.x - A.x);
-        const a2a = Math.atan2(C.y - A.y, C.x - A.x);
-        let diffA = a2a - a1a; if (diffA < -Math.PI) diffA += 2*Math.PI; if (diffA > Math.PI) diffA -= 2*Math.PI;
-        const sweepA = diffA > 0 ? 1 : 0;
-        const rA = 22;
-        return (
-          <g>
-            <line x1={O.x} y1={O.y} x2={B.x} y2={B.y} stroke={hc} strokeWidth={2} opacity={0.6} />
-            <line x1={O.x} y1={O.y} x2={C.x} y2={C.y} stroke={hc} strokeWidth={2} opacity={0.6} />
-            <path d={`M ${O.x+rO*Math.cos(a1o)} ${O.y+rO*Math.sin(a1o)} A ${rO} ${rO} 0 0 ${sweepO} ${O.x+rO*Math.cos(a2o)} ${O.y+rO*Math.sin(a2o)}`}
-              fill="none" stroke={hc} strokeWidth={3} />
-            <text x={O.x+40*Math.cos(a1o+diffO/2)} y={O.y+40*Math.sin(a1o+diffO/2)}
-              textAnchor="middle" dominantBaseline="central" fill={hc}
-              fontSize={11} fontWeight={700} fontFamily="'Noto Serif KR', serif">
-              ∠BOC
-            </text>
-            <path d={`M ${A.x+rA*Math.cos(a1a)} ${A.y+rA*Math.sin(a1a)} A ${rA} ${rA} 0 0 ${sweepA} ${A.x+rA*Math.cos(a2a)} ${A.y+rA*Math.sin(a2a)}`}
-              fill="none" stroke="#FF8A65" strokeWidth={3} />
-            <text x={A.x+38*Math.cos(a1a+diffA/2)} y={A.y+38*Math.sin(a1a+diffA/2)}
-              textAnchor="middle" dominantBaseline="central" fill="#FF8A65"
-              fontSize={10} fontWeight={700} fontFamily="'Noto Serif KR', serif">
-              ∠A
-            </text>
-          </g>
-        );
-      }
-      case "isoTriangles": {
-        // Highlight three isoceles triangles OBC, OCA, OAB
-        const colors = ["rgba(195,177,225,0.25)", "rgba(168,213,186,0.25)", "rgba(246,227,186,0.25)"];
-        const strokes = [PASTEL.lavender, PASTEL.mint, PASTEL.yellow];
-        return (
-          <g>
-            {[[O,B,C],[O,C,A],[O,A,B]].map(([p1,p2,p3], i) => (
-              <polygon key={i} points={`${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`}
-                fill={colors[i]} stroke={strokes[i]} strokeWidth={2} />
-            ))}
-          </g>
-        );
-      }
+      case "centralAngle":
+        return null; // 중심각=2×원주각은 중3 과정 — 제거됨
+      case "isoTriangles":
+        return null; // ∠OBC+∠OCA+∠OAB=90° 제거됨
       case "inRadius": {
         const r = jedoCircle.r;
         // Show one radius line from incenter to nearest point on AB
@@ -256,12 +231,8 @@ export function renderHighlight(ctx) {
           </g>
         );
       }
-      case "areaFill": {
-        return (
-          <polygon points={`${A.x},${A.y} ${B.x},${B.y} ${C.x},${C.y}`}
-            fill={hcAlpha} stroke={hc} strokeWidth={2} />
-        );
-      }
+      case "areaFill":
+        return null; // S=½r(a+b+c) 공식 제거됨
       case "bisectorRatio": {
         // Show angle bisector from A hitting BC, splitting it
         const bis = angleBisector(A, B, C, A, B, C);
