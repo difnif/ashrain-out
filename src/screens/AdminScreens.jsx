@@ -4,6 +4,7 @@ export function renderAdminScreen(ctx) {
   const { theme, setScreen, playSfx, signupRequests, ScreenWrap, MenuGrid } = ctx;
   const menuItems = [
     { icon: "👁️", label: "학생 모드 입장", desc: "학생 화면 미리보기", action: () => setScreen("student-mode") },
+    { icon: "📊", label: "학습 현황", desc: "학생별 학습 열람 · 숙제 출제", action: () => setScreen("learning-dashboard") },
     { icon: "📬", label: "질문함", desc: (ctx.helpRequests||[]).filter(r=>r.status!=="answered").length > 0 ? `🔔 ${(ctx.helpRequests||[]).filter(r=>r.status!=="answered").length}건 대기` : "학생 질문 · 답변", action: () => setScreen("question-inbox") },
     { icon: "👤", label: "회원 관리", desc: signupRequests.length > 0 ? `🔔 가입 신청 ${signupRequests.length}건` : "권한 · 계정 · 비밀번호", action: () => setScreen("admin-students") },
     { icon: "💬", label: "대사 스크립트", desc: "말투별 대사 수정", action: () => setScreen("admin-scripts") },
