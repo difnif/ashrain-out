@@ -691,227 +691,1003 @@ function filterProfanity(text) {
   return result;
 }
 
+// ============================================================
+// FEATURE CONSTANTS
+// ============================================================
+
+const QUICK_EMOJIS = ["👍","😂","🤔","💡","👏","❤️","🔥","😮"];
+
+const PRAISE_STICKERS = [
+  { emoji: "🌟", label: "풀이 깔끔!" },
+  { emoji: "🧠", label: "설명 천재!" },
+  { emoji: "💪", label: "끈기 대장!" },
+  { emoji: "🚀", label: "속도 최고!" },
+  { emoji: "🎯", label: "정답 적중!" },
+  { emoji: "🤝", label: "친절한 도우미!" },
+];
+
+const AVATAR_ICONS = [
+  "🐱","🐶","🐰","🦊","🐻","🐼","🐨","🦁","🐯","🐸",
+  "🦉","🐧","🐬","🦄","🐲","🌸","⭐","🌙","☁️","🍀",
+];
+
+const PLAZA_THEMES = [
+  { id: "default", name: "기본", bg: null, emoji: "🏛️" },
+  { id: "exam", name: "시험 기간", bg: "linear-gradient(180deg, #2d1b1b08 0%, #ff634720 100%)", emoji: "🔥" },
+  { id: "beach", name: "방학", bg: "linear-gradient(180deg, #e0f7fa15 0%, #fff9c420 100%)", emoji: "🏖️" },
+  { id: "cherry", name: "벚꽃", bg: "linear-gradient(180deg, #fce4ec18 0%, #f8bbd020 100%)", emoji: "🌸" },
+  { id: "night", name: "야간 자습", bg: "linear-gradient(180deg, #1a237e10 0%, #311b9220 100%)", emoji: "🌙" },
+  { id: "snow", name: "겨울", bg: "linear-gradient(180deg, #e3f2fd15 0%, #bbdefb20 100%)", emoji: "❄️" },
+  { id: "party", name: "파티", bg: "linear-gradient(135deg, #f8bbd018 0%, #ce93d820 50%, #80deea18 100%)", emoji: "🎉" },
+];
+
+const TEACHER_STATUSES = [
+  { id: "online", label: "접속 중", emoji: "🟢", color: "#4CAF50" },
+  { id: "teaching", label: "수업 중", emoji: "📚", color: "#FF9800" },
+  { id: "answering", label: "질문 받는 중", emoji: "✋", color: "#2196F3" },
+  { id: "away", label: "자리비움", emoji: "🚶", color: "#9E9E9E" },
+  { id: "busy", label: "바쁨", emoji: "⛔", color: "#f44336" },
+];
+
+// Simple LaTeX-like renderer: $x^2$ → x², $\frac{a}{b}$ → a/b
+function renderMathText(text) {
+  if (!text) return text;
+  const parts = text.split(/(\$[^$]+\$)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("$") && part.endsWith("$")) {
+      let math = part.slice(1, -1);
+      // Superscript: x^2 → x²
+      math = math.replace(/\^{([^}]+)}/g, (_, exp) => {
+        const superMap = { "0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹",
+          "n":"ⁿ","i":"ⁱ","+":"⁺","-":"⁻","(":"⁽",")":"⁾","x":"ˣ" };
+        return exp.split("").map(c => superMap[c] || c).join("");
+      });
+      math = math.replace(/\^(.)/g, (_, c) => {
+        const superMap = { "0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹","n":"ⁿ" };
+        return superMap[c] || c;
+      });
+      // Subscript: x_1 → x₁
+      math = math.replace(/_(.)/g, (_, c) => {
+        const subMap = { "0":"₀","1":"₁","2":"₂","3":"₃","4":"₄","5":"₅","6":"₆","7":"₇","8":"₈","9":"₉" };
+        return subMap[c] || c;
+      });
+      // Fraction: \frac{a}{b} → a/b
+      math = math.replace(/\\frac{([^}]+)}{([^}]+)}/g, "($1/$2)");
+      // Greek: \alpha → α etc
+      const greek = { "\\alpha":"α","\\beta":"β","\\gamma":"γ","\\delta":"δ","\\pi":"π","\\theta":"θ","\\sigma":"σ","\\omega":"ω","\\sqrt":"√","\\pm":"±","\\times":"×","\\div":"÷","\\leq":"≤","\\geq":"≥","\\neq":"≠","\\infty":"∞","\\angle":"∠","\\triangle":"△","\\perp":"⊥","\\parallel":"∥" };
+      for (const [k, v] of Object.entries(greek)) {
+        math = math.split(k).join(v);
+      }
+      return <span key={i} style={{ fontFamily: "'Cambria Math', 'Times New Roman', serif", fontStyle: "italic", color: "#6a5acd", fontSize: "0.95em" }}>{math}</span>;
+    }
+    return part;
+  });
+}
+
+// ============================================================
+// MAIN RENDER FUNCTION
+// ============================================================
+
 export function renderPlazaScreen(ctx) {
   const { theme, user, userRole, members, setScreen, showMsg, playSfx, hasPerm,
     chatMsg, setChatMsg, chatLog, setChatLog, chatEndRef, chatNotif, setChatNotif,
     plazaCalls, callUser, ROLES, themeKey } = ctx;
 
-    // Freeze state (localStorage-shared)
-    const isFrozen = (() => {
-      try { return localStorage.getItem("ar_chat_frozen") === "true"; } catch { return false; }
-    })();
-    // Also load from Firestore on first render
-    if (!window._frozenSynced) {
-      window._frozenSynced = true;
-      fbGet("settings").then(d => {
-        if (d && d.chatFrozen !== undefined) {
-          const remote = d.chatFrozen === true || d.chatFrozen === "true";
-          localStorage.setItem("ar_chat_frozen", remote ? "true" : "false");
-          if (remote !== isFrozen) setChatLog(prev => [...prev]); // trigger re-render
-        }
-      });
-    }
-
-    const toggleFreeze = () => {
-      const next = !isFrozen;
-      localStorage.setItem("ar_chat_frozen", next ? "true" : "false");
-      fbSet("settings", { chatFrozen: next });
-      showMsg(next ? "🧊 광장이 얼었습니다" : "🔥 광장이 녹았습니다", 2000);
-      playSfx(next ? "click" : "success");
-      setChatLog(prev => [...prev]);
-    };
-
-    const sendChat = () => {
-      if (isFrozen && userRole !== "admin") {
-        showMsg("🧊 광장이 얼어있어요!", 1500);
-        return;
+  // ---- Freeze state ----
+  const isFrozen = (() => {
+    try { return localStorage.getItem("ar_chat_frozen") === "true"; } catch { return false; }
+  })();
+  if (!window._frozenSynced) {
+    window._frozenSynced = true;
+    fbGet("settings").then(d => {
+      if (d && d.chatFrozen !== undefined) {
+        const remote = d.chatFrozen === true || d.chatFrozen === "true";
+        localStorage.setItem("ar_chat_frozen", remote ? "true" : "false");
+        if (remote !== isFrozen) setChatLog(prev => [...prev]);
       }
-      if (!chatMsg.trim()) return;
-      const cleanText = filterProfanity(chatMsg.trim());
-      const newMsg = { user: user?.nickname || user?.name || "익명", role: userRole, text: cleanText, time: Date.now() };
-      const updated = [...chatLog, newMsg].slice(-100);
-      setChatLog(updated);
-      localStorage.setItem("ar_chat", JSON.stringify(updated));
-      fbSet("plaza", { chat: updated });
-      setChatMsg("");
-      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-    };
+    });
+  }
 
-    const now = Date.now();
-    const filteredLog = chatLog.filter(m => now - m.time < 10 * 60 * 1000);
-    if (filteredLog.length !== chatLog.length) {
-      setChatLog(filteredLog);
-      localStorage.setItem("ar_chat", JSON.stringify(filteredLog));
+  const toggleFreeze = () => {
+    const next = !isFrozen;
+    localStorage.setItem("ar_chat_frozen", next ? "true" : "false");
+    fbSet("settings", { chatFrozen: next });
+    showMsg(next ? "🧊 광장이 얼었습니다" : "🔥 광장이 녹았습니다", 2000);
+    playSfx(next ? "click" : "success");
+    setChatLog(prev => [...prev]);
+  };
+
+  // ---- Profanity warning system (#17) ----
+  const getWarnings = () => { try { return JSON.parse(localStorage.getItem("ar_warn") || "{}"); } catch { return {}; } };
+  const addWarning = (userName) => {
+    const warns = getWarnings();
+    warns[userName] = (warns[userName] || 0) + 1;
+    localStorage.setItem("ar_warn", JSON.stringify(warns));
+    fbSet("plaza", { warnings: warns });
+    if (warns[userName] >= 3) {
+      const mutes = getMutes();
+      mutes[userName] = Date.now() + 10 * 60 * 1000;
+      localStorage.setItem("ar_mute", JSON.stringify(mutes));
+      fbSet("plaza", { mutes });
+      showMsg(`⚠️ ${userName} 경고 3회 누적 → 10분 뮤트`, 3000);
+    } else {
+      showMsg(`⚠️ ${userName} 경고 ${warns[userName]}/3`, 2000);
     }
+  };
+  const getMutes = () => { try { return JSON.parse(localStorage.getItem("ar_mute") || "{}"); } catch { return {}; } };
+  const isMuted = (userName) => {
+    const mutes = getMutes();
+    return mutes[userName] && mutes[userName] > Date.now();
+  };
 
+  // ---- Send chat (enhanced with profanity warning) ----
+  const sendChat = (extraFields = {}) => {
+    if (isFrozen && userRole !== "admin") {
+      showMsg("🧊 광장이 얼어있어요!", 1500); return;
+    }
     const myName = user?.nickname || user?.name || "익명";
-
-    const onlineUsers = (() => {
-      try {
-        const online = JSON.parse(localStorage.getItem("ar_online") || "{}");
-        return Object.entries(online).filter(([, v]) => Date.now() - v.time < 30000).map(([name, v]) => ({ name, role: v.role }));
-      } catch { return []; }
-    })();
-    // Sync online presence to Firestore
-    if (user && !window._presenceSynced) {
-      window._presenceSynced = true;
-      const myN = user.nickname || user.name || "익명";
-      fbSet("plaza", { [`online_${myN}`]: { time: Date.now(), role: userRole } });
+    if (isMuted(myName)) {
+      showMsg("🔇 뮤트 상태입니다. 잠시 후 시도하세요.", 2000); return;
     }
+    if (!chatMsg.trim() && !extraFields.type) return;
+    const original = chatMsg.trim();
+    const cleanText = original ? filterProfanity(original) : "";
+    const hadProfanity = cleanText !== original;
 
-    const deleteChat = (time) => {
-      const updated = chatLog.filter(m => m.time !== time);
-      setChatLog(updated);
-      localStorage.setItem("ar_chat", JSON.stringify(updated));
-      fbSet("plaza", { chat: updated });
+    const newMsg = {
+      user: myName, role: userRole,
+      text: cleanText, time: Date.now(),
+      reactions: {}, replyTo: null,
+      ...extraFields,
     };
+    const updated = [...chatLog, newMsg].slice(-200);
+    setChatLog(updated);
+    localStorage.setItem("ar_chat", JSON.stringify(updated));
+    fbSet("plaza", { chat: updated });
+    setChatMsg("");
+    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
 
-    const teacherMember = members.find(m => m.role === "admin");
-    const teacherName = teacherMember ? (teacherMember.nickname || teacherMember.name) : "선생님";
-    const teacherOnline = onlineUsers.some(u => u.role === "admin");
-    const recentCalls = plazaCalls.filter(c => now - c.time < 10 * 60 * 1000).slice(-10);
-    const roleColors = { admin: PASTEL.coral, assistant: PASTEL.lavender, student: PASTEL.sky, external: PASTEL.sage };
+    if (hadProfanity) addWarning(myName);
+  };
 
-    return (
-      <div style={{ height: "100vh", maxHeight: "100dvh", display: "flex", flexDirection: "column", background: theme.bg, fontFamily: "'Noto Serif KR', serif", position: "relative" }}>
+  // ---- Time filtering ----
+  const now = Date.now();
+  const filteredLog = chatLog.filter(m => {
+    if (m.pinned) return true; // Pinned messages don't expire (#3)
+    return now - m.time < 10 * 60 * 1000;
+  });
+  if (filteredLog.length !== chatLog.length) {
+    setChatLog(filteredLog);
+    localStorage.setItem("ar_chat", JSON.stringify(filteredLog));
+  }
 
-        {/* Freeze overlay with snowfall */}
-        {isFrozen && (
-          <div style={{
-            position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-            background: "linear-gradient(180deg, rgba(181,213,232,0.08) 0%, rgba(181,213,232,0.15) 100%)",
-            pointerEvents: "none", zIndex: 50,
-          }}>
-            {[...Array(12)].map((_, i) => (
-              <div key={i} style={{
-                position: "absolute",
-                left: `${8 + (i * 7.5) % 85}%`,
-                top: `-${10 + (i * 13) % 20}px`,
-                fontSize: [10, 8, 12, 9, 11, 7, 10, 8, 13, 9, 11, 8][i],
-                opacity: 0.3 + (i % 3) * 0.15,
-                animation: `snowfall ${4 + (i % 3) * 2}s linear ${(i * 0.5) % 3}s infinite`,
+  const myName = user?.nickname || user?.name || "익명";
+
+  // ---- Online users ----
+  const onlineUsers = (() => {
+    try {
+      const online = JSON.parse(localStorage.getItem("ar_online") || "{}");
+      return Object.entries(online).filter(([, v]) => Date.now() - v.time < 30000).map(([name, v]) => ({ name, role: v.role, avatar: v.avatar, status: v.status }));
+    } catch { return []; }
+  })();
+  if (user && !window._presenceSynced) {
+    window._presenceSynced = true;
+    const myAvatar = (() => { try { return localStorage.getItem("ar_avatar_" + myName) || "🐱"; } catch { return "🐱"; } })();
+    const myStatus = (() => { try { return localStorage.getItem("ar_status_" + myName) || ""; } catch { return ""; } })();
+    const teacherSt = (() => { try { return localStorage.getItem("ar_teacher_status") || "online"; } catch { return "online"; } })();
+    fbSet("plaza", { [`online_${myName}`]: { time: Date.now(), role: userRole, avatar: myAvatar, status: myStatus, teacherStatus: userRole === "admin" ? teacherSt : undefined } });
+  }
+
+  const deleteChat = (time) => {
+    const updated = chatLog.filter(m => m.time !== time);
+    setChatLog(updated);
+    localStorage.setItem("ar_chat", JSON.stringify(updated));
+    fbSet("plaza", { chat: updated });
+  };
+
+  const teacherMember = members.find(m => m.role === "admin");
+  const teacherName = teacherMember ? (teacherMember.nickname || teacherMember.name) : "선생님";
+  const teacherOnline = onlineUsers.some(u => u.role === "admin");
+  const teacherStatus = (() => {
+    const t = onlineUsers.find(u => u.role === "admin");
+    if (!t) return null;
+    try { return localStorage.getItem("ar_teacher_status") || "online"; } catch { return "online"; }
+  })();
+  const recentCalls = plazaCalls.filter(c => now - c.time < 10 * 60 * 1000).slice(-10);
+  const roleColors = { admin: PASTEL.coral, assistant: PASTEL.lavender, student: PASTEL.sky, external: PASTEL.sage };
+
+  // ---- Pinned messages (#3) ----
+  const pinnedMsgs = filteredLog.filter(m => m.pinned);
+  const togglePin = (time) => {
+    const updated = chatLog.map(m => m.time === time ? { ...m, pinned: !m.pinned } : m);
+    setChatLog(updated);
+    localStorage.setItem("ar_chat", JSON.stringify(updated));
+    fbSet("plaza", { chat: updated });
+    showMsg("📌 고정 상태 변경됨", 1500);
+  };
+
+  // ---- Reactions (#1) ----
+  const addReaction = (msgTime, emoji) => {
+    const updated = chatLog.map(m => {
+      if (m.time === msgTime) {
+        const reactions = { ...(m.reactions || {}) };
+        const key = emoji;
+        if (!reactions[key]) reactions[key] = [];
+        if (reactions[key].includes(myName)) {
+          reactions[key] = reactions[key].filter(n => n !== myName);
+          if (reactions[key].length === 0) delete reactions[key];
+        } else {
+          reactions[key] = [...reactions[key], myName];
+        }
+        return { ...m, reactions };
+      }
+      return m;
+    });
+    setChatLog(updated);
+    localStorage.setItem("ar_chat", JSON.stringify(updated));
+    fbSet("plaza", { chat: updated });
+  };
+
+  // ---- Reply (#6) ----
+  const replyTarget = (() => { try { return JSON.parse(localStorage.getItem("ar_reply") || "null"); } catch { return null; } })();
+  const setReplyTarget = (msg) => {
+    localStorage.setItem("ar_reply", msg ? JSON.stringify({ user: msg.user, text: msg.text?.slice(0, 40), time: msg.time }) : "null");
+    setChatLog(prev => [...prev]); // trigger re-render
+  };
+  const sendChatWithReply = () => {
+    const reply = replyTarget;
+    sendChat(reply ? { replyTo: reply } : {});
+    setReplyTarget(null);
+  };
+
+  // ---- Avatar & Status (#11) ----
+  const myAvatar = (() => { try { return localStorage.getItem("ar_avatar_" + myName) || "🐱"; } catch { return "🐱"; } })();
+  const myStatusMsg = (() => { try { return localStorage.getItem("ar_status_" + myName) || ""; } catch { return ""; } })();
+
+  // ---- Panel states (using localStorage to persist across re-renders) ----
+  const getPanel = () => { try { return localStorage.getItem("ar_plaza_panel") || ""; } catch { return ""; } };
+  const setPanel = (p) => { localStorage.setItem("ar_plaza_panel", p); setChatLog(prev => [...prev]); };
+  const activePanel = getPanel();
+
+  // ---- Plaza theme (#14) ----
+  const plazaThemeId = (() => { try { return localStorage.getItem("ar_plaza_theme") || "default"; } catch { return "default"; } })();
+  const plazaTheme = PLAZA_THEMES.find(t => t.id === plazaThemeId) || PLAZA_THEMES[0];
+
+  // ---- Shared timer (#22) ----
+  const getTimer = () => { try { return JSON.parse(localStorage.getItem("ar_timer") || "null"); } catch { return null; } };
+  const timer = getTimer();
+  const timerRemaining = timer ? Math.max(0, timer.end - now) : 0;
+
+  // ---- Daily challenge (#9) ----
+  const getChallenge = () => { try { return JSON.parse(localStorage.getItem("ar_challenge") || "null"); } catch { return null; } };
+  const challenge = getChallenge();
+
+  // ---- Ranking (#23) ----
+  const getRanking = () => {
+    const stats = {};
+    chatLog.forEach(m => { stats[m.user] = (stats[m.user] || 0) + 1; });
+    return Object.entries(stats).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  };
+
+  // ---- Praise (#13) ----
+  const getPraises = () => { try { return JSON.parse(localStorage.getItem("ar_praises") || "{}"); } catch { return {}; } };
+  const sendPraise = (targetName, sticker) => {
+    const praises = getPraises();
+    if (!praises[targetName]) praises[targetName] = [];
+    praises[targetName].push({ from: myName, sticker, time: Date.now() });
+    localStorage.setItem("ar_praises", JSON.stringify(praises));
+    fbSet("plaza", { praises });
+    showMsg(`${sticker.emoji} ${targetName}에게 "${sticker.label}" 전송!`, 2000);
+    playSfx("success");
+    setPanel("");
+  };
+
+  // ---- Chat log export (#18) ----
+  const exportLog = () => {
+    const lines = filteredLog.map(m => {
+      const t = new Date(m.time).toLocaleString("ko-KR");
+      return `[${t}] ${m.user}: ${m.text}${m.type === "poll" ? " (투표)" : ""}${m.type === "sos" ? " (도와줘!)" : ""}`;
+    }).join("\n");
+    const blob = new Blob([lines], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `광장_로그_${new Date().toLocaleDateString("ko-KR")}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showMsg("📋 로그 저장 완료!", 1500);
+  };
+
+  // ---- Whiteboard (#21) ----
+  const getWhiteboardData = () => { try { return JSON.parse(localStorage.getItem("ar_wb") || "null"); } catch { return null; } };
+
+  // ---- Poll helpers (#2) ----
+  const votePoll = (msgTime, optIndex) => {
+    const updated = chatLog.map(m => {
+      if (m.time === msgTime && m.type === "poll") {
+        const votes = { ...(m.votes || {}) };
+        // Remove previous vote
+        Object.keys(votes).forEach(k => {
+          if (votes[k]?.includes(myName)) {
+            votes[k] = votes[k].filter(n => n !== myName);
+          }
+        });
+        if (!votes[optIndex]) votes[optIndex] = [];
+        votes[optIndex].push(myName);
+        return { ...m, votes };
+      }
+      return m;
+    });
+    setChatLog(updated);
+    localStorage.setItem("ar_chat", JSON.stringify(updated));
+    fbSet("plaza", { chat: updated });
+  };
+
+  // ---- Message renderer helper ----
+  const renderMsgContent = (msg) => {
+    // Poll message (#2)
+    if (msg.type === "poll") {
+      const totalVotes = Object.values(msg.votes || {}).reduce((s, arr) => s + (arr?.length || 0), 0);
+      return (
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: PASTEL.lavender }}>📊 {msg.question}</div>
+          {msg.options?.map((opt, i) => {
+            const voteCount = (msg.votes?.[i] || []).length;
+            const pct = totalVotes > 0 ? Math.round(voteCount / totalVotes * 100) : 0;
+            const voted = (msg.votes?.[i] || []).includes(myName);
+            return (
+              <button key={i} onClick={() => votePoll(msg.time, i)} style={{
+                display: "block", width: "100%", marginBottom: 4, padding: "6px 10px",
+                borderRadius: 8, border: voted ? `2px solid ${PASTEL.coral}` : `1px solid ${theme.border}`,
+                background: `linear-gradient(90deg, ${PASTEL.coral}${voted ? "30" : "12"} ${pct}%, transparent ${pct}%)`,
+                color: theme.text, fontSize: 11, textAlign: "left", cursor: "pointer",
+                transition: "all 0.2s",
               }}>
-                {["❄", "❅", "❆", "✦"][i % 4]}
+                {opt} <span style={{ float: "right", color: theme.textSec, fontSize: 10 }}>{voteCount}표 ({pct}%)</span>
+              </button>
+            );
+          })}
+          <div style={{ fontSize: 9, color: theme.textSec, marginTop: 4 }}>총 {totalVotes}명 참여</div>
+        </div>
+      );
+    }
+    // SOS message (#8)
+    if (msg.type === "sos") {
+      return (
+        <div style={{ padding: "6px 0" }}>
+          <div style={{ fontSize: 20, textAlign: "center", marginBottom: 4 }}>🆘</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#f44336", textAlign: "center" }}>도와주세요!</div>
+          {msg.text && <div style={{ fontSize: 11, color: theme.text, marginTop: 4 }}>{renderMathText(msg.text)}</div>}
+        </div>
+      );
+    }
+    // Problem card (#7)
+    if (msg.type === "problem_card") {
+      return (
+        <div style={{ padding: "6px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+            <span style={{ fontSize: 16 }}>📝</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: PASTEL.coral }}>문제 공유</span>
+          </div>
+          <div style={{ fontSize: 12, color: theme.text, padding: "8px 10px", background: `${PASTEL.yellow}20`, borderRadius: 8, border: `1px solid ${PASTEL.yellow}` }}>
+            {renderMathText(msg.text)}
+          </div>
+          {msg.hint && <div style={{ fontSize: 10, color: theme.textSec, marginTop: 4 }}>💡 {msg.hint}</div>}
+        </div>
+      );
+    }
+    // Whiteboard image (#21)
+    if (msg.type === "whiteboard") {
+      return (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: PASTEL.sky, marginBottom: 4 }}>🎨 화이트보드</div>
+          {msg.imageData && <img src={msg.imageData} alt="whiteboard" style={{ width: "100%", maxWidth: 250, borderRadius: 8, border: `1px solid ${theme.border}` }} />}
+          {msg.text && <div style={{ fontSize: 11, color: theme.text, marginTop: 4 }}>{msg.text}</div>}
+        </div>
+      );
+    }
+    // Praise notification (#13)
+    if (msg.type === "praise") {
+      return (
+        <div style={{ textAlign: "center", padding: "4px 0" }}>
+          <span style={{ fontSize: 24 }}>{msg.stickerEmoji}</span>
+          <div style={{ fontSize: 11, color: PASTEL.coral, fontWeight: 700 }}>{msg.from} → {msg.to}</div>
+          <div style={{ fontSize: 10, color: theme.textSec }}>{msg.stickerLabel}</div>
+        </div>
+      );
+    }
+    // Challenge (#9)
+    if (msg.type === "challenge") {
+      return (
+        <div style={{ padding: "6px 0" }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: PASTEL.coral, textAlign: "center" }}>⚡ 오늘의 도전 문제</div>
+          <div style={{ fontSize: 12, color: theme.text, marginTop: 6, padding: "8px 10px", background: `${PASTEL.coral}10`, borderRadius: 8, border: `1px dashed ${PASTEL.coral}` }}>
+            {renderMathText(msg.text)}
+          </div>
+        </div>
+      );
+    }
+    // Normal text with math support (#20)
+    return (
+      <p style={{ fontSize: 13, color: theme.text, margin: 0, lineHeight: 1.5, fontFamily: "'Noto Serif KR', serif" }}>
+        {renderMathText(msg.text)}
+      </p>
+    );
+  };
+
+  // ============================================================
+  // RENDER
+  // ============================================================
+  return (
+    <div style={{
+      height: "100vh", maxHeight: "100dvh", display: "flex", flexDirection: "column",
+      background: plazaTheme.bg || theme.bg, fontFamily: "'Noto Serif KR', serif", position: "relative",
+    }}>
+
+      {/* Freeze overlay with snowfall */}
+      {isFrozen && (
+        <div style={{
+          position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+          background: "linear-gradient(180deg, rgba(181,213,232,0.08) 0%, rgba(181,213,232,0.15) 100%)",
+          pointerEvents: "none", zIndex: 50,
+        }}>
+          {[...Array(12)].map((_, i) => (
+            <div key={i} style={{
+              position: "absolute", left: `${8 + (i * 7.5) % 85}%`, top: `-${10 + (i * 13) % 20}px`,
+              fontSize: [10, 8, 12, 9, 11, 7, 10, 8, 13, 9, 11, 8][i],
+              opacity: 0.3 + (i % 3) * 0.15,
+              animation: `snowfall ${4 + (i % 3) * 2}s linear ${(i * 0.5) % 3}s infinite`,
+            }}>
+              {["❄", "❅", "❆", "✦"][i % 4]}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <style>{`
+        @keyframes snowfall {
+          0% { transform: translateY(-20px) rotate(0deg); opacity: 0; }
+          10% { opacity: 0.5; }
+          90% { opacity: 0.3; }
+          100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
+        }
+        @keyframes freezePulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(181,213,232,0.3); }
+          50% { box-shadow: 0 0 12px 4px rgba(181,213,232,0.15); }
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+        @keyframes timerPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .plaza-content { position: relative; }
+        @media print { .plaza-content { display: none !important; } }
+        .plaza-btn:active { transform: scale(0.95); }
+        .reaction-btn:hover { transform: scale(1.2); }
+      `}</style>
+
+      {/* ======== HEADER ======== */}
+      <div style={{
+        flexShrink: 0, display: "flex", alignItems: "center", padding: "12px 16px",
+        borderBottom: `1px solid ${isFrozen ? PASTEL.sky : theme.border}`,
+        animation: isFrozen ? "freezePulse 3s ease infinite" : "none",
+      }}>
+        <button onClick={() => { playSfx("click"); setScreen("menu"); }}
+          style={{ background: "none", border: "none", color: theme.textSec, fontSize: 13, cursor: "pointer" }}>← 메뉴</button>
+        <span style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 700, color: isFrozen ? PASTEL.sky : theme.text, fontFamily: "'Playfair Display', serif" }}>
+          {isFrozen ? "🧊 광장" : `${plazaTheme.emoji} 광장`}
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {/* Tools button */}
+          <button onClick={() => setPanel(activePanel === "tools" ? "" : "tools")}
+            style={{ background: activePanel === "tools" ? `${PASTEL.coral}20` : "none", border: `1px solid ${activePanel === "tools" ? PASTEL.coral : theme.border}`, borderRadius: 8, padding: "3px 7px", fontSize: 11, cursor: "pointer", color: theme.textSec }}>
+            ≡
+          </button>
+          {userRole === "admin" && (
+            <button onClick={toggleFreeze} style={{
+              background: isFrozen ? `${PASTEL.sky}25` : "none",
+              border: `1px solid ${isFrozen ? PASTEL.sky : theme.border}`,
+              borderRadius: 8, padding: "3px 8px", fontSize: 11, cursor: "pointer",
+              color: isFrozen ? PASTEL.sky : theme.textSec,
+            }}>
+              {isFrozen ? "🔥" : "🧊"}
+            </button>
+          )}
+          <span style={{ fontSize: 11, color: PASTEL.mint }}>
+            <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 3, background: PASTEL.mint, marginRight: 4 }} />
+            {onlineUsers.length}
+          </span>
+        </div>
+      </div>
+
+      {/* ======== TOOLS PANEL ======== */}
+      {activePanel === "tools" && (
+        <div style={{ flexShrink: 0, padding: "8px 12px", borderBottom: `1px solid ${theme.border}`, background: `${theme.card}ee`, animation: "fadeIn 0.2s ease" }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {/* Poll button (#2) */}
+            <button onClick={() => setPanel("poll")} className="plaza-btn" style={toolBtnStyle(theme)}>📊 투표</button>
+            {/* SOS button (#8) */}
+            <button onClick={() => {
+              sendChat({ type: "sos" });
+              setPanel("");
+            }} className="plaza-btn" style={toolBtnStyle(theme)}>🆘 도와줘!</button>
+            {/* Problem share (#7) */}
+            <button onClick={() => setPanel("problem")} className="plaza-btn" style={toolBtnStyle(theme)}>📝 문제공유</button>
+            {/* Whiteboard (#21) */}
+            <button onClick={() => setPanel("whiteboard")} className="plaza-btn" style={toolBtnStyle(theme)}>🎨 보드</button>
+            {/* Timer (#22) */}
+            {userRole === "admin" && <button onClick={() => setPanel("timer")} className="plaza-btn" style={toolBtnStyle(theme)}>⏱️ 타이머</button>}
+            {/* Challenge (#9) */}
+            {userRole === "admin" && <button onClick={() => setPanel("challenge")} className="plaza-btn" style={toolBtnStyle(theme)}>⚡ 도전문제</button>}
+            {/* Theme (#14) */}
+            {userRole === "admin" && <button onClick={() => setPanel("theme")} className="plaza-btn" style={toolBtnStyle(theme)}>🎨 테마</button>}
+            {/* Teacher status (#24) */}
+            {userRole === "admin" && <button onClick={() => setPanel("teacherStatus")} className="plaza-btn" style={toolBtnStyle(theme)}>📡 상태</button>}
+            {/* Profile (#11) */}
+            <button onClick={() => setPanel("profile")} className="plaza-btn" style={toolBtnStyle(theme)}>😺 프로필</button>
+            {/* Ranking (#23) */}
+            <button onClick={() => setPanel("ranking")} className="plaza-btn" style={toolBtnStyle(theme)}>🏆 랭킹</button>
+            {/* Export (#18) */}
+            {userRole === "admin" && <button onClick={() => { exportLog(); setPanel(""); }} className="plaza-btn" style={toolBtnStyle(theme)}>📋 저장</button>}
+          </div>
+        </div>
+      )}
+
+      {/* ======== SUB-PANELS ======== */}
+
+      {/* Poll creation panel (#2) */}
+      {activePanel === "poll" && (
+        <div style={subPanelStyle(theme)}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>📊 투표 만들기</div>
+          <input id="poll-q" placeholder="질문" autoComplete="off" style={inputStyle(theme)} />
+          <input id="poll-a" placeholder="보기 (쉼표로 구분: A, B, C)" autoComplete="off" style={{ ...inputStyle(theme), marginTop: 6 }} />
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <button onClick={() => {
+              const q = document.getElementById("poll-q")?.value;
+              const opts = document.getElementById("poll-a")?.value?.split(",").map(s => s.trim()).filter(Boolean);
+              if (!q || !opts?.length || opts.length < 2) { showMsg("질문과 보기 2개 이상 입력!", 1500); return; }
+              const newMsg = { user: myName, role: userRole, type: "poll", question: q, options: opts, votes: {}, time: Date.now(), reactions: {} };
+              const updated = [...chatLog, newMsg].slice(-200);
+              setChatLog(updated);
+              localStorage.setItem("ar_chat", JSON.stringify(updated));
+              fbSet("plaza", { chat: updated });
+              setPanel("");
+              setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+            }} style={actionBtnStyle(PASTEL.coral)}>올리기</button>
+            <button onClick={() => setPanel("")} style={actionBtnStyle(theme.textSec)}>취소</button>
+          </div>
+        </div>
+      )}
+
+      {/* Problem share panel (#7) */}
+      {activePanel === "problem" && (
+        <div style={subPanelStyle(theme)}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>📝 문제 공유</div>
+          <input id="prob-text" placeholder="문제 내용 ($x^2$ 수식 가능)" autoComplete="off" style={inputStyle(theme)} />
+          <input id="prob-hint" placeholder="힌트 (선택)" autoComplete="off" style={{ ...inputStyle(theme), marginTop: 6 }} />
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <button onClick={() => {
+              const text = document.getElementById("prob-text")?.value;
+              if (!text) { showMsg("문제를 입력하세요!", 1500); return; }
+              const hint = document.getElementById("prob-hint")?.value || "";
+              const newMsg = { user: myName, role: userRole, type: "problem_card", text, hint, time: Date.now(), reactions: {} };
+              const updated = [...chatLog, newMsg].slice(-200);
+              setChatLog(updated);
+              localStorage.setItem("ar_chat", JSON.stringify(updated));
+              fbSet("plaza", { chat: updated });
+              setPanel("");
+              setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+            }} style={actionBtnStyle(PASTEL.coral)}>공유</button>
+            <button onClick={() => setPanel("")} style={actionBtnStyle(theme.textSec)}>취소</button>
+          </div>
+        </div>
+      )}
+
+      {/* Timer panel (#22) */}
+      {activePanel === "timer" && (
+        <div style={subPanelStyle(theme)}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>⏱️ 공유 타이머</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {[1, 3, 5, 10, 15].map(m => (
+              <button key={m} onClick={() => {
+                const timerData = { end: Date.now() + m * 60000, label: `${m}분 타이머`, started: Date.now() };
+                localStorage.setItem("ar_timer", JSON.stringify(timerData));
+                fbSet("plaza", { timer: timerData });
+                showMsg(`⏱️ ${m}분 타이머 시작!`, 2000);
+                setPanel("");
+                setChatLog(prev => [...prev]);
+              }} style={{ ...actionBtnStyle(PASTEL.coral), padding: "6px 12px" }}>{m}분</button>
+            ))}
+          </div>
+          <button onClick={() => {
+            localStorage.removeItem("ar_timer");
+            fbSet("plaza", { timer: null });
+            setPanel("");
+            setChatLog(prev => [...prev]);
+          }} style={{ ...actionBtnStyle(theme.textSec), marginTop: 6 }}>타이머 종료</button>
+        </div>
+      )}
+
+      {/* Challenge panel (#9) */}
+      {activePanel === "challenge" && (
+        <div style={subPanelStyle(theme)}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>⚡ 오늘의 도전 문제</div>
+          <textarea id="challenge-text" placeholder="도전 문제 입력 ($x^2$ 수식 가능)" rows={3} style={{ ...inputStyle(theme), resize: "vertical" }} />
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <button onClick={() => {
+              const text = document.getElementById("challenge-text")?.value;
+              if (!text) { showMsg("문제를 입력하세요!", 1500); return; }
+              const newMsg = { user: myName, role: userRole, type: "challenge", text, time: Date.now(), reactions: {}, pinned: true };
+              const updated = [...chatLog, newMsg].slice(-200);
+              setChatLog(updated);
+              localStorage.setItem("ar_chat", JSON.stringify(updated));
+              fbSet("plaza", { chat: updated });
+              setPanel("");
+              setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+            }} style={actionBtnStyle(PASTEL.coral)}>출제</button>
+            <button onClick={() => setPanel("")} style={actionBtnStyle(theme.textSec)}>취소</button>
+          </div>
+        </div>
+      )}
+
+      {/* Theme panel (#14) */}
+      {activePanel === "theme" && (
+        <div style={subPanelStyle(theme)}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>🎨 광장 테마</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {PLAZA_THEMES.map(t => (
+              <button key={t.id} onClick={() => {
+                localStorage.setItem("ar_plaza_theme", t.id);
+                fbSet("settings", { plazaTheme: t.id });
+                showMsg(`${t.emoji} ${t.name} 테마 적용!`, 1500);
+                setPanel("");
+              }} style={{
+                padding: "6px 12px", borderRadius: 10,
+                border: plazaThemeId === t.id ? `2px solid ${PASTEL.coral}` : `1px solid ${theme.border}`,
+                background: plazaThemeId === t.id ? `${PASTEL.coral}15` : theme.card,
+                fontSize: 11, cursor: "pointer", color: theme.text,
+              }}>
+                {t.emoji} {t.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Teacher status panel (#24) */}
+      {activePanel === "teacherStatus" && (
+        <div style={subPanelStyle(theme)}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>📡 선생님 상태 설정</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {TEACHER_STATUSES.map(s => {
+              const current = (() => { try { return localStorage.getItem("ar_teacher_status") || "online"; } catch { return "online"; } })();
+              return (
+                <button key={s.id} onClick={() => {
+                  localStorage.setItem("ar_teacher_status", s.id);
+                  fbSet("plaza", { teacherStatus: s.id });
+                  showMsg(`${s.emoji} ${s.label}`, 1500);
+                  setPanel("");
+                  setChatLog(prev => [...prev]);
+                }} style={{
+                  padding: "6px 12px", borderRadius: 10,
+                  border: current === s.id ? `2px solid ${s.color}` : `1px solid ${theme.border}`,
+                  background: current === s.id ? `${s.color}20` : theme.card,
+                  fontSize: 11, cursor: "pointer", color: theme.text,
+                }}>
+                  {s.emoji} {s.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Profile panel (#11) */}
+      {activePanel === "profile" && (
+        <div style={subPanelStyle(theme)}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>😺 프로필 설정</div>
+          <div style={{ fontSize: 11, color: theme.textSec, marginBottom: 6 }}>아바타 선택</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+            {AVATAR_ICONS.map(a => (
+              <button key={a} onClick={() => {
+                localStorage.setItem("ar_avatar_" + myName, a);
+                showMsg(`${a} 아바타 변경!`, 1000);
+                setChatLog(prev => [...prev]);
+              }} style={{
+                fontSize: 18, padding: "4px 6px", borderRadius: 8, cursor: "pointer",
+                border: myAvatar === a ? `2px solid ${PASTEL.coral}` : `1px solid ${theme.border}`,
+                background: myAvatar === a ? `${PASTEL.coral}15` : "transparent",
+              }}>{a}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: theme.textSec, marginBottom: 4 }}>상태 메시지</div>
+          <input id="status-msg" defaultValue={myStatusMsg} placeholder="열공 중 🔥" maxLength={20} autoComplete="off"
+            style={inputStyle(theme)} />
+          <button onClick={() => {
+            const v = document.getElementById("status-msg")?.value || "";
+            localStorage.setItem("ar_status_" + myName, v);
+            showMsg("상태 메시지 저장!", 1000);
+            setPanel("");
+          }} style={{ ...actionBtnStyle(PASTEL.coral), marginTop: 6 }}>저장</button>
+        </div>
+      )}
+
+      {/* Ranking panel (#23) */}
+      {activePanel === "ranking" && (
+        <div style={subPanelStyle(theme)}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>🏆 오늘의 랭킹</div>
+          {getRanking().length === 0 && <div style={{ fontSize: 11, color: theme.textSec }}>아직 데이터가 없어요</div>}
+          {getRanking().map(([name, count], i) => (
+            <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+              <span style={{ fontSize: 14, width: 24, textAlign: "center" }}>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`}</span>
+              <span style={{ fontSize: 12, color: theme.text, flex: 1 }}>{name}</span>
+              <span style={{ fontSize: 11, color: PASTEL.coral, fontWeight: 700 }}>{count}회</span>
+            </div>
+          ))}
+          {/* Praise counts */}
+          {(() => {
+            const praises = getPraises();
+            const entries = Object.entries(praises).filter(([, arr]) => arr.length > 0).sort((a, b) => b[1].length - a[1].length).slice(0, 3);
+            if (entries.length === 0) return null;
+            return (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: PASTEL.lavender, marginBottom: 4 }}>🌟 칭찬왕</div>
+                {entries.map(([name, arr]) => (
+                  <div key={name} style={{ fontSize: 11, color: theme.text, padding: "2px 0" }}>
+                    {name}: {arr.length}개 받음
+                  </div>
+                ))}
               </div>
+            );
+          })()}
+          <button onClick={() => setPanel("")} style={{ ...actionBtnStyle(theme.textSec), marginTop: 8 }}>닫기</button>
+        </div>
+      )}
+
+      {/* Praise panel (#13) */}
+      {activePanel.startsWith("praise:") && (() => {
+        const targetName = activePanel.split(":")[1];
+        return (
+          <div style={subPanelStyle(theme)}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>🌟 {targetName}에게 칭찬 보내기</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {PRAISE_STICKERS.map(s => (
+                <button key={s.label} onClick={() => {
+                  sendPraise(targetName, s);
+                  // Also post as chat message
+                  const newMsg = { user: myName, role: userRole, type: "praise", from: myName, to: targetName, stickerEmoji: s.emoji, stickerLabel: s.label, time: Date.now(), reactions: {} };
+                  const updated = [...chatLog, newMsg].slice(-200);
+                  setChatLog(updated);
+                  localStorage.setItem("ar_chat", JSON.stringify(updated));
+                  fbSet("plaza", { chat: updated });
+                }} style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+                  padding: "8px 12px", borderRadius: 12, border: `1px solid ${theme.border}`,
+                  background: theme.card, cursor: "pointer", fontSize: 11,
+                }}>
+                  <span style={{ fontSize: 22 }}>{s.emoji}</span>
+                  <span style={{ color: theme.textSec, fontSize: 10 }}>{s.label}</span>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setPanel("")} style={{ ...actionBtnStyle(theme.textSec), marginTop: 8 }}>취소</button>
+          </div>
+        );
+      })()}
+
+      {/* Whiteboard panel (#21) */}
+      {activePanel === "whiteboard" && (
+        <div style={subPanelStyle(theme)}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>🎨 화이트보드</div>
+          <canvas id="wb-canvas" width={280} height={180} style={{
+            border: `1px solid ${theme.border}`, borderRadius: 8, background: "#fff", cursor: "crosshair", touchAction: "none",
+          }}
+            onPointerDown={e => {
+              const c = document.getElementById("wb-canvas");
+              const ctx2 = c?.getContext("2d");
+              if (!ctx2) return;
+              const rect = c.getBoundingClientRect();
+              ctx2._drawing = true;
+              ctx2.beginPath();
+              ctx2.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+              ctx2.strokeStyle = "#333";
+              ctx2.lineWidth = 2;
+              ctx2.lineCap = "round";
+              c.setPointerCapture(e.pointerId);
+            }}
+            onPointerMove={e => {
+              const c = document.getElementById("wb-canvas");
+              const ctx2 = c?.getContext("2d");
+              if (!ctx2?._drawing) return;
+              const rect = c.getBoundingClientRect();
+              ctx2.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+              ctx2.stroke();
+            }}
+            onPointerUp={() => {
+              const c = document.getElementById("wb-canvas");
+              const ctx2 = c?.getContext("2d");
+              if (ctx2) ctx2._drawing = false;
+            }}
+          />
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <button onClick={() => {
+              const c = document.getElementById("wb-canvas");
+              if (!c) return;
+              const imageData = c.toDataURL("image/png", 0.6);
+              const newMsg = { user: myName, role: userRole, type: "whiteboard", imageData, text: "", time: Date.now(), reactions: {} };
+              const updated = [...chatLog, newMsg].slice(-200);
+              setChatLog(updated);
+              localStorage.setItem("ar_chat", JSON.stringify(updated));
+              fbSet("plaza", { chat: updated });
+              setPanel("");
+              setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+            }} style={actionBtnStyle(PASTEL.coral)}>전송</button>
+            <button onClick={() => {
+              const c = document.getElementById("wb-canvas");
+              const ctx2 = c?.getContext("2d");
+              if (ctx2) ctx2.clearRect(0, 0, 280, 180);
+            }} style={actionBtnStyle(PASTEL.sky)}>지우기</button>
+            <button onClick={() => setPanel("")} style={actionBtnStyle(theme.textSec)}>취소</button>
+          </div>
+        </div>
+      )}
+
+      {/* ======== SHARED TIMER BAR (#22) ======== */}
+      {timer && timerRemaining > 0 && (
+        <div style={{
+          flexShrink: 0, padding: "6px 16px", borderBottom: `1px solid ${theme.border}`,
+          background: `${PASTEL.coral}12`, display: "flex", alignItems: "center", gap: 8,
+          animation: "timerPulse 2s ease infinite",
+        }}>
+          <span style={{ fontSize: 16 }}>⏱️</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, color: theme.textSec }}>{timer.label || "타이머"}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: PASTEL.coral, fontFamily: "'Playfair Display', serif" }}>
+              {Math.floor(timerRemaining / 60000)}:{String(Math.floor((timerRemaining % 60000) / 1000)).padStart(2, "0")}
+            </div>
+          </div>
+          <div style={{ width: 100, height: 4, borderRadius: 2, background: `${theme.border}` }}>
+            <div style={{
+              height: 4, borderRadius: 2, background: PASTEL.coral,
+              width: `${timer.started ? (1 - timerRemaining / (timer.end - timer.started)) * 100 : 0}%`,
+              transition: "width 1s linear",
+            }} />
+          </div>
+        </div>
+      )}
+
+      {/* ======== PINNED MESSAGES (#3) ======== */}
+      {pinnedMsgs.length > 0 && (
+        <div style={{ flexShrink: 0, padding: "6px 16px", borderBottom: `1px solid ${theme.border}`, background: `${PASTEL.yellow}12` }}>
+          {pinnedMsgs.slice(-3).map((m, i) => (
+            <div key={i} style={{ fontSize: 11, color: theme.text, display: "flex", alignItems: "center", gap: 4, padding: "2px 0" }}>
+              <span>📌</span>
+              <span style={{ fontWeight: 600 }}>{m.user}:</span>
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.text?.slice(0, 50)}</span>
+              {userRole === "admin" && <button onClick={() => togglePin(m.time)} style={{ background: "none", border: "none", fontSize: 9, color: theme.textSec, cursor: "pointer" }}>✕</button>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ======== ONLINE USERS BAR ======== */}
+      <div style={{ flexShrink: 0, padding: "8px 16px", borderBottom: `1px solid ${theme.border}` }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: recentCalls.length > 0 ? 6 : 0 }}>
+          {/* Teacher (#24 enhanced) */}
+          {teacherOnline ? (() => {
+            const ts = TEACHER_STATUSES.find(s => s.id === teacherStatus) || TEACHER_STATUSES[0];
+            return (
+              <span style={{
+                fontSize: 10, padding: "4px 10px", borderRadius: 10,
+                background: `${ts.color}15`, color: ts.color, fontWeight: 700,
+                display: "inline-flex", alignItems: "center", gap: 3,
+              }}>
+                <span style={{ fontSize: 8 }}>{ts.emoji}</span> 선생님 · {ts.label}
+              </span>
+            );
+          })() : (
+            <button onClick={() => {
+              if (!hasPerm("plaza_call")) { showMsg("호출 권한이 없어요", 1500); return; }
+              callUser(teacherName);
+              showMsg(`${teacherName}을(를) 호출했어요!`, 2000);
+              if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
+            }} style={{
+              fontSize: 10, padding: "4px 10px", borderRadius: 10, border: `1px dashed ${PASTEL.coral}`,
+              background: `${PASTEL.coral}08`, color: PASTEL.coral, fontWeight: 700, cursor: "pointer",
+            }}>
+              📢 선생님 호출
+            </button>
+          )}
+          {/* Other online users with avatar (#11) */}
+          {onlineUsers.filter(u => u.role !== "admin").map((u, i) => {
+            const avatar = u.avatar || (() => { try { return localStorage.getItem("ar_avatar_" + u.name) || ""; } catch { return ""; } })();
+            const status = u.status || (() => { try { return localStorage.getItem("ar_status_" + u.name) || ""; } catch { return ""; } })();
+            return (
+              <button key={i} onClick={(e) => {
+                // Show context menu: call or praise
+                if (!hasPerm("plaza_call") && userRole !== "admin") return;
+                // Simple: toggle between call and praise
+                if (e.shiftKey || e.detail > 1) { // Double tap or shift = praise
+                  setPanel("praise:" + u.name);
+                } else {
+                  callUser(u.name);
+                  showMsg(`${u.name}님을 호출했어요!`, 1500);
+                }
+              }} onContextMenu={(e) => {
+                e.preventDefault();
+                setPanel("praise:" + u.name);
+              }}
+              title={status ? `${u.name} · ${status}` : u.name}
+              style={{
+                fontSize: 10, padding: "4px 10px", borderRadius: 10, border: "none", cursor: "pointer",
+                background: `${roleColors[u.role] || theme.textSec}15`,
+                color: roleColors[u.role] || theme.textSec, fontWeight: 600,
+                display: "inline-flex", alignItems: "center", gap: 3,
+              }}>
+                {avatar && <span style={{ fontSize: 12 }}>{avatar}</span>}
+                <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 3, background: PASTEL.mint }} />
+                {u.name}
+                {status && <span style={{ fontSize: 8, opacity: 0.7, maxWidth: 50, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{status}</span>}
+              </button>
+            );
+          })}
+        </div>
+        {recentCalls.length > 0 && (
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {recentCalls.map((c, i) => (
+              <span key={i} style={{ fontSize: 9, color: PASTEL.coral, background: `${PASTEL.coral}08`, padding: "2px 6px", borderRadius: 6 }}>
+                {c.from} → {c.to}
+              </span>
             ))}
           </div>
         )}
+      </div>
 
-        <style>{`
-          @keyframes snowfall {
-            0% { transform: translateY(-20px) rotate(0deg); opacity: 0; }
-            10% { opacity: 0.5; }
-            90% { opacity: 0.3; }
-            100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
-          }
-          @keyframes freezePulse {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(181,213,232,0.3); }
-            50% { box-shadow: 0 0 12px 4px rgba(181,213,232,0.15); }
-          }
-          .plaza-content { position: relative; }
-          @media print { .plaza-content { display: none !important; } }
-        `}</style>
+      {/* ======== CHAT AREA ======== */}
+      <div className="plaza-content" style={{ flex: 1, overflowY: "auto", padding: "12px 16px", WebkitOverflowScrolling: "touch" }}>
+        {filteredLog.length === 0 && (
+          <p style={{ textAlign: "center", color: theme.textSec, fontSize: 13, marginTop: 40 }}>
+            아직 대화가 없어요. 첫 메시지를 보내보세요!
+            <br /><span style={{ fontSize: 10 }}>메시지는 10분 후 자동 삭제됩니다 (고정 제외)</span>
+          </p>
+        )}
+        {filteredLog.map((msg, i) => {
+          const isMe = msg.user === myName;
+          const remaining = msg.pinned ? null : Math.max(0, Math.ceil((10 * 60 * 1000 - (now - msg.time)) / 60000));
+          const reactions = msg.reactions || {};
+          const reactionEntries = Object.entries(reactions).filter(([, arr]) => arr?.length > 0);
 
-        {/* Header */}
-        <div style={{
-          flexShrink: 0, display: "flex", alignItems: "center", padding: "14px 20px",
-          borderBottom: `1px solid ${isFrozen ? PASTEL.sky : theme.border}`,
-          animation: isFrozen ? "freezePulse 3s ease infinite" : "none",
-        }}>
-          <button onClick={() => { playSfx("click"); setScreen("menu"); }} style={{ background: "none", border: "none", color: theme.textSec, fontSize: 13, cursor: "pointer" }}>← 메뉴</button>
-          <span style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 700, color: isFrozen ? PASTEL.sky : theme.text, fontFamily: "'Playfair Display', serif" }}>
-            {isFrozen ? "🧊 광장 (얼음)" : "광장"}
-          </span>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {userRole === "admin" && (
-              <button onClick={toggleFreeze} style={{
-                background: isFrozen ? `${PASTEL.sky}25` : "none",
-                border: `1px solid ${isFrozen ? PASTEL.sky : theme.border}`,
-                borderRadius: 8, padding: "3px 8px", fontSize: 11, cursor: "pointer",
-                color: isFrozen ? PASTEL.sky : theme.textSec,
-                transition: "all 0.3s ease",
-              }}>
-                {isFrozen ? "🔥" : "🧊"}
-              </button>
-            )}
-            <span style={{ fontSize: 11, color: PASTEL.mint }}>
-              <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 3, background: PASTEL.mint, marginRight: 4 }} />
-              {onlineUsers.length}
-            </span>
-          </div>
-        </div>
+          return (
+            <div key={`${msg.time}-${i}`} style={{
+              display: "flex", flexDirection: isMe ? "row-reverse" : "row",
+              marginBottom: 10, animation: "fadeIn 0.3s ease",
+            }}>
+              {/* Avatar (#11) */}
+              {!isMe && (
+                <div style={{ fontSize: 16, marginRight: 6, marginTop: 2, flexShrink: 0 }}>
+                  {(() => {
+                    const a = (() => { try { return localStorage.getItem("ar_avatar_" + msg.user) || ""; } catch { return ""; } })();
+                    return a || ROLES[msg.role]?.charAt(0) || "💬";
+                  })()}
+                </div>
+              )}
 
-        {/* Online users bar */}
-        <div style={{ flexShrink: 0, padding: "8px 16px", borderBottom: `1px solid ${theme.border}` }}>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: recentCalls.length > 0 ? 6 : 0 }}>
-            {teacherOnline ? (
-              <span style={{ fontSize: 10, padding: "4px 10px", borderRadius: 10, background: `${PASTEL.coral}15`, color: PASTEL.coral, fontWeight: 700 }}>
-                <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 3, background: PASTEL.mint, marginRight: 3 }} />
-                선생님
-              </span>
-            ) : (
-              <button onClick={() => {
-                if (!hasPerm("plaza_call")) { showMsg("호출 권한이 없어요", 1500); return; }
-                callUser(teacherName);
-                showMsg(`${teacherName}을(를) 호출했어요!`, 2000);
-                if ("Notification" in window && Notification.permission === "default") {
-                  Notification.requestPermission();
-                }
-              }} style={{
-                fontSize: 10, padding: "4px 10px", borderRadius: 10, border: `1px dashed ${PASTEL.coral}`,
-                background: `${PASTEL.coral}08`, color: PASTEL.coral, fontWeight: 700, cursor: "pointer",
-              }}>
-                📢 선생님 호출
-              </button>
-            )}
-            {onlineUsers.filter(u => u.role !== "admin").map((u, i) => (
-              <button key={i} onClick={() => {
-                if (!hasPerm("plaza_call")) return;
-                callUser(u.name);
-                showMsg(`${u.name}님을 호출했어요!`, 1500);
-              }} style={{
-                fontSize: 10, padding: "4px 10px", borderRadius: 10, border: "none", cursor: hasPerm("plaza_call") ? "pointer" : "default",
-                background: `${roleColors[u.role] || theme.textSec}15`,
-                color: roleColors[u.role] || theme.textSec, fontWeight: 600,
-              }}>
-                <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: 3, background: PASTEL.mint, marginRight: 3 }} />
-                {u.name}
-              </button>
-            ))}
-          </div>
-          {recentCalls.length > 0 && (
-            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {recentCalls.map((c, i) => (
-                <span key={i} style={{ fontSize: 9, color: PASTEL.coral, background: `${PASTEL.coral}08`, padding: "2px 6px", borderRadius: 6 }}>
-                  {c.from} → {c.to}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
+              <div style={{ maxWidth: "78%", minWidth: 0 }}>
+                {/* Reply reference (#6) */}
+                {msg.replyTo && (
+                  <div style={{
+                    fontSize: 10, color: theme.textSec, padding: "2px 8px", marginBottom: 2,
+                    borderLeft: `2px solid ${PASTEL.lavender}`, marginLeft: isMe ? "auto" : 0,
+                  }}>
+                    ↩ {msg.replyTo.user}: {msg.replyTo.text}
+                  </div>
+                )}
 
-        {/* Chat area */}
-        <div className="plaza-content" style={{ flex: 1, overflowY: "auto", padding: "12px 16px", WebkitOverflowScrolling: "touch" }}>
-          {filteredLog.length === 0 && (
-            <p style={{ textAlign: "center", color: theme.textSec, fontSize: 13, marginTop: 40 }}>
-              아직 대화가 없어요. 첫 메시지를 보내보세요!
-              <br /><span style={{ fontSize: 10 }}>메시지는 10분 후 자동 삭제됩니다</span>
-            </p>
-          )}
-          {filteredLog.map((msg, i) => {
-            const isMe = msg.user === myName;
-            const remaining = Math.max(0, Math.ceil((10 * 60 * 1000 - (now - msg.time)) / 60000));
-            return (
-              <div key={`${msg.time}-${i}`} style={{
-                display: "flex", flexDirection: isMe ? "row-reverse" : "row",
-                marginBottom: 8, animation: "fadeIn 0.3s ease",
-              }}>
                 <div style={{
-                  maxWidth: "75%", padding: "10px 14px", borderRadius: 14,
-                  background: isMe ? `${PASTEL.coral}20` : theme.card,
-                  border: `1px solid ${isMe ? PASTEL.coral : theme.border}`,
+                  padding: "10px 14px", borderRadius: 14,
+                  background: msg.pinned ? `${PASTEL.yellow}20` : isMe ? `${PASTEL.coral}20` : theme.card,
+                  border: `1px solid ${msg.pinned ? PASTEL.yellow : isMe ? PASTEL.coral : theme.border}`,
                 }}>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
+                  {/* Message header */}
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
+                    {msg.pinned && <span style={{ fontSize: 10 }}>📌</span>}
                     <span style={{
                       fontSize: 9, padding: "1px 6px", borderRadius: 4,
                       background: `${roleColors[msg.role] || theme.textSec}20`,
@@ -921,55 +1697,143 @@ export function renderPlazaScreen(ctx) {
                     <span style={{ fontSize: 9, color: theme.textSec }}>
                       {new Date(msg.time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
                     </span>
-                    {remaining <= 3 && <span style={{ fontSize: 8, color: PASTEL.coral }}>{remaining}분</span>}
+                    {remaining !== null && remaining <= 3 && <span style={{ fontSize: 8, color: PASTEL.coral }}>{remaining}분</span>}
                   </div>
-                  <p style={{ fontSize: 13, color: theme.text, margin: 0, lineHeight: 1.5, fontFamily: "'Noto Serif KR', serif" }}>
-                    {msg.text}
-                  </p>
-                  {isMe && (
-                    <button onClick={() => deleteChat(msg.time)} style={{
-                      background: "none", border: "none", color: theme.textSec, fontSize: 9,
-                      cursor: "pointer", padding: "2px 0", marginTop: 2, textAlign: "right", display: "block",
-                    }}>삭제</button>
+
+                  {/* Content */}
+                  {renderMsgContent(msg)}
+
+                  {/* Reactions display (#1) */}
+                  {reactionEntries.length > 0 && (
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+                      {reactionEntries.map(([emoji, users]) => (
+                        <button key={emoji} onClick={() => addReaction(msg.time, emoji)}
+                          className="reaction-btn"
+                          style={{
+                            fontSize: 11, padding: "1px 6px", borderRadius: 10,
+                            border: `1px solid ${users.includes(myName) ? PASTEL.coral : theme.border}`,
+                            background: users.includes(myName) ? `${PASTEL.coral}15` : "transparent",
+                            cursor: "pointer", color: theme.text, transition: "all 0.15s",
+                          }}>
+                          {emoji} {users.length}
+                        </button>
+                      ))}
+                    </div>
                   )}
+
+                  {/* Action buttons */}
+                  <div style={{ display: "flex", gap: 4, marginTop: 4, justifyContent: isMe ? "flex-end" : "flex-start", flexWrap: "wrap" }}>
+                    {/* Quick reactions (#1) */}
+                    {QUICK_EMOJIS.slice(0, 4).map(e => (
+                      <button key={e} onClick={() => addReaction(msg.time, e)}
+                        style={{ background: "none", border: "none", fontSize: 11, cursor: "pointer", padding: "1px 2px", opacity: 0.5, transition: "opacity 0.15s" }}
+                        onMouseEnter={ev => ev.target.style.opacity = 1}
+                        onMouseLeave={ev => ev.target.style.opacity = 0.5}>{e}</button>
+                    ))}
+                    {/* Reply (#6) */}
+                    <button onClick={() => setReplyTarget(msg)}
+                      style={{ background: "none", border: "none", fontSize: 9, color: theme.textSec, cursor: "pointer", padding: "1px 4px" }}>↩</button>
+                    {/* Admin: Pin (#3) / Delete */}
+                    {(userRole === "admin" || isMe) && (
+                      <button onClick={() => deleteChat(msg.time)}
+                        style={{ background: "none", border: "none", color: theme.textSec, fontSize: 9, cursor: "pointer" }}>삭제</button>
+                    )}
+                    {userRole === "admin" && (
+                      <button onClick={() => togglePin(msg.time)}
+                        style={{ background: "none", border: "none", color: PASTEL.yellow, fontSize: 9, cursor: "pointer" }}>
+                        {msg.pinned ? "📌해제" : "📌고정"}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            );
-          })}
-          <div ref={chatEndRef} />
-        </div>
-
-        {/* Chat input */}
-        <div style={{
-          flexShrink: 0, display: "flex", gap: 8, padding: "12px 16px",
-          borderTop: `1px solid ${isFrozen ? PASTEL.sky : theme.border}`, background: theme.card,
-          transition: "border-color 0.3s ease",
-        }}>
-          <input value={chatMsg} onChange={e => setChatMsg(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); sendChat(); } }}
-            placeholder={isFrozen && userRole !== "admin" ? "🧊 광장이 얼어있어요..." : "메시지를 입력하세요..."}
-            disabled={isFrozen && userRole !== "admin"}
-            autoComplete="off" autoCorrect="off"
-            style={{
-              flex: 1, padding: "10px 14px", borderRadius: 12,
-              border: `1.5px solid ${isFrozen ? PASTEL.sky : theme.border}`,
-              background: isFrozen && userRole !== "admin" ? `${PASTEL.sky}08` : theme.bg,
-              color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif",
-              WebkitUserSelect: "text", userSelect: "text",
-              transition: "all 0.3s ease",
-            }} />
-          <button onClick={sendChat}
-            disabled={isFrozen && userRole !== "admin"}
-            style={{
-              padding: "10px 18px", borderRadius: 12, border: "none",
-              background: isFrozen && userRole !== "admin"
-                ? `${PASTEL.sky}30`
-                : `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
-              color: "white", fontSize: 13, fontWeight: 700,
-              cursor: isFrozen && userRole !== "admin" ? "default" : "pointer",
-              transition: "all 0.3s ease",
-            }}>{isFrozen && userRole !== "admin" ? "🧊" : "전송"}</button>
-        </div>
+            </div>
+          );
+        })}
+        <div ref={chatEndRef} />
       </div>
-    );
+
+      {/* ======== REPLY BAR (#6) ======== */}
+      {replyTarget && (
+        <div style={{
+          flexShrink: 0, padding: "6px 16px", borderTop: `1px solid ${PASTEL.lavender}`,
+          background: `${PASTEL.lavender}10`, display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <span style={{ fontSize: 11, color: PASTEL.lavender }}>↩</span>
+          <span style={{ fontSize: 11, color: theme.text, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {replyTarget.user}: {replyTarget.text}
+          </span>
+          <button onClick={() => setReplyTarget(null)}
+            style={{ background: "none", border: "none", fontSize: 14, color: theme.textSec, cursor: "pointer" }}>✕</button>
+        </div>
+      )}
+
+      {/* ======== CHAT INPUT ======== */}
+      <div style={{
+        flexShrink: 0, display: "flex", gap: 8, padding: "10px 16px",
+        borderTop: `1px solid ${isFrozen ? PASTEL.sky : theme.border}`, background: theme.card,
+        transition: "border-color 0.3s ease",
+      }}>
+        <input value={chatMsg} onChange={e => setChatMsg(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); sendChatWithReply(); } }}
+          placeholder={isFrozen && userRole !== "admin" ? "🧊 광장이 얼어있어요..." : "메시지 ($수식$ 지원)"}
+          disabled={isFrozen && userRole !== "admin"}
+          autoComplete="off" autoCorrect="off"
+          style={{
+            flex: 1, padding: "10px 14px", borderRadius: 12,
+            border: `1.5px solid ${isFrozen ? PASTEL.sky : theme.border}`,
+            background: isFrozen && userRole !== "admin" ? `${PASTEL.sky}08` : theme.bg,
+            color: theme.text, fontSize: 13, fontFamily: "'Noto Serif KR', serif",
+            WebkitUserSelect: "text", userSelect: "text",
+            transition: "all 0.3s ease",
+          }} />
+        <button onClick={sendChatWithReply}
+          disabled={isFrozen && userRole !== "admin"}
+          style={{
+            padding: "10px 18px", borderRadius: 12, border: "none",
+            background: isFrozen && userRole !== "admin"
+              ? `${PASTEL.sky}30`
+              : `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
+            color: "white", fontSize: 13, fontWeight: 700,
+            cursor: isFrozen && userRole !== "admin" ? "default" : "pointer",
+            transition: "all 0.3s ease",
+          }}>{isFrozen && userRole !== "admin" ? "🧊" : "전송"}</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// STYLE HELPERS
+// ============================================================
+
+function toolBtnStyle(theme) {
+  return {
+    padding: "5px 10px", borderRadius: 8, border: `1px solid ${theme.border}`,
+    background: theme.card, fontSize: 11, cursor: "pointer", color: theme.text,
+    transition: "all 0.15s",
+  };
+}
+
+function subPanelStyle(theme) {
+  return {
+    flexShrink: 0, padding: "12px 16px", borderBottom: `1px solid ${theme.border}`,
+    background: theme.card, animation: "fadeIn 0.2s ease", maxHeight: 300, overflowY: "auto",
+  };
+}
+
+function inputStyle(theme) {
+  return {
+    width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${theme.border}`,
+    background: theme.bg, color: theme.text, fontSize: 12, fontFamily: "'Noto Serif KR', serif",
+    boxSizing: "border-box",
+  };
+}
+
+function actionBtnStyle(color) {
+  return {
+    padding: "6px 14px", borderRadius: 8, border: "none",
+    background: `${color}20`, color: color, fontSize: 11, fontWeight: 700,
+    cursor: "pointer", transition: "all 0.15s",
+  };
 }
