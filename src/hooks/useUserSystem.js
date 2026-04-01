@@ -13,7 +13,7 @@ export function useUserSystem(deps) {
 
   // --- User & Role System ---
   // Roles: admin(관리자), assistant(조교), student(수강생), external(외부생)
-  const ROLES = { admin: "관리자", assistant: "조교", student: "수강생", external: "외부생" };
+  const ROLES = { admin: "관리자", assistant: "조교", student: "수강생", external: "외부생", parent: "학부모" };
   const [members, setMembers] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("ar_members"));
@@ -104,6 +104,7 @@ export function useUserSystem(deps) {
     assistant: { study: true, draw: true, jedo: true, guide: true, plaza_read: true, plaza_write: true, plaza_call: true, archive_save: true, admin_members: true, admin_signups: true, admin_scripts: false, viewStudentMode: true, questionInbox: true, assignHomework: true, diary: true, notifications: true },
     student: { study: true, draw: true, jedo: true, guide: true, plaza_read: true, plaza_write: true, plaza_call: true, archive_save: true, diary: true, homework: true, notifications: true, askQuestion: true, admin_members: false, admin_signups: false, admin_scripts: false },
     external: { study: true, draw: true, jedo: false, guide: false, plaza_read: true, plaza_write: false, plaza_call: false, archive_save: false, diary: false, homework: false, notifications: true, askQuestion: false, admin_members: false, admin_signups: false, admin_scripts: false },
+    parent: { study: false, draw: false, jedo: false, guide: false, plaza_read: false, plaza_write: false, plaza_call: false, archive_save: false, diary: false, homework: false, notifications: true, askQuestion: false, admin_members: false, admin_signups: false, admin_scripts: false, parent_gallery: true, parent_shop: true, parent_pricing: true, parent_crossTalk: true },
   };
   const PERM_LABELS = {
     study: "학습", draw: "그리기", jedo: "제도", guide: "가이드",
