@@ -1474,12 +1474,18 @@ export function renderDrawScreen(ctx) {
                         (내심에서 변까지 수직 거리)
                       </div>
                     </div>
-                    <button onClick={() => {
-                      setHelpPopupData({ ...(PROPERTY_HELP.inRadiiAll || {}), title: "내심은 왜 생길까?", contextData: { screenName: "내접원 설명", type: "내접원" } });
-                      playSfx("click");
-                    }} style={{ marginTop: 8, padding: "5px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 10, cursor: "pointer" }}>
-                      ❓ 이해가 안 돼요
-                    </button>
+                    <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                      <button onClick={() => {
+                        setHelpPopupData({ ...(PROPERTY_HELP.inRadiiAll || {}), title: "내심은 왜 생길까?", contextData: { screenName: "내접원 설명", type: "내접원" } });
+                        playSfx("click");
+                      }} style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 10, cursor: "pointer" }}>
+                        ❓ 이해가 안 돼요
+                      </button>
+                      <button onClick={() => { playSfx("click"); setScreen("distance"); }}
+                        style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${PASTEL.sky}30`, background: `${PASTEL.sky}08`, color: PASTEL.sky, fontSize: 10, cursor: "pointer" }}>
+                        📏 거리 개념부터 →
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
