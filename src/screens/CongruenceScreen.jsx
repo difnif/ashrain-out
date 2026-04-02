@@ -549,7 +549,7 @@ export function CongruenceScreenInner({theme,setScreen,playSfx,showMsg,isPC:isPC
                       title:`${mode==="rha"?"RHA→ASA":"RHS→SAS"} 증명`,
                       preview:`빗변=${triData?.hyp}`,
                       createdAt:Date.now(),isPublic:archiveDefaultPublic||false,hidden:false,userId:user?.id,
-                    }]);playSfx("success");showMsg("아카이브에 저장! 📂",1500);}
+                    }]);playSfx("success");showMsg("아카이브에 저장! 학생 홈 > 아카이브에서 확인 📂",2000);}
                   }} style={{flex:2,padding:"12px",borderRadius:12,border:"none",background:`linear-gradient(135deg,${PASTEL.coral},${PASTEL.dustyRose})`,color:"white",fontSize:13,fontWeight:700,cursor:"pointer"}}>📂 아카이브에 저장</button>
                 </>)}
               </div>
