@@ -42,7 +42,11 @@ export function getProperties(ctx) {
       props.push({ id: "angles", text: `∠A = ${angA.toFixed(1)}°, ∠B = ${angB.toFixed(1)}°, ∠C = ${angC.toFixed(1)}°`, color: PASTEL.yellow,
         highlight: "allAngles" });
 
-      // 6) 이등변삼각형 — 외심이 만드는 세 이등변삼각형
+      // 6) ∠BOC = 2∠A (이등변삼각형의 성질 + 외각의 성질로 증명 — 중2 교과과정!)
+      props.push({ id: "central", text: `∠BOC = 2∠A = ${(2 * angA).toFixed(1)}° (이등변삼각형의 밑각 + 외각의 성질)`, color: PASTEL.mint, bold: true,
+        highlight: "centralAngle" });
+
+      // 7) 이등변삼각형 — 외심이 만드는 세 이등변삼각형
       props.push({ id: "isoOAB", text: `△OAB: OA = OB = R → 이등변삼각형`, color: "#F48FB1", highlight: "isoOAB" });
       props.push({ id: "isoOBC", text: `△OBC: OB = OC = R → 이등변삼각형`, color: "#80CBC4", highlight: "isoOBC" });
       props.push({ id: "isoOCA", text: `△OCA: OC = OA = R → 이등변삼각형`, color: "#CE93D8", highlight: "isoOCA" });
@@ -175,8 +179,39 @@ export function renderHighlight(ctx) {
           </g>
         );
       }
-      case "centralAngle":
-        return null; // 중심각=2×원주각은 중3 과정 — 제거됨
+      case "centralAngle": {
+        const angA = angleAtVertex(A, B, C);
+        const a1o = Math.atan2(B.y - O.y, B.x - O.x);
+        const a2o = Math.atan2(C.y - O.y, C.x - O.x);
+        let diffO = a2o - a1o; if (diffO < -Math.PI) diffO += 2*Math.PI; if (diffO > Math.PI) diffO -= 2*Math.PI;
+        const sweepO = diffO > 0 ? 1 : 0;
+        const rO = 25;
+        const a1a = Math.atan2(B.y - A.y, B.x - A.x);
+        const a2a = Math.atan2(C.y - A.y, C.x - A.x);
+        let diffA = a2a - a1a; if (diffA < -Math.PI) diffA += 2*Math.PI; if (diffA > Math.PI) diffA -= 2*Math.PI;
+        const sweepA = diffA > 0 ? 1 : 0;
+        const rA = 22;
+        return (
+          <g>
+            <line x1={O.x} y1={O.y} x2={B.x} y2={B.y} stroke={hc} strokeWidth={2} opacity={0.6} />
+            <line x1={O.x} y1={O.y} x2={C.x} y2={C.y} stroke={hc} strokeWidth={2} opacity={0.6} />
+            <path d={`M ${O.x+rO*Math.cos(a1o)} ${O.y+rO*Math.sin(a1o)} A ${rO} ${rO} 0 0 ${sweepO} ${O.x+rO*Math.cos(a2o)} ${O.y+rO*Math.sin(a2o)}`}
+              fill="none" stroke={hc} strokeWidth={3} />
+            <text x={O.x+40*Math.cos(a1o+diffO/2)} y={O.y+40*Math.sin(a1o+diffO/2)}
+              textAnchor="middle" dominantBaseline="central" fill={hc}
+              fontSize={11} fontWeight={700} fontFamily="'Noto Serif KR', serif">
+              ∠BOC
+            </text>
+            <path d={`M ${A.x+rA*Math.cos(a1a)} ${A.y+rA*Math.sin(a1a)} A ${rA} ${rA} 0 0 ${sweepA} ${A.x+rA*Math.cos(a2a)} ${A.y+rA*Math.sin(a2a)}`}
+              fill="none" stroke="#FF8A65" strokeWidth={3} />
+            <text x={A.x+38*Math.cos(a1a+diffA/2)} y={A.y+38*Math.sin(a1a+diffA/2)}
+              textAnchor="middle" dominantBaseline="central" fill="#FF8A65"
+              fontSize={10} fontWeight={700} fontFamily="'Noto Serif KR', serif">
+              ∠A
+            </text>
+          </g>
+        );
+      }
       case "isoTriangles":
         return null; // ∠OBC+∠OCA+∠OAB=90° 제거됨
       case "inRadius": {
