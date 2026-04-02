@@ -23,6 +23,8 @@ import { renderCongruenceScreen } from "./screens/CongruenceScreen";
 import { TutorialOverlay, useTutorial } from "./components/TutorialOverlay";
 import { renderLearningDashboard } from "./screens/LearningDashboard";
 import { renderParentHomeScreen } from "./screens/ParentHomeScreen";
+import { renderRankingScreen } from "./screens/RankingScreen";
+import { renderQuizScreen } from "./screens/QuizScreen";
 import { renderDistanceScreen } from "./screens/DistanceScreen";
 import { renderSettingsScreen } from "./screens/SettingsScreen";
 import { renderDrawScreen } from "./screens/DrawScreen";
@@ -742,6 +744,12 @@ function AppInner() {
     // --- Congruence Screen ---
   if (screen === "congruence") return renderCongruenceScreen(ctx);
 
+  // --- Ranking Screen ---
+  if (screen === "ranking") return renderRankingScreen(ctx);
+
+  // --- Quiz Screen ---
+  if (screen === "quiz") return renderQuizScreen(ctx);
+
   // --- Distance Screen (거리 개념) ---
   if (screen === "distance") return renderDistanceScreen(ctx);
 
@@ -768,6 +776,8 @@ function AppInner() {
 
 
     const topics = [
+      { icon: "🏆", label: "순위표", desc: "일간·주간·월간 랭킹", compact: true, action: () => setScreen("ranking") },
+      { icon: "⚡", label: "퀴즈", desc: "오늘의 문제·스피드·OX", compact: true, action: () => setScreen("quiz") },
       { icon: "📏", label: "거리", desc: "점·직선·각의 이등분선까지", compact: true, action: () => setScreen("distance") },
       { icon: "△", label: "삼각형에서 원까지", desc: hasSavedWork ? "이전 작업 있음 ✦" : "SSS · SAS · ASA",
         action: () => { if (hasSavedWork) setShowLoadDialog(true); else { setDrawGoal("construct"); enterDraw(false); } } },
