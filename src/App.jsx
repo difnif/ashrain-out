@@ -23,6 +23,7 @@ import { renderCongruenceScreen } from "./screens/CongruenceScreen";
 import { TutorialOverlay, useTutorial } from "./components/TutorialOverlay";
 import { renderLearningDashboard } from "./screens/LearningDashboard";
 import { renderParentHomeScreen } from "./screens/ParentHomeScreen";
+import { renderSVGEditorScreen } from "./screens/SVGEditorScreen";
 import { renderRankingScreen } from "./screens/RankingScreen";
 import { renderQuizScreen } from "./screens/QuizScreen";
 import { renderDistanceScreen } from "./screens/DistanceScreen";
@@ -743,6 +744,9 @@ function AppInner() {
 
     // --- Congruence Screen ---
   if (screen === "congruence") return renderCongruenceScreen(ctx);
+
+  // --- SVG Editor ---
+  if (screen === "svg-editor") return renderSVGEditorScreen(ctx);
 
   // --- Ranking Screen ---
   if (screen === "ranking") return renderRankingScreen(ctx);
