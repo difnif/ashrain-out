@@ -1484,11 +1484,15 @@ export function renderDrawScreen(ctx) {
                 </div>
               )}
 
-              {!sel && (
-                <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center", margin: "8px 0" }}>
-                  위 카드를 터치하면 자세한 설명을 볼 수 있어요
-                </p>
-              )}
+              {!sel && (() => {
+                // Auto-select circum on first render
+                setTimeout(() => setCompareSelected("circum"), 300);
+                return (
+                  <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center", margin: "8px 0" }}>
+                    외접원을 먼저 살펴볼게요...
+                  </p>
+                );
+              })()}
 
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => { setCompareSelected(null); resetAll(); setBuildPhase("input"); setTriMode("sss"); }} style={{
@@ -1504,7 +1508,7 @@ export function renderDrawScreen(ctx) {
                       preview: `R≈${R_archive.toFixed(1)}, r≈${r_archive.toFixed(1)}`,
                       createdAt: Date.now(), isPublic: archiveDefaultPublic || false, hidden: false, userId: user?.id,
                     }]);
-                    playSfx("success"); showMsg("아카이브에 저장! 📂", 1500);
+                    playSfx("success"); showMsg("아카이브에 저장! 학생 홈 > 아카이브에서 확인 📂", 2000);
                   }
                 }} style={{
                   flex: 2, padding: "10px", borderRadius: 12, border: "none",
