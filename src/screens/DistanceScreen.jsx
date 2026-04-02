@@ -42,6 +42,8 @@ function DistInner({theme,setScreen,playSfx,showMsg,helpRequests,setHelpRequests
   const[s4Done,setS4Done]=useState(false);
   const[rotAng,setRotAng]=useState(0);
   const[s12n,setS12n]=useState(0);
+  const[vb,setVb]=useState(null); // viewBox: {x,y,w,h}
+  const panRef=useRef(null);
 
   // --- Resize ---
   useEffect(()=>{
@@ -51,7 +53,7 @@ function DistInner({theme,setScreen,playSfx,showMsg,helpRequests,setHelpRequests
   },[]);
 
   // --- Reset on stage ---
-  useEffect(()=>{setSub(0);setShowHelp(false);setS4Tries([]);setS4Done(false);setRotAng(0);setS12n(0);},[stage]);
+  useEffect(()=>{setSub(0);setShowHelp(false);setS4Tries([]);setS4Done(false);setRotAng(0);setS12n(0);setVb(null);panRef.current=null;},[stage]);
 
   // --- Geometry ---
   const cx=W/2;
@@ -95,14 +97,45 @@ function DistInner({theme,setScreen,playSfx,showMsg,helpRequests,setHelpRequests
     }
   },[stage,sub,s12n]);
 
-  // --- SVG point from event ---
+  // --- SVG point from event (viewBox-aware) ---
+  const curVB=vb||{x:0,y:0,w:W,h:H};
   const getSvgPt=useCallback((e)=>{
     const svg=svgRef.current;if(!svg)return{x:0,y:0};
     const r=svg.getBoundingClientRect();
     const px=e.touches?e.touches[0].clientX:e.clientX;
     const py=e.touches?e.touches[0].clientY:e.clientY;
-    return{x:(px-r.left)/r.width*W,y:(py-r.top)/r.height*H};
+    const v=vb||{x:0,y:0,w:W,h:H};
+    return{x:(px-r.left)/r.width*v.w+v.x,y:(py-r.top)/r.height*v.h+v.y};
+  },[W,H,vb]);
+
+  // --- Zoom (wheel + pinch) ---
+  const handleWheel=useCallback((e)=>{
+    e.preventDefault();
+    const s=e.deltaY>0?1.12:0.88;
+    setVb(v=>{
+      const c=v||{x:0,y:0,w:W,h:H};
+      const mx=c.x+c.w/2, my=c.y+c.h/2;
+      const nw=c.w*s, nh=c.h*s;
+      return{x:mx-nw/2,y:my-nh/2,w:nw,h:nh};
+    });
   },[W,H]);
+
+  // --- Pan (drag) ---
+  const handlePanDown=useCallback((e)=>{
+    if(stage===4&&!s4Done) return; // stage 4 uses tap
+    const pt=e.touches?{x:e.touches[0].clientX,y:e.touches[0].clientY}:{x:e.clientX,y:e.clientY};
+    panRef.current={pt,vb:{...(vb||{x:0,y:0,w:W,h:H})}};
+  },[vb,W,H,stage,s4Done]);
+  const handlePanMove=useCallback((e)=>{
+    if(!panRef.current)return;
+    const pt=e.touches?{x:e.touches[0].clientX,y:e.touches[0].clientY}:{x:e.clientX,y:e.clientY};
+    const dx=pt.x-panRef.current.pt.x, dy=pt.y-panRef.current.pt.y;
+    const svg=svgRef.current;if(!svg)return;
+    const r=svg.getBoundingClientRect();
+    const sx=panRef.current.vb.w/r.width, sy=panRef.current.vb.h/r.height;
+    setVb({...panRef.current.vb,x:panRef.current.vb.x-dx*sx,y:panRef.current.vb.y-dy*sy});
+  },[]);
+  const handlePanUp=useCallback(()=>{panRef.current=null;},[]);
 
   // --- Stage 4: tap handler ---
   const handleS4Tap=(e)=>{
@@ -128,35 +161,32 @@ function DistInner({theme,setScreen,playSfx,showMsg,helpRequests,setHelpRequests
 
   // --- S1: Map ---
   const renderS1=()=>{
-    const ox=W*.06,oy=H*.05;
+    // Grid: 3 cols x 4 rows, explicit road gaps
+    const rd=22,ox=20,oy=15;
+    const cw=[58,80,52];
+    const c0r=ox+cw[0], c1l=c0r+rd, c1r=c1l+cw[1], c2l=c1r+rd, c2r=c2l+cw[2];
+    const rh=[42,50,42,38];
+    const r0b=oy+rh[0], r1t=r0b+rd, r1b=r1t+rh[1], r2t=r1b+rd, r2b=r2t+rh[2], r3t=r2b+rd, r3b=r3t+rh[3];
+    const vr0=(c0r+c1l)/2, vr1=(c1r+c2l)/2;
+    const hr0=(r0b+r1t)/2, hr1=(r1b+r2t)/2, hr2=(r2b+r3t)/2;
     const bks=[
-      {x:ox,y:oy,w:65,h:45,c:"#e8d5c4"},{x:ox+80,y:oy,w:100,h:45,c:"#d4e2d4"},
-      {x:ox+195,y:oy,w:55,h:65,c:"#ddd5e8"},
-      {x:ox,y:oy+60,w:65,h:60,c:"#d4e2d4"},{x:ox+80,y:oy+60,w:45,h:60,c:"#e8d5c4"},
-      {x:ox+140,y:oy+75,w:70,h:40,c:"#fadadd"},{x:ox+225,y:oy+65,w:45,h:50,c:"#d4e2d4"},
-      {x:ox,y:oy+135,w:80,h:50,c:"#fadadd"},{x:ox+95,y:oy+135,w:90,h:65,c:"#e8d5c4"},
-      {x:ox+200,y:oy+150,w:50,h:50,c:"#d4e2d4"},
-      {x:ox,y:oy+200,w:55,h:45,c:"#ddd5e8"},{x:ox+70,y:oy+215,w:110,h:35,c:"#e8e0d4"},
+      {x:ox,y:oy,w:cw[0],h:rh[0],c:"#e8d5c4"},{x:c1l,y:oy,w:cw[1],h:rh[0],c:"#d4e2d4"},
+      {x:c2l,y:oy,w:cw[2],h:rh[0]+rd+rh[1],c:"#ddd5e8"},
+      {x:ox,y:r1t,w:cw[0],h:rh[1],c:"#d4e2d4"},{x:c1l,y:r1t,w:cw[1],h:rh[1],c:"#fadadd"},
+      {x:ox,y:r2t,w:cw[0]+rd*0.3,h:rh[2],c:"#e8d5c4"},{x:c1l+cw[1]*0.4,y:r2t,w:cw[1]*0.6+rd+cw[2],h:rh[2],c:"#d4e2d4"},
+      {x:ox,y:r3t,w:cw[0],h:rh[3],c:"#ddd5e8"},{x:c1l,y:r3t,w:cw[1]+rd+cw[2],h:rh[3],c:"#e8e0d4"},
     ];
-    const home={x:ox+25,y:oy+258};
-    const school={x:ox+220,y:oy-18};
-    // roads between blocks
-    const r1x=ox+72,r2x=ox+132,r3x=ox+192;
-    const r1y=oy+52,r2y=oy+128,r3y=oy+195;
-    // short path (along roads)
-    const sp=`M${home.x} ${home.y-8} L${home.x} ${r3y} L${r1x} ${r3y} L${r1x} ${r1y} L${r3x} ${r1y} L${r3x} ${school.y+14}`;
-    // detour 1
-    const dp1=`M${home.x} ${home.y-8} L${home.x} ${r3y} L${r2x} ${r3y} L${r2x} ${r2y} L${W-ox-5} ${r2y} L${W-ox-5} ${r1y} L${r3x} ${r1y} L${r3x} ${school.y+14}`;
-    // detour 2
-    const dp2=`M${home.x} ${home.y-8} L${home.x} ${r2y} L${ox-5} ${r2y} L${ox-5} ${r1y} L${r1x} ${r1y} L${r1x} ${oy-5} L${r3x} ${oy-5} L${r3x} ${school.y+14}`;
-
-    const petPts=[home,{x:home.x,y:r3y},{x:r1x,y:r3y},{x:r1x,y:r2y},{x:r1x,y:r1y},{x:r3x,y:r1y}];
+    const home={x:ox+cw[0]/2,y:r3b+14};
+    const school={x:c2l+cw[2]/2,y:oy-16};
+    const sp=`M${home.x} ${home.y-8} L${home.x} ${hr2} L${vr0} ${hr2} L${vr0} ${hr0} L${vr1} ${hr0} L${vr1} ${school.y+14}`;
+    const dp1=`M${home.x} ${home.y-8} L${home.x} ${hr2} L${vr1} ${hr2} L${vr1} ${hr1} L${vr0} ${hr1} L${vr0} ${hr0} L${vr1} ${hr0} L${vr1} ${school.y+14}`;
+    const dp2=`M${home.x} ${home.y-8} L${home.x} ${hr1} L${ox-6} ${hr1} L${ox-6} ${hr0} L${vr0} ${hr0} L${vr0} ${oy-5} L${vr1} ${oy-5} L${vr1} ${school.y+14}`;
+    const petPts=[home,{x:home.x,y:hr2},{x:vr0,y:hr2},{x:vr0,y:hr1},{x:vr0,y:hr0},{x:vr1,y:hr0}];
     const pi=sub>=1?Math.min(4,sub+1):0;
     const pet=petPts[pi]||home;
-
     return <g>
-      <rect x={ox-12} y={oy-22} width={W-ox*2+24} height={H*0.72} rx={10} fill={`${theme.textSec}05`}/>
-      {bks.map((b,i)=><rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} rx={6} fill={b.c} opacity={0.5} stroke={`${theme.textSec}15`} strokeWidth={0.5}/>)}
+      <rect x={ox-10} y={oy-20} width={c2r-ox+20} height={r3b-oy+38} rx={10} fill={`${theme.textSec}04`}/>
+      {bks.map((b,i)=><rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} rx={5} fill={b.c} opacity={0.45} stroke={`${theme.textSec}12`} strokeWidth={0.5}/>)}
       {sub>=1&&<path d={sp} fill="none" stroke={PASTEL.sky} strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" opacity={0.85} style={drawAnim(1200,2)}/>}
       {sub>=2&&<path d={dp1} fill="none" stroke={`${PASTEL.coral}60`} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" strokeDasharray="7 5" style={{animation:"fadeIn .8s ease"}}/>}
       {sub>=3&&<path d={dp2} fill="none" stroke={`${PASTEL.lavender}60`} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" strokeDasharray="7 5" style={{animation:"fadeIn .8s .3s ease both"}}/>}
@@ -219,9 +249,8 @@ function DistInner({theme,setScreen,playSfx,showMsg,helpRequests,setHelpRequests
       <text x={(ptA.x+t.pt.x)/2+(t.pt.x>ptA.x?14:-14)} y={(ptA.y+t.pt.y)/2} fontSize={10} fill={t.isPerp?PASTEL.coral:theme.textSec} fontWeight={t.isPerp?700:400}>{t.d.toFixed(0)}</text>
     </g>)}
     {s4Done&&<g>
-      <line x1={foot.x} y1={foot.y} x2={foot.x+10} y2={foot.y} stroke={PASTEL.coral} strokeWidth={2}/>
-      <line x1={foot.x+10} y1={foot.y} x2={foot.x+10} y2={foot.y-10} stroke={PASTEL.coral} strokeWidth={2}/>
-      <text x={foot.x+22} y={foot.y-4} fontSize={11} fill={PASTEL.coral} fontWeight={700}>⊥</text>
+      <rect x={foot.x} y={foot.y-12} width={12} height={12} fill="none" stroke={PASTEL.coral} strokeWidth={2} rx={1}/>
+      <text x={foot.x+18} y={foot.y-4} fontSize={11} fill={PASTEL.coral} fontWeight={700}>⊥</text>
     </g>}
     {!s4Done&&s4Tries.length===0&&<text x={cx} y={lineY+28} textAnchor="middle" fontSize={11} fill={theme.textSec}>직선 L 위를 터치해서 점A까지의 거리를 재봐!</text>}
     {!s4Done&&s4Tries.length>=2&&<text x={cx} y={lineY+28} textAnchor="middle" fontSize={11} fill={PASTEL.mint}>💡 어디가 가장 짧을까?</text>}
@@ -580,9 +609,13 @@ function DistInner({theme,setScreen,playSfx,showMsg,helpRequests,setHelpRequests
 
       {/* Canvas — takes remaining space */}
       <div ref={cRef} style={{flex:1,minHeight:0,overflow:"hidden"}}>
-        <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"100%",touchAction:"none",display:"block"}}
-          onPointerDown={stage===4&&!s4Done?handleS4Tap:undefined}>
-          <rect width={W} height={H} fill={theme.svgBg}/>
+        <svg ref={svgRef} viewBox={`${curVB.x} ${curVB.y} ${curVB.w} ${curVB.h}`}
+          style={{width:"100%",height:"100%",touchAction:"none",display:"block"}}
+          onPointerDown={stage===4&&!s4Done?handleS4Tap:handlePanDown}
+          onPointerMove={handlePanMove}
+          onPointerUp={handlePanUp}
+          onWheel={handleWheel}>
+          <rect x={curVB.x} y={curVB.y} width={curVB.w} height={curVB.h} fill={theme.svgBg}/>
           {R[stage]?.()}
         </svg>
       </div>
