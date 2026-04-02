@@ -523,7 +523,11 @@ function AppInner() {
 
   const MenuGrid = useMemo(() => ({ items, cols = 2 }) => (
     <div style={{ display:"grid", gridTemplateColumns:`repeat(${cols},1fr)`, gap:14, width:"min(440px,90vw)", padding:"0 16px", margin:"0 auto" }}>
-      {items.map((item, i) => (
+      {items.map((item, i) => item.section ? (
+        <div key={i} style={{ gridColumn: "1 / -1", fontSize: 11, fontWeight: 700, color: theme.textSec, letterSpacing: 1, padding: "8px 4px 0" }}>
+          {item.icon} {item.label}
+        </div>
+      ) : (
         <button key={i} onClick={() => { playSfx("click"); item.action?.(); }} disabled={item.disabled} style={{
           background: theme.card, border:`1.5px solid ${theme.border}`, borderRadius:20,
           padding: item.compact ? "18px 14px" : "24px 14px", cursor: item.disabled ? "default" : "pointer",
@@ -660,8 +664,8 @@ function AppInner() {
     const categories = [
       { icon: "⬡", label: "그려서 공부하기", desc: "삼각형, 외심, 내심", action: () => setScreen("polygons") },
       { icon: "📝", label: "문제의 문장 이해하기", desc: "AI 조건추출 · 유형분류 · 풀이방향", action: () => setScreen("sentence") },
-      { icon: "🧮", label: "쓸모 없어 보이는 수학", desc: "준비 중", disabled: true },
-      { icon: "🧠", label: "쓸모 있는데 어려운 수학", desc: "준비 중", disabled: true },
+      { icon: "🧮", label: "쓸모 없어 보이는 수학", desc: "일상 속 숨은 수학 발견하기", disabled: true },
+      { icon: "🧠", label: "쓸모 있는데 어려운 수학", desc: "심화 개념 도전하기", disabled: true },
     ];
     return (
       <ScreenWrap title="복습하기" back="메뉴" backTo="menu">
