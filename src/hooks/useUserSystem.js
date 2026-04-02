@@ -223,7 +223,14 @@ export function useUserSystem(deps) {
     setMembers(prev => prev.map(m => m.id === targetId ? { ...m, ...updates } : m));
     // If editing self, also update login session
     if (user && user.id === targetId) {
-      setUser(prev => ({ ...prev, ...updates }));
+      setUser(prev => {
+        const newUser = { ...prev, ...updates };
+        // ID가 변경되면 로컬 세션도 갱신
+        if (updates.id && updates.id !== prev.id) {
+          try { localStorage.setItem("ar_user", JSON.stringify(newUser)); } catch {}
+        }
+        return newUser;
+      });
     }
   }, [user, setUser]);
 
