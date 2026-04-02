@@ -564,7 +564,8 @@ function BookView({diary,setDiary,viewDate,canEdit,theme,
     playSfx("click");showMsg(`쪽 추가!`,1000);
   };
 
-  const goSpread=dir=>{
+  // 자동 저장 후 페이지 이동
+  const goSpread=dir=>{save();
     const next=spreadIdx+(dir==="next"?1:-1);
     if(next<0||next>maxSpread)return;
     setSpreadIdx(next);setSelectedId(null);setEditingId(null);
