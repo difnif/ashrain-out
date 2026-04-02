@@ -12,6 +12,7 @@ export function renderAdminScreen(ctx) {
     { icon: "💬", label: "대사 스크립트", desc: "말투별 대사 수정", action: () => setScreen("admin-scripts") },
     { icon: "🤖", label: "분석 모델", desc: `현재: ${({"claude-opus-4-20250514":"Opus","claude-sonnet-4-20250514":"Sonnet","claude-haiku-4-5-20251001":"Haiku"})[ctx.analysisModel] || "Sonnet"}`, action: () => setScreen("admin-model") },
     { icon: "📖", label: "튜토리얼 초기화", desc: "모든 튜토리얼 다시 보기", action: () => { if(ctx.tutorial?.resetAll) ctx.tutorial.resetAll(); ctx.showMsg("튜토리얼이 초기화되었어요!", 1500); } },
+    { icon: "🎨", label: "SVG 에디터", desc: "수학 콘텐츠 오브젝트 편집", action: () => setScreen("svg-editor") },
     { icon: "🔑", label: "권한 관리", desc: "역할별 기능 제한", action: () => setScreen("admin-perms") },
   ];
   return (
