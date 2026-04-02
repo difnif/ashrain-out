@@ -1,6 +1,8 @@
 // DiaryScreen.jsx — ashrain.out v5
 // State: desk-neat / desk-thrown / book-open | Two-page spread | Pressure | XP system
 import React,{useState,useRef,useEffect,useCallback,memo} from "react";
+import DeskScene3D from "./DiaryDeskScene";
+import {DECO_CATALOG as _DECO_CATALOG} from "./DiaryConfig";
 import{PASTEL}from"../config";
 
 // ─── KaTeX ────────────────────────────────────────────────────────────────────
@@ -930,7 +932,7 @@ export default function DiaryTab({theme,diary,setDiary,playSfx,showMsg,archive,s
         </div>
       </div>
 
-      <DeskScene
+      <DeskScene3D
         deskTheme={deskTheme}
         coverStyle={coverStyle}
         diaryState={diaryState}
