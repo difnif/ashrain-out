@@ -158,46 +158,104 @@ function DistInner({ theme,setScreen,playSfx,showMsg,isPC,helpRequests,setHelpRe
 
   // ===== ROAD MAP for Stage 1 =====
   const renderMap = () => {
-    // Grid blocks
-    const blocks = [];
-    const bw=60, bh=50, gx=W*.08, gy=H*.08, cols=4, rows=5, gap=15;
-    for(let r=0;r<rows;r++) for(let c=0;c<cols;c++) {
-      blocks.push({x:gx+c*(bw+gap), y:gy+r*(bh+gap), w:bw, h:bh});
-    }
-    const homePos = {x:gx+bw/2, y:gy+4*(bh+gap)+bh+10};
-    const schoolPos = {x:gx+3*(bw+gap)+bw/2, y:gy-15};
+    // Irregular city blocks (hand-crafted to look like real streets)
+    const rd = 18; // road width
+    const ox = W * 0.06, oy = H * 0.06; // origin offset
 
-    // Walking path (along roads)
-    const wp = `M ${homePos.x} ${homePos.y-8} L ${homePos.x} ${gy+3*(bh+gap)+bh+gap/2} L ${gx+2*(bw+gap)+bw+gap/2} ${gy+3*(bh+gap)+bh+gap/2} L ${gx+2*(bw+gap)+bw+gap/2} ${gy+bh+gap/2} L ${schoolPos.x} ${gy+bh+gap/2} L ${schoolPos.x} ${schoolPos.y+12}`;
-    // Detour
-    const dp = `M ${homePos.x} ${homePos.y-8} Q ${gx-30} ${cy} ${gx+bw} ${gy-20} Q ${gx+2*bw} ${gy-40} ${schoolPos.x} ${schoolPos.y+12}`;
+    // Block definitions: {x, y, w, h} — gaps between them = roads
+    const blocks = [
+      // Row 1 (top)
+      { x: ox, y: oy, w: 70, h: 55 },
+      { x: ox + 70 + rd, y: oy, w: 110, h: 55 },
+      { x: ox + 70 + rd + 110 + rd, y: oy, w: 60, h: 80 },
+      // Row 2
+      { x: ox, y: oy + 55 + rd, w: 70, h: 70 },
+      { x: ox + 70 + rd, y: oy + 55 + rd, w: 50, h: 70 },
+      { x: ox + 70 + rd + 50 + rd, y: oy + 55 + rd + 25, w: 78, h: 45 },
+      { x: ox + 70 + rd + 110 + rd, y: oy + 80 + rd, w: 60, h: 55 },
+      // Row 3
+      { x: ox, y: oy + 55 + rd + 70 + rd, w: 90, h: 60 },
+      { x: ox + 90 + rd, y: oy + 55 + rd + 70 + rd, w: 100, h: 85 },
+      { x: ox + 90 + rd + 100 + rd, y: oy + 55 + rd + 70 + rd + 20, w: 55, h: 65 },
+      // Row 4 (bottom)
+      { x: ox, y: oy + 55 + rd + 70 + rd + 60 + rd, w: 65, h: 55 },
+      { x: ox + 65 + rd, y: oy + 55 + rd + 70 + rd + 85 + rd, w: 120, h: 45 },
+    ];
 
-    // Pet position along walk path
-    const petPos = sub>=1 ? {x:gx+2*(bw+gap)+bw+gap/2, y:gy+2*(bh+gap)+bh/2} : homePos;
+    // Home position: bottom-left, on the road
+    const homePos = { x: ox + 30, y: oy + 55 + rd + 70 + rd + 60 + rd + 55 + 14 };
+    // School position: top-right, on the road
+    const schoolPos = { x: ox + 70 + rd + 110 + rd + 30, y: oy - 14 };
+
+    // Road waypoints for SHORT path (yellow line in sketch)
+    // home → up along left road → right along middle road → up along right road → school
+    const r1x = ox + 70 + rd / 2; // vertical road between col 0 and col 1
+    const r2x = ox + 70 + rd + 50 + rd / 2; // vertical road between col 1 and col 2
+    const r3x = ox + 70 + rd + 110 + rd / 2; // vertical road between col 2 and col 3
+    const r1y = oy + 55 + rd / 2; // horizontal road between row 0 and row 1
+    const r2y = oy + 55 + rd + 70 + rd / 2; // horizontal road between row 1 and row 2
+    const r3y = oy + 55 + rd + 70 + rd + 60 + rd / 2; // horizontal road below row 2
+
+    const shortPath = `M ${homePos.x} ${homePos.y - 10}
+      L ${homePos.x} ${r3y}
+      L ${r1x} ${r3y}
+      L ${r1x} ${r1y}
+      L ${r3x} ${r1y}
+      L ${r3x} ${schoolPos.y + 14}`;
+
+    // DETOUR path (red line in sketch) — goes the long way around
+    const detourPath = `M ${homePos.x} ${homePos.y - 10}
+      L ${homePos.x} ${r3y}
+      L ${r2x} ${r3y}
+      L ${r2x} ${r2y}
+      L ${W - ox - 10} ${r2y}
+      L ${W - ox - 10} ${r1y}
+      L ${r3x} ${r1y}
+      L ${r3x} ${schoolPos.y + 14}`;
+
+    // Pet waypoints along short path
+    const petWaypoints = [
+      homePos,
+      { x: homePos.x, y: r3y },
+      { x: r1x, y: r3y },
+      { x: r1x, y: r1y },
+      { x: r3x, y: r1y },
+      { x: r3x, y: schoolPos.y + 14 },
+    ];
+    const petIdx = sub >= 1 ? Math.min(3, sub + 1) : 0;
+    const petPos = petWaypoints[petIdx] || homePos;
 
     return <g>
-      {/* Road background */}
-      <rect x={gx-gap} y={gy-gap} width={cols*(bw+gap)+gap} height={rows*(bh+gap)+gap} rx={8} fill={`${theme.textSec}08`}/>
+      {/* Road background (light fill for whole area) */}
+      <rect x={ox - 8} y={oy - 20} width={W - ox * 2 + 16} height={H * 0.82} rx={10} fill={`${theme.textSec}06`} />
       {/* Blocks */}
-      {blocks.map((b,i)=><rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} rx={6} fill={`${theme.textSec}12`} stroke={`${theme.textSec}20`} strokeWidth={1}/>)}
-      {/* Walk path */}
-      {sub>=1&&<path d={wp} fill="none" stroke={PASTEL.sky} strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" strokeDasharray="1200" strokeDashoffset="0" style={{transition:"stroke-dashoffset 2s ease"}}/>}
-      {/* Detour */}
-      {sub>=2&&<path d={dp} fill="none" stroke={`${theme.textSec}35`} strokeWidth={2.5} strokeDasharray="6 5"/>}
+      {blocks.map((b, i) => <rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} rx={7}
+        fill={`${theme.textSec}10`} stroke={`${theme.textSec}18`} strokeWidth={1} />)}
+
+      {/* Short walking path */}
+      {sub >= 1 && <path d={shortPath} fill="none" stroke={PASTEL.sky} strokeWidth={4.5}
+        strokeLinecap="round" strokeLinejoin="round" opacity={0.8} />}
+      {/* Detour path */}
+      {sub >= 2 && <path d={detourPath} fill="none" stroke={`${PASTEL.coral}50`} strokeWidth={3}
+        strokeLinecap="round" strokeLinejoin="round" strokeDasharray="7 5" />}
+
       {/* Home */}
       <text x={homePos.x} y={homePos.y} textAnchor="middle" fontSize={20}>🏠</text>
-      <text x={homePos.x} y={homePos.y+16} textAnchor="middle" fontSize={9} fill={theme.text} fontWeight={600}>집</text>
+      <text x={homePos.x} y={homePos.y + 16} textAnchor="middle" fontSize={9} fill={theme.text} fontWeight={600}>집</text>
       {/* School */}
       <text x={schoolPos.x} y={schoolPos.y} textAnchor="middle" fontSize={20}>🏫</text>
-      <text x={schoolPos.x} y={schoolPos.y+16} textAnchor="middle" fontSize={9} fill={theme.text} fontWeight={600}>학교</text>
-      {/* Pet */}
-      {sub>=1&&<text x={petPos.x} y={petPos.y} textAnchor="middle" fontSize={18} style={{cursor:"pointer",transition:"all .5s ease"}}
-        onClick={(e)=>{e.stopPropagation();setPetIcon(p=>p==="🐶"?"🐰":"🐶");playSfx("click");}}>{petIcon}</text>}
+      <text x={schoolPos.x} y={schoolPos.y + 16} textAnchor="middle" fontSize={9} fill={theme.text} fontWeight={600}>학교</text>
+
+      {/* Pet on the road */}
+      {sub >= 1 && <text x={petPos.x} y={petPos.y} textAnchor="middle" fontSize={18}
+        style={{ cursor: "pointer", transition: "all .6s ease" }}
+        onClick={(e) => { e.stopPropagation(); setPetIcon(p => p === "🐶" ? "🐰" : "🐶"); playSfx("click"); }}>{petIcon}</text>}
+
       {/* Labels */}
-      {sub>=1&&<text x={cx} y={H*.88} textAnchor="middle" fontSize={11} fill={PASTEL.sky} fontWeight={700}>"대충 15분 정도 거리야~"</text>}
-      {sub>=2&&<g>
-        <text x={cx-60} y={H*.15} fontSize={9} fill={theme.textSec}>이렇게 돌아가는 거리를</text>
-        <text x={cx-60} y={H*.18} fontSize={9} fill={theme.textSec}>얘기하진 않죠</text>
+      {sub >= 1 && <text x={cx} y={H * 0.88} textAnchor="middle" fontSize={11} fill={PASTEL.sky} fontWeight={700}>"대충 15분 정도 거리야~"</text>}
+      {sub >= 2 && <g>
+        <text x={W * 0.7} y={H * 0.52} fontSize={9} fill={PASTEL.coral} opacity={0.7}>돌아가는 길</text>
+        <text x={W * 0.7} y={H * 0.55} fontSize={9} fill={theme.textSec}>이 거리를 얘기하진 않죠</text>
       </g>}
     </g>;
   };
