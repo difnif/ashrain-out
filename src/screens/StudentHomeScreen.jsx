@@ -37,7 +37,7 @@ function HomeTab({ theme, user, setScreen, playSfx, homework, notifications, arc
     if (!members?.length) return [];
     return members.map(m => ({
       id: m.id, name: m.name,
-      count: archive.filter(a => a.userId === m.id).length + Math.floor(Math.random()*3), // TODO: real per-user data
+      count: archive.filter(a => a.userId === m.id && !a.hidden).length, // TODO: real per-user data
     })).sort((a,b) => b.count - a.count).slice(0, 5);
   }, [members, archive]);
 
@@ -138,6 +138,7 @@ function ArchiveTab({ theme, archive, setArchive, playSfx, showMsg, diary, setDi
               style={{ fontSize: 10, padding: "4px 10px", borderRadius: 8, border: `1px solid ${theme.border}`, background: item.isPublic ? `${PASTEL.mint}10` : theme.card, color: item.isPublic ? PASTEL.mint : theme.textSec, cursor: "pointer", height: "fit-content" }}>
               {item.isPublic ? "🌍 공개" : "🔒 비공개"}
             </button>
+            {item.isPublic && <span style={{ fontSize: 8, color: theme.textSec }}>학부모·광장에서 익명으로 보입니다</span>}
           </div>
 
           {/* Content */}
@@ -374,7 +375,8 @@ function SettingsTab({ theme, playSfx, showMsg, user, updateMember, handleLogout
   bgmOn, setBgmOn, sfxOn, setSfxOn, bgmVol, setBgmVol, sfxVol, setSfxVol,
   archiveDefaultPublic, setArchiveDefaultPublic }) {
 
-  const [section, setSection] = useState(null); // null|account|notif|display|audio|archive
+  const [section, setSection] = useState(null);
+  const [showAllNotifs, setShowAllNotifs] = useState(false); // null|account|notif|display|audio|archive
   const [editField, setEditField] = useState(null); // id|pw|nickname
   const [editVal, setEditVal] = useState("");
   const [editPwOld, setEditPwOld] = useState("");
@@ -479,13 +481,16 @@ function SettingsTab({ theme, playSfx, showMsg, user, updateMember, handleLogout
           {unread > 0 && <button onClick={() => { setNotifications(prev => prev.map(n => ({ ...n, read: true }))); playSfx("click"); }}
             style={{ fontSize: 10, color: PASTEL.sky, background: "none", border: "none", cursor: "pointer" }}>모두 읽음</button>}
         </div>
-        {notifications.slice(0, 3).map(n => (
+        {(showAllNotifs ? notifications : notifications.slice(0, 3)).map(n => (
           <div key={n.id} style={{ padding: "6px 0", borderTop: `1px solid ${theme.border}20`, display: "flex", gap: 6, alignItems: "flex-start" }}>
             {!n.read && <div style={{ width: 6, height: 6, borderRadius: 3, background: PASTEL.coral, marginTop: 5, flexShrink: 0 }} />}
             <div style={{ fontSize: 11, color: n.read ? theme.textSec : theme.text }}>{n.title}</div>
           </div>
         ))}
         {notifications.length === 0 && <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center" }}>알림 없음</p>}
+        {notifications.length > 3 && !showAllNotifs && (
+          <button onClick={() => setShowAllNotifs(true)} style={{ width: "100%", padding: 6, border: "none", background: "transparent", color: PASTEL.sky, fontSize: 10, cursor: "pointer" }}>전체 {notifications.length}개 보기 →</button>
+        )}
       </div>
 
       {/* DND */}
@@ -493,10 +498,10 @@ function SettingsTab({ theme, playSfx, showMsg, user, updateMember, handleLogout
         <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginBottom: 8 }}>🌙 방해금지</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <input type="time" value={dndStart} onChange={e => setDndStart(e.target.value)}
-            style={{ flex: 1, padding: 8, borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 12 }} />
+            style={{ flex: 1, padding: 8, borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 12, color: theme.text }} />
           <span style={{ color: theme.textSec }}>~</span>
           <input type="time" value={dndEnd} onChange={e => setDndEnd(e.target.value)}
-            style={{ flex: 1, padding: 8, borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 12 }} />
+            style={{ flex: 1, padding: 8, borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 12, color: theme.text }} />
         </div>
       </div>
 
@@ -553,6 +558,7 @@ function SettingsTab({ theme, playSfx, showMsg, user, updateMember, handleLogout
 export function StudentHomeScreenInner(props) {
   const { theme, playSfx, isAdminPreview, exitPreview, notifications, homework } = props;
   const [tab, setTab] = useState("home");
+  const contentRef = useRef(null);
   const unread = 0; // notifications badge removed
   const pendingHw = homework.filter(h => h.status !== "completed").length;
 
@@ -562,13 +568,14 @@ export function StudentHomeScreenInner(props) {
       <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
         @keyframes pageFlipLeft{0%{transform:translateX(0);opacity:1}30%{transform:translateX(-30px) rotateY(15deg);opacity:0.7}100%{transform:translateX(0);opacity:1}}
         @keyframes pageFlipRight{0%{transform:translateX(0);opacity:1}30%{transform:translateX(30px) rotateY(-15deg);opacity:0.7}100%{transform:translateX(0);opacity:1}}`}</style>
+      <div style={{ paddingTop: "env(safe-area-inset-top, 0)" }} />
       {isAdminPreview && (
         <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px", background: `${PASTEL.coral}15`, borderBottom: `1px solid ${PASTEL.coral}30` }}>
           <span style={{ fontSize: 11, color: PASTEL.coral, fontWeight: 700 }}>👁️ 학생 모드 미리보기</span>
           <button onClick={exitPreview} style={{ padding: "4px 12px", borderRadius: 8, border: `1px solid ${PASTEL.coral}`, background: "transparent", color: PASTEL.coral, fontSize: 11, cursor: "pointer", fontWeight: 700 }}>🚪 나가기</button>
         </div>
       )}
-      <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+      <div ref={contentRef} style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
         {tab === "home" && <HomeTab {...props} />}
         {tab === "archive" && <ArchiveTab {...props} />}
         {tab === "diary" && <DiaryTab {...props} setTab={setTab} />}
@@ -580,10 +587,10 @@ export function StudentHomeScreenInner(props) {
           const active = tab === t.key;
           const badge = t.key === "homework" ? pendingHw : 0;
           return (
-            <button key={t.key} onClick={() => { setTab(t.key); playSfx("click"); }}
-              style={{ flex: 1, padding: "10px 0 8px", border: "none", background: "transparent", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, position: "relative" }}>
-              <span style={{ fontSize: 18, opacity: active ? 1 : 0.5 }}>{t.icon}</span>
-              <span style={{ fontSize: 9, color: active ? PASTEL.coral : theme.textSec, fontWeight: active ? 700 : 400 }}>{t.label}</span>
+            <button key={t.key} onClick={() => { setTab(t.key); playSfx("click"); contentRef.current?.scrollTo(0, 0); }}
+              style={{ flex: 1, padding: "12px 0 10px", border: "none", background: "transparent", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, position: "relative", minHeight: 50 }}>
+              <span style={{ fontSize: 20, opacity: active ? 1 : 0.5 }}>{t.icon}</span>
+              <span style={{ fontSize: 10, color: active ? PASTEL.coral : theme.textSec, fontWeight: active ? 700 : 400 }}>{t.label}</span>
               {badge > 0 && <div style={{ position: "absolute", top: 4, right: "calc(50% - 16px)", width: 16, height: 16, borderRadius: 8, background: PASTEL.coral, color: "white", fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{badge}</div>}
             </button>
           );
