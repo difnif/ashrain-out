@@ -768,7 +768,7 @@ function AppInner() {
 
 
     const topics = [
-      { icon: "📏", label: "거리", desc: "점과 직선 사이의 거리", compact: true, action: () => setScreen("distance") },
+      { icon: "📏", label: "거리", desc: "점·직선·각의 이등분선까지", compact: true, action: () => setScreen("distance") },
       { icon: "△", label: "삼각형에서 원까지", desc: hasSavedWork ? "이전 작업 있음 ✦" : "SSS · SAS · ASA",
         action: () => { if (hasSavedWork) setShowLoadDialog(true); else { setDrawGoal("construct"); enterDraw(false); } } },
       { icon: "⊙⊙", label: "외접원 옆에 내접원", desc: "두 원의 관계", compact: true, action: () => { setDrawGoal("compare"); resetAll(); setBuildPhase("input"); setTriMode("sss"); setScreen("draw"); } },
