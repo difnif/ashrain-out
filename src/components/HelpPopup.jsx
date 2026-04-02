@@ -73,11 +73,19 @@ export function HelpPopup({ theme, playSfx, showMsg, title, explain, example, an
 
               {/* Buttons */}
               <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-                <button onClick={onClose} style={{
+                <button onClick={() => {
+                  // 이해도 데이터 기록
+                  try {
+                    const logs = JSON.parse(localStorage.getItem("ar_help_understood") || "[]");
+                    logs.push({ title, time: Date.now(), understood: true });
+                    localStorage.setItem("ar_help_understood", JSON.stringify(logs.slice(-100)));
+                  } catch {}
+                  onClose();
+                }} style={{
                   flex: 1, padding: 12, borderRadius: 12,
                   border: `1px solid ${theme.border}`, background: theme.card,
                   color: theme.text, fontSize: 13, cursor: "pointer",
-                }}>이해했어!</button>
+                }}>이해했어! 👍</button>
                 <button onClick={() => setPhase("ask")} style={{
                   flex: 1, padding: 12, borderRadius: 12, border: "none",
                   background: `${PASTEL.coral}15`, color: PASTEL.coral,
