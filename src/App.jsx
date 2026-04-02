@@ -18,11 +18,9 @@ import {
 } from "./screens/AdminScreens";
 import { renderProblemScreen } from "./screens/ProblemScreen";
 import { renderStudentHomeScreen } from "./screens/StudentHomeScreen";
-import { TutorialOverlay, useTutorial } from "./components/TutorialOverlay";
-import { renderParentHomeScreen } from "./screens/ParentHomeScreen";
-import { renderLearningDashboard } from "./screens/LearningDashboard";
 import { renderQuestionInboxScreen } from "./screens/QuestionInboxScreen";
 import { renderCongruenceScreen } from "./screens/CongruenceScreen";
+import { renderDistanceScreen } from "./screens/DistanceScreen";
 import { renderSettingsScreen } from "./screens/SettingsScreen";
 import { renderDrawScreen } from "./screens/DrawScreen";
 import { getProperties as getPropertiesFn, renderHighlight as renderHighlightFn, renderTriangleAnim as renderTriangleAnimFn } from "./rendering/TriangleRenderer";
@@ -200,13 +198,6 @@ function AppInner() {
   });
   useEffect(() => { localStorage.setItem("ar_diary", JSON.stringify(studentDiary)); }, [studentDiary]);
 
-  const [crossTalkPosts, setCrossTalkPosts] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("ar_crosstalk")) || []; } catch { return []; }
-  });
-  useEffect(() => { localStorage.setItem("ar_crosstalk", JSON.stringify(crossTalkPosts)); }, [crossTalkPosts]);
-
-  const [signupRole, setSignupRole] = useState("student");
-
   const [analysisModel, setAnalysisModel] = useState(() => localStorage.getItem("ar_analysis_model") || "claude-sonnet-4-20250514");
   useEffect(() => { localStorage.setItem("ar_analysis_model", analysisModel); }, [analysisModel]);
 
@@ -216,29 +207,6 @@ function AppInner() {
   const [helpPopupData, setHelpPopupData] = useState(null);
   const [canvasWidth, setCanvasWidth] = useState(null);
   const svgPanRef = useRef(null);
-
-  const sendHomeworkToChild = useCallback((hwData) => {
-    if (!hwData) return;
-    setStudentHomework(prev => [...prev, {
-      id: `hw-${Date.now()}`, ...hwData,
-      assignedAt: Date.now(), status: "assigned", reviewCount: 0,
-    }]);
-    setStudentNotifications(prev => [...prev, {
-      id: `notif-hw-${Date.now()}`, userId: hwData.studentId,
-      title: "📝 새 숙제!", message: hwData.problemType || "복습 숙제",
-      time: Date.now(), read: false, type: "homework",
-    }]);
-  }, []);
-
-  const tutorial = useTutorial();
-
-  // Trigger tutorials on first visit
-  useEffect(() => {
-    if (screen === "menu") tutorial.trigger("welcome");
-    if (screen === "draw" || screen === "polygons") tutorial.trigger("draw-first");
-    if (screen === "sentence") tutorial.trigger("problem-first");
-    if (screen === "student-mode" || screen === "student-home") tutorial.trigger("student-home");
-  }, [screen]);
 
   const [dndStart, setDndStart] = useState(() => localStorage.getItem("ar_dnd_start") || "23:00");
   const [dndEnd, setDndEnd] = useState(() => localStorage.getItem("ar_dnd_end") || "07:00");
@@ -603,11 +571,7 @@ function AppInner() {
     archive: studentArchive, setArchive: setStudentArchive,
     notifications: studentNotifications, setNotifications: setStudentNotifications,
     diary: studentDiary, setDiary: setStudentDiary,
-    signupRole, setSignupRole,
-    crossTalkPosts, setCrossTalkPosts, sendHomeworkToChild,
-    publicArchive: (studentArchive || []).filter(a => a.isPublic && !a.hidden).map(a => ({ ...a, userId: undefined, userName: undefined })),
     analysisModel, setAnalysisModel,
-    tutorial,
     archiveDefaultPublic, setArchiveDefaultPublic,
     helpPopupData, setHelpPopupData, canvasWidth, setCanvasWidth, svgPanRef,
     dndStart, dndEnd, setDndStart, setDndEnd,
@@ -650,13 +614,7 @@ function AppInner() {
 
   // --- Menu Screen ---
   // Student/External users → student home instead of admin menu
-  // Parent users → parent home
-  if (screen === "menu" && userRole === "parent") {
-    return renderParentHomeScreen(ctx);
-  }
-
-  // Student/External users → student home
-  if (screen === "menu" && userRole && userRole !== "admin" && userRole !== "assistant" && userRole !== "parent") {
+  if (screen === "menu" && userRole && userRole !== "admin" && userRole !== "assistant") {
     return renderStudentHomeScreen(ctx);
   }
 
@@ -669,8 +627,7 @@ function AppInner() {
     ];
     if (canAdmin) menuItems.push({ icon: "🔧", label: "관리자", desc: "회원·대사·효과음 관리", action: () => setScreen("admin") });
 
-    return (<><TutOverlay />
-
+    return (
       <ScreenWrap>
         <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
           <div style={{ textAlign:"center", marginBottom:40, animation:"fadeIn 0.6s ease" }}>
@@ -694,7 +651,7 @@ function AppInner() {
           <MenuGrid items={menuItems} />
         </div>
       </ScreenWrap>
-    </>)
+    );
   }
 
 
@@ -716,23 +673,12 @@ function AppInner() {
   }
 
 
-  // --- Tutorial Overlay ---
-  // The overlay renders as position:fixed, so we inject it into the first matching screen
-  const TutOverlay = () => tutorial.activeTutorial ? (
-    <TutorialOverlay tutorialId={tutorial.activeTutorial} theme={theme} onComplete={() => tutorial.setActiveTutorial(null)} />
-  ) : null;
-  // --- Parent Home ---
-  if (screen === "parent-home") return renderParentHomeScreen(ctx);
-
   // --- Student Mode ---
   if (screen === "student-mode") {
     if (!isStudentModePreview) setIsStudentModePreview(true);
     return renderStudentHomeScreen(ctx);
   }
   if (screen === "student-home") return renderStudentHomeScreen(ctx);
-
-  // --- Learning Dashboard ---
-  if (screen === "learning-dashboard") return renderLearningDashboard(ctx);
 
   // --- Question Inbox ---
   if (screen === "question-inbox") return renderQuestionInboxScreen(ctx);
@@ -742,6 +688,9 @@ function AppInner() {
 
     // --- Congruence Screen ---
   if (screen === "congruence") return renderCongruenceScreen(ctx);
+
+  // --- Distance Screen (거리 개념) ---
+  if (screen === "distance") return renderDistanceScreen(ctx);
 
   // --- Plaza (광장) Screen ---
   if (screen === "plaza") return renderPlazaScreen(ctx);
@@ -766,7 +715,7 @@ function AppInner() {
 
 
     const topics = [
-      { icon: "📏", label: "거리", desc: "점과 직선 사이의 거리", compact: true, disabled: true },
+      { icon: "📏", label: "거리", desc: "점과 직선 사이의 거리", compact: true, action: () => setScreen("distance") },
       { icon: "△", label: "삼각형에서 원까지", desc: hasSavedWork ? "이전 작업 있음 ✦" : "SSS · SAS · ASA",
         action: () => { if (hasSavedWork) setShowLoadDialog(true); else { setDrawGoal("construct"); enterDraw(false); } } },
       { icon: "⊙⊙", label: "외접원 옆에 내접원", desc: "두 원의 관계", compact: true, action: () => { setDrawGoal("compare"); resetAll(); setBuildPhase("input"); setTriMode("sss"); setScreen("draw"); } },
