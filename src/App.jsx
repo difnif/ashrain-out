@@ -20,6 +20,9 @@ import { renderProblemScreen } from "./screens/ProblemScreen";
 import { renderStudentHomeScreen } from "./screens/StudentHomeScreen";
 import { renderQuestionInboxScreen } from "./screens/QuestionInboxScreen";
 import { renderCongruenceScreen } from "./screens/CongruenceScreen";
+import { TutorialOverlay, useTutorial } from "./components/TutorialOverlay";
+import { renderLearningDashboard } from "./screens/LearningDashboard";
+import { renderParentHomeScreen } from "./screens/ParentHomeScreen";
 import { renderDistanceScreen } from "./screens/DistanceScreen";
 import { renderSettingsScreen } from "./screens/SettingsScreen";
 import { renderDrawScreen } from "./screens/DrawScreen";
@@ -198,11 +201,37 @@ function AppInner() {
   });
   useEffect(() => { localStorage.setItem("ar_diary", JSON.stringify(studentDiary)); }, [studentDiary]);
 
+  const [signupRole, setSignupRole] = useState("student");
+  const [crossTalkPosts, setCrossTalkPosts] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ar_crosstalk")) || []; } catch { return []; }
+  });
+  useEffect(() => { localStorage.setItem("ar_crosstalk", JSON.stringify(crossTalkPosts)); }, [crossTalkPosts]);
+
   const [analysisModel, setAnalysisModel] = useState(() => localStorage.getItem("ar_analysis_model") || "claude-sonnet-4-20250514");
   useEffect(() => { localStorage.setItem("ar_analysis_model", analysisModel); }, [analysisModel]);
 
   const [archiveDefaultPublic, setArchiveDefaultPublic] = useState(() => localStorage.getItem("ar_archive_public") === "true");
   useEffect(() => { localStorage.setItem("ar_archive_public", archiveDefaultPublic); }, [archiveDefaultPublic]);
+
+  const sendHomeworkToChild = useCallback((hwData) => {
+    if (!hwData) return;
+    setStudentHomework(prev => [...prev, {
+      id: `hw-${Date.now()}`, ...hwData,
+      assignedAt: Date.now(), status: "assigned", reviewCount: 0,
+    }]);
+    setStudentNotifications(prev => [...prev, {
+      id: `notif-hw-${Date.now()}`, userId: hwData.studentId,
+      title: "📝 새 숙제!", message: hwData.problemType || "복습 숙제",
+      time: Date.now(), read: false, type: "homework",
+    }]);
+  }, []);
+
+  const tutorial = useTutorial();
+  useEffect(() => {
+    if (screen === "menu") tutorial.trigger("welcome");
+    if (screen === "draw" || screen === "polygons") tutorial.trigger("draw-first");
+    if (screen === "sentence") tutorial.trigger("problem-first");
+  }, [screen]);
 
   const [helpPopupData, setHelpPopupData] = useState(null);
   const [canvasWidth, setCanvasWidth] = useState(null);
@@ -575,6 +604,10 @@ function AppInner() {
     archive: studentArchive, setArchive: setStudentArchive,
     notifications: studentNotifications, setNotifications: setStudentNotifications,
     diary: studentDiary, setDiary: setStudentDiary,
+    signupRole, setSignupRole,
+    crossTalkPosts, setCrossTalkPosts, sendHomeworkToChild,
+    publicArchive: (studentArchive || []).filter(a => a.isPublic && !a.hidden).map(a => ({ ...a, userId: undefined, userName: undefined })),
+    tutorial,
     analysisModel, setAnalysisModel,
     archiveDefaultPublic, setArchiveDefaultPublic,
     helpPopupData, setHelpPopupData, canvasWidth, setCanvasWidth, svgPanRef,
@@ -618,9 +651,19 @@ function AppInner() {
 
   // --- Menu Screen ---
   // Student/External users → student home instead of admin menu
-  if (screen === "menu" && userRole && userRole !== "admin" && userRole !== "assistant") {
+  // Parent → parent home
+  if (screen === "menu" && userRole === "parent") {
+    return renderParentHomeScreen(ctx);
+  }
+
+  // Student/External → student home
+  if (screen === "menu" && userRole && userRole !== "admin" && userRole !== "assistant" && userRole !== "parent") {
     return renderStudentHomeScreen(ctx);
   }
+
+  const TutOverlay = () => tutorial?.activeTutorial ? (
+    <TutorialOverlay tutorialId={tutorial.activeTutorial} theme={theme} onComplete={() => tutorial.setActiveTutorial(null)} />
+  ) : null;
 
   if (screen === "menu") {
     const menuItems = [
@@ -677,12 +720,18 @@ function AppInner() {
   }
 
 
+  // --- Parent Home ---
+  if (screen === "parent-home") return renderParentHomeScreen(ctx);
+
   // --- Student Mode ---
   if (screen === "student-mode") {
     if (!isStudentModePreview) setIsStudentModePreview(true);
     return renderStudentHomeScreen(ctx);
   }
   if (screen === "student-home") return renderStudentHomeScreen(ctx);
+
+  // --- Learning Dashboard ---
+  if (screen === "learning-dashboard") return renderLearningDashboard(ctx);
 
   // --- Question Inbox ---
   if (screen === "question-inbox") return renderQuestionInboxScreen(ctx);
