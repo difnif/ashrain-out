@@ -2,7 +2,7 @@
 // State: desk-neat / desk-thrown / book-open | Two-page spread | Pressure | XP system
 import React,{useState,useRef,useEffect,useCallback,memo} from "react";
 import DeskScene3D from "./DiaryDeskScene";
-import {DECO_CATALOG as _DECO_CATALOG} from "./DiaryConfig";
+import {DECO_CATALOG as _DECO_CATALOG, MYSTICAL_QUOTES} from "./DiaryConfig";
 import{PASTEL}from"../config";
 
 // ─── KaTeX ────────────────────────────────────────────────────────────────────
@@ -33,6 +33,147 @@ function MathDialog({theme,initial,onConfirm,onCancel}){
       </div>
     </div>
   </div>);
+}
+
+// ─── Animation injection ─────────────────────────────────────────────────────
+let _bookAnimInjected = false;
+function injectBookAnims() {
+  if (_bookAnimInjected) return; _bookAnimInjected = true;
+  const s = document.createElement("style");
+  s.textContent = `
+    @keyframes bookOpen {
+      0%   { transform: perspective(700px) rotateX(52deg) rotateY(-8deg) scale(0.82); opacity:0; }
+      40%  { transform: perspective(700px) rotateX(28deg) rotateY(-3deg) scale(0.95); opacity:0.8; }
+      100% { transform: perspective(700px) rotateX(0deg)  rotateY(0deg)  scale(1);    opacity:1; }
+    }
+    @keyframes bookClose {
+      0%   { transform: perspective(700px) rotateX(0deg)  scale(1);    opacity:1; }
+      100% { transform: perspective(700px) rotateX(52deg) scale(0.75); opacity:0; }
+    }
+    @keyframes pageFlipLeft {
+      0%   { transform: perspective(900px) rotateY(0deg);   z-index:30; }
+      50%  { transform: perspective(900px) rotateY(-90deg); z-index:30; box-shadow: -8px 0 24px rgba(0,0,0,0.4); }
+      100% { transform: perspective(900px) rotateY(-180deg);z-index:1; }
+    }
+    @keyframes pageFlipRight {
+      0%   { transform: perspective(900px) rotateY(0deg);  z-index:30; }
+      50%  { transform: perspective(900px) rotateY(90deg); z-index:30; box-shadow: 8px 0 24px rgba(0,0,0,0.4); }
+      100% { transform: perspective(900px) rotateY(180deg);z-index:1; }
+    }
+    @keyframes quoteIn {
+      0%   { opacity:0; transform: translateY(8px); }
+      100% { opacity:1; transform: translateY(0); }
+    }
+    @keyframes quoteFade {
+      0%   { opacity:1; }
+      100% { opacity:0; filter: blur(4px); }
+    }
+  `;
+  document.head.appendChild(s);
+}
+
+// ─── GhostQuote — mystical quote overlay for empty pages ─────────────────────
+function GhostQuote({ pageIdx, totalPages }) {
+  // Seed: day-of-year × (pageIdx+1) for daily rotation
+  const seed = Math.floor(Date.now() / 86400000) * 31 + pageIdx;
+  const [qIdx, setQIdx] = useState(seed % MYSTICAL_QUOTES.length);
+  const [visible, setVisible] = useState(true);
+  const [anim, setAnim] = useState("quoteIn 0.8s ease forwards");
+
+  const handleTap = (e) => {
+    e.stopPropagation();
+    // 50% chance: disappear, 50% chance: new quote
+    const vanish = Math.random() > 0.5;
+    setAnim("quoteFade 0.6s ease forwards");
+    setTimeout(() => {
+      if (vanish) { setVisible(false); }
+      else {
+        const next = (qIdx + 1 + Math.floor(Math.random() * 5)) % MYSTICAL_QUOTES.length;
+        setQIdx(next); setVisible(true);
+        setAnim("quoteIn 0.8s ease forwards");
+      }
+    }, 600);
+  };
+
+  if (!visible) return null;
+  const q = MYSTICAL_QUOTES[qIdx];
+
+  return (
+    <div onClick={handleTap} style={{
+      position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      padding: "40px 32px", gap: 20, cursor: "pointer",
+      animation: anim,
+      zIndex: 1, pointerEvents: "auto",
+    }}>
+      {/* Original text */}
+      <div style={{
+        fontFamily: "serif", fontSize: 13, color: "rgba(100,80,50,0.55)",
+        textAlign: "center", lineHeight: 1.9, letterSpacing: "0.04em",
+        maxWidth: 320, wordBreak: "break-word",
+      }}>
+        {q.original}
+      </div>
+      {/* Short line */}
+      <div style={{
+        fontFamily: "serif", fontSize: 12, color: "rgba(80,60,40,0.7)",
+        textAlign: "center", lineHeight: 1.7, fontStyle: "italic",
+      }}>
+        {q.line}
+      </div>
+      {/* Source */}
+      <div style={{
+        fontSize: 10, color: "rgba(120,100,70,0.45)",
+        fontFamily: "serif", letterSpacing: "0.06em",
+      }}>
+        — {q.source}
+      </div>
+      <div style={{
+        fontSize: 9, color: "rgba(120,100,70,0.3)",
+        marginTop: 8, fontFamily: "serif",
+      }}>
+        탭하면 사라지거나 바뀌어요
+      </div>
+    </div>
+  );
+}
+
+// ─── First-page cover (registration date) ────────────────────────────────────
+function FirstPageCover({ theme }) {
+  const startDate = localStorage.getItem("ar_diary_start") || (() => {
+    const d = new Date().toISOString().slice(0, 10);
+    localStorage.setItem("ar_diary_start", d);
+    return d;
+  })();
+  const d = new Date(startDate + "T00:00:00");
+  const formatted = d.toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" });
+
+  return (
+    <div style={{
+      position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center", gap: 16,
+      background: "linear-gradient(160deg, #faf8f4 0%, #f0ece4 100%)",
+      padding: 32,
+    }}>
+      <div style={{ fontSize: 32, opacity: 0.4 }}>✦</div>
+      <div style={{ fontFamily: "serif", fontSize: 11, color: "rgba(100,80,50,0.5)", letterSpacing: "0.2em" }}>
+        DIARY
+      </div>
+      <div style={{
+        fontFamily: "serif", fontSize: 18, color: "rgba(80,60,40,0.75)",
+        fontWeight: 700, textAlign: "center", letterSpacing: "0.04em",
+        lineHeight: 1.6,
+      }}>
+        {formatted}
+      </div>
+      <div style={{
+        width: 40, height: 1, background: "rgba(100,80,50,0.25)", margin: "4px 0",
+      }} />
+      <div style={{ fontSize: 10, color: "rgba(100,80,50,0.4)", fontFamily: "serif", letterSpacing: "0.1em" }}>
+        나의 이야기가 시작되다
+      </div>
+    </div>
+  );
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -314,7 +455,8 @@ function PagePane({page,pageKey,canEdit,theme,bgType,
     onStroke,onErase,
     slashMenuCb,mathDialogCb,archivePickerCb,
     blocks,updBlock,selectedId,setSelectedId,editingId,setEditingId,
-    showMsg}){
+    showMsg,isFirstPage,pageIdx}){
+  const isEmpty=!(page?.paths?.length>0||page?.blocks?.length>0||(page?.pageText||"").trim());
 
   const ref=useRef(null);
   const [curPts,setCurPts]=useState([]);
@@ -475,6 +617,10 @@ function PagePane({page,pageKey,canEdit,theme,bgType,
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
       <div style={{position:"absolute",width:PAGE_W,height:PAGE_H,transformOrigin:"0 0",transform:contentTransform}}>
         <PageBackground bgType={bgType} theme={theme}/>
+        {/* First page cover (registration date) */}
+        {isFirstPage&&<FirstPageCover theme={theme}/>}
+        {/* Ghost quote on empty pages */}
+        {!isFirstPage&&isEmpty&&<GhostQuote pageIdx={pageIdx||0} totalPages={1}/>}
         <DrawCanvas paths={page?.paths||[]} curPts={curPts} brushId={brushId} penColor={penColor} penSize={penSize} eraserPos={eraserPos}/>
         <textarea ref={textRef} value={page?.pageText||""} onChange={e=>handleText(e.target.value)} readOnly={!canEdit}
           placeholder={canEdit&&!drawMode?"/ 명령어로 블록 추가":""}
@@ -496,6 +642,21 @@ function BookView({diary,setDiary,viewDate,canEdit,theme,
     coverStyle,onClose,showMsg,playSfx,archive,setTab}){
 
   const today=new Date().toISOString().slice(0,10);
+  injectBookAnims();
+
+  // Book open/close animation state
+  const [bookAnim,setBookAnim]=useState("opening"); // opening | open | closing
+  useEffect(()=>{
+    setBookAnim("opening");
+    const t=setTimeout(()=>setBookAnim("open"),900);
+    return()=>clearTimeout(t);
+  },[]);
+
+  // Page flip animation: { dir, phase }
+  const [flipAnim,setFlipAnim]=useState(null);
+
+  // Zoom: used to flatten perspective when zoomed in
+  const [globalZoom,setGlobalZoom]=useState(1);
 
   // Load pages for viewDate, with auto-delete of empty pages
   const cleanPages=useCallback(pgs=>{
@@ -564,12 +725,34 @@ function BookView({diary,setDiary,viewDate,canEdit,theme,
     playSfx("click");showMsg(`쪽 추가!`,1000);
   };
 
-  // 자동 저장 후 페이지 이동
-  const goSpread=dir=>{save();
+  const goSpread=dir=>{
     const next=spreadIdx+(dir==="next"?1:-1);
     if(next<0||next>maxSpread)return;
-    setSpreadIdx(next);setSelectedId(null);setEditingId(null);
+    setFlipAnim({dir,phase:"out"});
+    setTimeout(()=>{
+      setSpreadIdx(next);setSelectedId(null);setEditingId(null);
+      setFlipAnim({dir,phase:"in"});
+    },320);
+    setTimeout(()=>setFlipAnim(null),640);
   };
+
+  // Swipe gesture for page turn (within book spread)
+  const swipeRef=useRef(null);
+  const onSpreadPtrDown=useCallback(e=>{
+    // Only single-finger, non-drawing
+    if(drawMode) return;
+    swipeRef.current={x:e.clientX,y:e.clientY,time:Date.now()};
+  },[drawMode]);
+  const onSpreadPtrUp=useCallback(e=>{
+    if(!swipeRef.current) return;
+    const dx=e.clientX-swipeRef.current.x;
+    const dy=e.clientY-swipeRef.current.y;
+    const dt=Date.now()-swipeRef.current.time;
+    if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.2&&dt<500){
+      goSpread(dx<0?"next":"prev");
+    }
+    swipeRef.current=null;
+  },[goSpread]);
 
   // Close gesture detection on book element (zoom-out + swipe BR→TL)
   const onBookPtrDown=useCallback(e=>{
@@ -584,7 +767,11 @@ function BookView({diary,setDiary,viewDate,canEdit,theme,
     const startInBR=(g.sx-g.rl)>g.rw*0.55&&(g.sy-g.rt)>g.rh*0.55;
     const goingUL=dx<-80&&dy<-50;
     const fast=dt<400;
-    if(startInBR&&goingUL&&fast){onClose();playSfx("click");}
+    if(startInBR&&goingUL&&fast){
+      setBookAnim("closing");
+      playSfx("click");
+      setTimeout(()=>onClose(),380);
+    }
     closeGestureRef.current=null;
   },[onClose,playSfx]);
 
@@ -631,16 +818,32 @@ function BookView({diary,setDiary,viewDate,canEdit,theme,
         </div>
       </div>}
 
-      {/* Spread container */}
-      <div ref={bookRef} style={{flex:1,display:"flex",padding:"0 8px",gap:0,minHeight:0,
-          position:"relative",touchAction:"none"}}
-        onPointerDown={onBookPtrDown} onPointerUp={onBookPtrUp}>
+      {/* Spread container — perspective flattens as zoom increases */}
+      <div ref={bookRef} style={{
+          flex:1,display:"flex",padding:"0 8px",gap:0,minHeight:0,
+          position:"relative",touchAction:"none",
+          perspective: globalZoom>1.5 ? "none" : `${Math.round(1200-globalZoom*300)}px`,
+          perspectiveOrigin:"50% 40%",
+          animation: bookAnim==="opening"
+            ? "bookOpen 0.85s cubic-bezier(0.22,1,0.36,1) forwards"
+            : bookAnim==="closing"
+            ? "bookClose 0.4s ease forwards"
+            : "none",
+        }}
+        onPointerDown={e=>{onBookPtrDown(e);onSpreadPtrDown(e);}}
+        onPointerUp={e=>{onBookPtrUp(e);onSpreadPtrUp(e);}}>
 
         {/* Left page */}
         <div style={{flex:1,minWidth:0,height:SPREAD_H,position:"relative",
             border:coverBorder,boxShadow:coverShadow,
-            borderRadius:"6px 0 0 6px",overflow:"hidden"}}>
+            borderRadius:"6px 0 0 6px",overflow:"hidden",
+            transformStyle:"preserve-3d",transformOrigin:"right center",
+            animation: flipAnim?.dir==="prev"&&flipAnim?.phase==="out" ? "pageFlipRight 0.32s ease forwards"
+                     : flipAnim?.dir==="next"&&flipAnim?.phase==="in"  ? "pageFlipLeft  0.32s ease forwards"
+                     : "none",
+          }}>
           <PagePane page={leftPage} pageKey={`L${spreadIdx}`} canEdit={canEdit&&viewDate===today}
+            isFirstPage={leftIdx===0} pageIdx={leftIdx}
             theme={theme} bgType={bgType} brushId={brushId} penColor={penColor} penSize={penSize} drawMode={drawMode}
             onStroke={s=>{snap();updPage(leftIdx,{paths:[...(leftPage?.paths||[]),{id:`p${Date.now()}`,...s}]});}}
             onErase={(x,y)=>updPage(leftIdx,{paths:(leftPage?.paths||[]).filter(p=>!p.pts?.some(pt=>Math.hypot(pt.x-x,pt.y-y)<ERASER_R))})}
@@ -661,9 +864,15 @@ function BookView({diary,setDiary,viewDate,canEdit,theme,
         {/* Right page */}
         <div style={{flex:1,minWidth:0,height:SPREAD_H,position:"relative",
             border:coverBorder,boxShadow:coverShadow,
-            borderRadius:"0 6px 6px 0",overflow:"hidden"}}>
+            borderRadius:"0 6px 6px 0",overflow:"hidden",
+            transformStyle:"preserve-3d",transformOrigin:"left center",
+            animation: flipAnim?.dir==="next"&&flipAnim?.phase==="out" ? "pageFlipLeft  0.32s ease forwards"
+                     : flipAnim?.dir==="prev"&&flipAnim?.phase==="in"  ? "pageFlipRight 0.32s ease forwards"
+                     : "none",
+          }}>
           {rightPage?(
             <PagePane page={rightPage} pageKey={`R${spreadIdx}`} canEdit={canEdit&&viewDate===today}
+              isFirstPage={false} pageIdx={rightIdx}
               theme={theme} bgType={bgType} brushId={brushId} penColor={penColor} penSize={penSize} drawMode={drawMode}
               onStroke={s=>{snap();updPage(rightIdx,{paths:[...(rightPage?.paths||[]),{id:`p${Date.now()}`,...s}]});}}
               onErase={(x,y)=>updPage(rightIdx,{paths:(rightPage?.paths||[]).filter(p=>!p.pts?.some(pt=>Math.hypot(pt.x-x,pt.y-y)<ERASER_R))})}
@@ -834,6 +1043,9 @@ export default function DiaryTab({theme,diary,setDiary,playSfx,showMsg,archive,s
   const [deskId,setDeskId]=useState(()=>localStorage.getItem("ashrain-desk-id")||"oak");
   const [coverId,setCoverId]=useState(()=>localStorage.getItem("ashrain-cover-id")||"brown");
   const [activeDecos,setActiveDecos]=useState(()=>{try{return JSON.parse(localStorage.getItem("ashrain-decos")||"[]");}catch{return[];}});
+
+  // Set registration date on first ever diary open
+  useEffect(()=>{if(!localStorage.getItem("ar_diary_start"))localStorage.setItem("ar_diary_start",new Date().toISOString().slice(0,10));},[]);
 
   // Persist desk config changes
   useEffect(()=>{localStorage.setItem("ashrain-desk-id",deskId);},[deskId]);
