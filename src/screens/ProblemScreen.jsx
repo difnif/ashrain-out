@@ -127,14 +127,28 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
     img.src = URL.createObjectURL(file);
   }, []);
 
+  const [loadingStage, setLoadingStage] = useState("");
+
   const analyze = async () => {
     if (!input.trim() && !imageData) { showMsg("문제를 입력하거나 사진을 올려주세요", 2000); return; }
+    if (loading) return; // 중복 요청 방지
     setLoading(true); setError(""); setResult(null); setCurrentStep(-1); setHelpMode(null);
     playSfx("click");
+
+    // 단계별 로딩 텍스트
+    setLoadingStage("문제를 읽고 있어요...");
+    const stageTimer1 = setTimeout(() => setLoadingStage("조건을 분석하고 있어요..."), 3000);
+    const stageTimer2 = setTimeout(() => setLoadingStage("풀이 방향을 설정하고 있어요..."), 7000);
+    const stageTimer3 = setTimeout(() => setLoadingStage("거의 다 됐어요!"), 12000);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000); // 30초 타임아웃
+
     try {
       const resp = await fetch("/api/analyze", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: input.trim() || undefined, imageBase64: imageData || undefined, model: analysisModel || undefined }),
+        signal: controller.signal,
       });
       const data = await resp.json();
       if (data.error) throw new Error(data.error);
@@ -142,8 +156,14 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
       if (data.problemText) setInput(data.problemText);
       setCurrentStep(-1);
       playSfx("success");
-    } catch (e) { setError(e.message || "분석 실패"); playSfx("error"); }
-    finally { setLoading(false); }
+    } catch (e) {
+      if (e.name === "AbortError") setError("분석 시간이 너무 오래 걸려요. 다시 시도해주세요.");
+      else setError(e.message || "분석 실패");
+      playSfx("error");
+    } finally {
+      clearTimeout(timeout); clearTimeout(stageTimer1); clearTimeout(stageTimer2); clearTimeout(stageTimer3);
+      setLoading(false); setLoadingStage("");
+    }
   };
 
   const reset = () => {
@@ -160,7 +180,7 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
       content: { problemText: result.problemText, steps: result.steps, equation: result.equation, figure: result.figure },
       createdAt: Date.now(), isPublic: archiveDefaultPublic || false, hidden: false, userId: user?.id,
     }]);
-    playSfx("success"); showMsg("아카이브에 저장했어요! 📂", 2000);
+    playSfx("success"); showMsg("아카이브에 저장! 학생 홈 > 아카이브에서 확인하세요 📂", 2500);
   };
 
   const nextStep = () => {
@@ -303,9 +323,9 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
                 rows={3} style={ist} />
             </div>
 
-            <button onClick={analyze} disabled={!input.trim() && !imageData}
-              style={{ ...btnPrimary, opacity: (input.trim() || imageData) ? 1 : 0.4 }}>
-              🔍 문제 분석하기
+            <button onClick={analyze} disabled={loading || (!input.trim() && !imageData)}
+              style={{ ...btnPrimary, opacity: (!loading && (input.trim() || imageData)) ? 1 : 0.4 }}>
+              {loading ? "분석 중..." : "🔍 문제 분석하기"}
             </button>
             {error && <p style={{ fontSize: 12, color: PASTEL.coral, textAlign: "center", marginTop: 10 }}>{error}</p>}
           </div>
@@ -315,7 +335,7 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
         {loading && (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 300, gap: 16, padding: 40 }}>
             <div style={{ fontSize: 40 }} className="pulse">📖</div>
-            <p style={{ fontSize: 14, color: theme.text, fontWeight: 700 }}>문제를 읽고 있어요...</p>
+            <p style={{ fontSize: 14, color: theme.text, fontWeight: 700 }}>{loadingStage || "문제를 읽고 있어요..."}</p>
             <div style={{ width: 180, height: 4, borderRadius: 2, background: theme.border, overflow: "hidden" }}>
               <div className="pulse" style={{ width: "60%", height: "100%", borderRadius: 2, background: PASTEL.coral }} />
             </div>
