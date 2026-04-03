@@ -308,12 +308,12 @@ export function renderAdminPermsScreen(ctx) {
         <p style={{ fontSize: 11, color: theme.textSec, marginBottom: 14 }}>
           역할별로 허용되는 기능을 설정할 수 있어요.
         </p>
-        {Object.entries(PERM_GROUPS).map(([group, perms]) => (
-          <div key={group} style={{ marginBottom: 16 }}>
+        {PERM_GROUPS.map((group, gi) => (
+          <div key={gi} style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginBottom: 8, textTransform: "uppercase", letterSpacing: 2 }}>
-              {group}
+              {group.label}
             </div>
-            {perms.map(perm => (
+            {group.keys.map(perm => (
               <div key={perm} style={{
                 background: theme.card, borderRadius: 12, padding: "10px 14px",
                 border: `1px solid ${theme.border}`, marginBottom: 6,
@@ -323,14 +323,16 @@ export function renderAdminPermsScreen(ctx) {
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
                   {["admin", "assistant", "student", "external"].map(role => {
-                    const isOn = (rolePerms[role] || DEFAULT_PERMS[role] || []).includes(perm);
-                    const isDefault = (DEFAULT_PERMS[role] || []).includes(perm);
+                    const permsObj = rolePerms[role] || DEFAULT_PERMS[role] || {};
+                    const isOn = !!permsObj[perm];
+                    const defaultObj = DEFAULT_PERMS[role] || {};
+                    const isDefault = !!defaultObj[perm];
                     return (
                       <button key={role} onClick={() => {
                         if (role === "admin") return;
-                        const current = rolePerms[role] || DEFAULT_PERMS[role] || [];
-                        const updated = isOn ? current.filter(p => p !== perm) : [...current, perm];
-                        setRolePerms(prev => ({ ...prev, [role]: updated }));
+                        const current = { ...(rolePerms[role] || DEFAULT_PERMS[role] || {}) };
+                        current[perm] = !isOn;
+                        setRolePerms(prev => ({ ...prev, [role]: current }));
                         playSfx("click");
                       }} style={{
                         flex: 1, padding: "5px 4px", borderRadius: 8, fontSize: 9,
