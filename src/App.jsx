@@ -196,17 +196,26 @@ function AppInner() {
   const [helpRequests, setHelpRequests] = useState([]);
   const [studentHomework, setStudentHomework] = useState([]);
   const [studentArchive, setStudentArchive] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("ar_archive")) || []; } catch { return []; }
+    try {
+      const parsed = JSON.parse(localStorage.getItem("ar_archive"));
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
   });
   const [studentNotifications, setStudentNotifications] = useState([]);
   const [studentDiary, setStudentDiary] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("ar_diary")) || []; } catch { return []; }
+    try {
+      const parsed = JSON.parse(localStorage.getItem("ar_diary"));
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
   });
   useEffect(() => { localStorage.setItem("ar_diary", JSON.stringify(studentDiary)); }, [studentDiary]);
 
   const [signupRole, setSignupRole] = useState("student");
   const [crossTalkPosts, setCrossTalkPosts] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("ar_crosstalk")) || []; } catch { return []; }
+    try {
+      const parsed = JSON.parse(localStorage.getItem("ar_crosstalk"));
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
   });
   useEffect(() => { localStorage.setItem("ar_crosstalk", JSON.stringify(crossTalkPosts)); }, [crossTalkPosts]);
 
@@ -255,7 +264,12 @@ function AppInner() {
   const [drawGoal, setDrawGoal] = useState("construct");
   const [proofStep, setProofStep] = useState(0); // "construct" | "compare" | "combined"
   const [chatMsg, setChatMsg] = useState("");
-  const [chatLog, setChatLog] = useState(() => { try { return JSON.parse(localStorage.getItem("ar_chat")) || []; } catch { return []; } });
+  const [chatLog, setChatLog] = useState(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem("ar_chat"));
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  });
   useFirestoreSync("plaza", "chat", chatLog, setChatLog, []);
   const [chatNotif, setChatNotif] = useState(true);
   const chatEndRef = useRef(null);
