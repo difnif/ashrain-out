@@ -28,7 +28,7 @@ export function renderDrawScreen(ctx) {
     currentStroke, setCurrentStroke, isDrawing, drawPreview,
     handleDrawStart, handleDrawMove, handleDrawEnd, handleSSSSubmit,
     showProperties, setShowProperties, selectedProp, setSelectedProp, floatingMsg,
-    showArchiveSave, setShowArchiveSave, archivePublic, setArchivePublic,
+    saveToArchive, showArchiveSave, setShowArchiveSave, archivePublic, setArchivePublic,
     compareSelected, setCompareSelected,
     renderTriangleAnim, renderHighlight, getProperties,
     archive, setArchive, archiveDefaultPublic,
