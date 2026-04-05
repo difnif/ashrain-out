@@ -4,6 +4,9 @@
 import { fbGet, fbSet } from "./firebase";
 import { GAME_DEFAULTS, getLevelFromXP, xpForLevel } from "./GameConfig";
 
+// Re-export for other screens
+export { getLevelFromXP, xpForLevel };
+
 // ── 뱃지 정의 ──
 export const BADGES = [
   // 학습
