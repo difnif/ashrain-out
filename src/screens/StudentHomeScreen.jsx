@@ -147,11 +147,11 @@ function ArchiveTab({ theme, archive, setArchive, playSfx, showMsg, diary, setDi
               {item.content.problemText}
             </div>
           )}
-          {item.content?.steps && (
+          {Array.isArray(item.content?.steps) && item.content.steps.length > 0 && (
             <div style={{ marginBottom: 10 }}>
               {item.content.steps.map((step, i) => (
-                <div key={i} style={{ padding: "8px 12px", marginBottom: 4, borderRadius: 10, background: `${PASTEL[step.color] || PASTEL.coral}08`, border: `1px solid ${PASTEL[step.color] || PASTEL.coral}20`, fontSize: 12, color: theme.text }}>
-                  <b style={{ color: PASTEL[step.color] || PASTEL.coral }}>STEP {i+1}</b> {step.title}
+                <div key={i} style={{ padding: "8px 12px", marginBottom: 4, borderRadius: 10, background: `${PASTEL[step?.color] || PASTEL.coral}08`, border: `1px solid ${PASTEL[step?.color] || PASTEL.coral}20`, fontSize: 12, color: theme.text }}>
+                  <b style={{ color: PASTEL[step?.color] || PASTEL.coral }}>STEP {i+1}</b> {step?.title || ""}
                 </div>
               ))}
             </div>
