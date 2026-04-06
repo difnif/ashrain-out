@@ -1,4 +1,5 @@
 import { useFirestoreSync } from "./hooks/useFirestoreSync";
+import { DEFAULT_PROGRESS } from "./data/curriculum";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   PASTEL, THEMES, TONES,
@@ -13,7 +14,7 @@ import InfoPanel from "./components/InfoPanel";
 import { renderLoginScreen, renderSignupScreen } from "./screens/AuthScreens";
 import { renderPlazaScreen } from "./screens/PlazaScreen";
 import {
-  renderAdminScreen, renderAdminStudentsScreen, renderAdminPermsScreen,
+  renderAdminScreen, renderAdminStudentsScreen, renderAdminProgressScreen, renderAdminPermsScreen,
   renderAdminSignupsScreen, renderAdminScriptsScreen,
 } from "./screens/AdminScreens";
 import { renderProblemScreen } from "./screens/ProblemScreen";
@@ -201,6 +202,9 @@ function AppInner() {
       return Array.isArray(parsed) ? parsed : [];
     } catch { return []; }
   });
+
+  const [progress, setProgress] = useState(DEFAULT_PROGRESS);
+  useFirestoreSync("data", "progress", progress, setProgress, DEFAULT_PROGRESS);
   const [studentNotifications, setStudentNotifications] = useState([]);
   const [studentDiary, setStudentDiary] = useState(() => {
     try {
@@ -625,6 +629,7 @@ function AppInner() {
     crossTalkPosts, setCrossTalkPosts, sendHomeworkToChild,
     publicArchive: (studentArchive || []).filter(a => a.isPublic && !a.hidden).map(a => ({ ...a, userId: undefined, userName: undefined })),
     tutorial,
+    progress, setProgress,
     analysisModel, setAnalysisModel,
     archiveDefaultPublic, setArchiveDefaultPublic,
     helpPopupData, setHelpPopupData, canvasWidth, setCanvasWidth, svgPanRef,
@@ -859,6 +864,7 @@ function AppInner() {
 
   // --- Admin Signup Management ---
   // --- Admin Permissions Screen ---
+  if (screen === "admin-progress") return renderAdminProgressScreen(ctx);
   if (screen === "admin-perms") return renderAdminPermsScreen(ctx);
 
   if (screen === "admin-signups") return renderAdminSignupsScreen(ctx);
