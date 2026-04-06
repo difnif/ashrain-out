@@ -152,6 +152,16 @@ function ArchiveTab({ theme, archive, setArchive, playSfx, showMsg, diary, setDi
               {item.content.steps.map((step, i) => (
                 <div key={i} style={{ padding: "8px 12px", marginBottom: 4, borderRadius: 10, background: `${PASTEL[step?.color] || PASTEL.coral}08`, border: `1px solid ${PASTEL[step?.color] || PASTEL.coral}20`, fontSize: 12, color: theme.text }}>
                   <b style={{ color: PASTEL[step?.color] || PASTEL.coral }}>STEP {i+1}</b> {step?.title || ""}
+                  {step?.curriculumTag && (
+                    <span style={{
+                      fontSize: 9, marginLeft: 8, padding: "1px 6px", borderRadius: 6,
+                      background: step.curriculumTag.unlearned ? `${PASTEL.coral}20` : `${PASTEL.mint}15`,
+                      color: step.curriculumTag.unlearned ? PASTEL.coral : PASTEL.mint,
+                    }}>
+                      {step.curriculumTag.unlearned && "⚠️ "}
+                      {step.curriculumTag.semester} · {step.curriculumTag.unit}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
