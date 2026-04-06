@@ -100,7 +100,7 @@ function FigureCanvas({ figure, theme, highlights = [] }) {
 
 const CAT_ICON = { "조건": "📌", "관계": "🔗", "구하는것": "🎯", "공식힌트": "💡" };
 
-export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests, archive, setArchive, archiveDefaultPublic, analysisModel }) {
+export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests, archive, setArchive, archiveDefaultPublic, analysisModel, progress }) {
   const [input, setInput] = useState("");
   const [imageData, setImageData] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -128,8 +128,9 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
   }, []);
 
   const [loadingStage, setLoadingStage] = useState("");
+  const [excludeUnits, setExcludeUnits] = useState([]);
 
-  const analyze = async () => {
+  const analyze = async (extraExcludes = null) => {
     if (!input.trim() && !imageData) { showMsg("문제를 입력하거나 사진을 올려주세요", 2000); return; }
     if (loading) return; // 중복 요청 방지
     setLoading(true); setError(""); setResult(null); setCurrentStep(-1); setHelpMode(null);
@@ -147,7 +148,13 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
     try {
       const resp = await fetch("/api/analyze", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: input.trim() || undefined, imageBase64: imageData || undefined, model: analysisModel || undefined }),
+        body: JSON.stringify({
+          text: input.trim() || undefined,
+          imageBase64: imageData || undefined,
+          model: analysisModel || undefined,
+          allowedUnits: progress,
+          excludeUnits: extraExcludes !== null ? extraExcludes : excludeUnits,
+        }),
         signal: controller.signal,
       });
       const data = await resp.json();
@@ -170,6 +177,7 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
     setInput(""); setImageData(null); setImagePreview(null);
     setResult(null); setError(""); setCurrentStep(-1);
     setHelpMode(null); setHelpStepIdx(null);
+    setExcludeUnits([]);
   };
 
   const saveToArchive = () => {
@@ -379,9 +387,24 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
                 }}>
                   <div style={{ padding: "12px 16px", background: `${CMAP[curStepData.color]}12`, display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 16 }}>{CAT_ICON[curStepData.category] || "📌"}</span>
-                    <div>
-                      <div style={{ fontSize: 10, color: CMAP[curStepData.color], fontWeight: 700 }}>STEP {currentStep + 1}/{maxStep}</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>{curStepData.title}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 10, color: CMAP[curStepData.color], fontWeight: 700 }}>STEP {currentStep + 1}/{maxStep}</span>
+                        {curStepData.curriculumTag && (
+                          <span style={{
+                            fontSize: 9, padding: "2px 8px", borderRadius: 8,
+                            background: curStepData.curriculumTag.unlearned ? `${PASTEL.coral}20` : `${PASTEL.mint}15`,
+                            color: curStepData.curriculumTag.unlearned ? PASTEL.coral : PASTEL.mint,
+                            border: `1px solid ${curStepData.curriculumTag.unlearned ? PASTEL.coral : PASTEL.mint}40`,
+                            fontWeight: 600,
+                          }}>
+                            {curStepData.curriculumTag.unlearned && "⚠️ "}
+                            {curStepData.curriculumTag.semester} · {curStepData.curriculumTag.unit}
+                            {curStepData.curriculumTag.unlearned && " · 안 배운 단원"}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: theme.text, marginTop: 2 }}>{curStepData.title}</div>
                     </div>
                   </div>
                   <div style={{ padding: "12px 16px" }}>
@@ -390,6 +413,28 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
                       style={{ marginTop: 6, padding: "6px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 11, cursor: "pointer" }}>
                       ❓ 이 부분이 이해 안 돼요
                     </button>
+                    {result?.steps?.some(s => s.curriculumTag?.unlearned) && (
+                      <button onClick={async () => {
+                        const newExcludes = result.steps
+                          .filter(s => s.curriculumTag?.unlearned)
+                          .map(s => s.curriculumTag.unit);
+                        const merged = [...new Set([...excludeUnits, ...newExcludes])];
+                        if (merged.length >= 4) {
+                          showMsg("이 문제는 현재 진도로 풀기 어려워요. 선생님께 질문해보세요.", 3000);
+                          return;
+                        }
+                        setExcludeUnits(merged);
+                        showMsg("다른 방법으로 다시 풀어볼게요...", 1500);
+                        await analyze(merged);
+                      }} style={{
+                        marginTop: 8, marginLeft: 6, padding: "6px 12px", borderRadius: 8,
+                        border: `1.5px solid ${PASTEL.coral}`,
+                        background: `${PASTEL.coral}10`,
+                        color: PASTEL.coral, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                      }}>
+                        🤔 안 배운 단원이에요 · 다시 풀어줘
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -601,5 +646,5 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
 
 export function renderProblemScreen(ctx) {
   const { archive, setArchive, theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests } = ctx;
-  return <ProblemScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} user={user} helpRequests={helpRequests} setHelpRequests={setHelpRequests} archive={archive} setArchive={setArchive} archiveDefaultPublic={ctx.archiveDefaultPublic} analysisModel={ctx.analysisModel} />;
+  return <ProblemScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} user={user} helpRequests={helpRequests} setHelpRequests={setHelpRequests} archive={archive} setArchive={setArchive} archiveDefaultPublic={ctx.archiveDefaultPublic} analysisModel={ctx.analysisModel} progress={ctx.progress} />;
 }
