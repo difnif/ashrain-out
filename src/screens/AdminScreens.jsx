@@ -1,9 +1,11 @@
+import { CURRICULUM_2022, summarizeProgress } from "../data/curriculum";
 import { PASTEL } from "../config";
 
 export function renderAdminScreen(ctx) {
   const { theme, setScreen, playSfx, signupRequests, ScreenWrap, MenuGrid } = ctx;
   const menuItems = [
     { icon: "📋", label: "학습 관리", section: true },
+    { icon: "📚", label: "진도 관리", desc: "학원 진도 단원 체크", action: () => setScreen("admin-progress") },
     { icon: "👁️", label: "학생 모드 입장", desc: "학생 화면 미리보기", action: () => setScreen("student-mode") },
     { icon: "📊", label: "학습 현황", desc: "학생별 학습 열람 · 숙제 출제", action: () => setScreen("learning-dashboard") },
     { icon: "📬", label: "질문함", desc: (ctx.helpRequests||[]).filter(r=>r.status!=="answered").length > 0 ? `🔔 ${(ctx.helpRequests||[]).filter(r=>r.status!=="answered").length}건 대기` : "학생 질문 · 답변", action: () => setScreen("question-inbox") },
@@ -413,6 +415,104 @@ export function renderAdminScriptsScreen(ctx) {
           background: `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
           color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer", marginTop: 8,
         }}>저장</button>
+      </div>
+    </ScreenWrap>
+  );
+}
+
+export function renderAdminProgressScreen(ctx) {
+  const { theme, setScreen, playSfx, showMsg, progress, setProgress, ScreenWrap } = ctx;
+
+  const toggleUnit = (id) => {
+    playSfx("click");
+    setProgress(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSemester = (semester) => {
+    playSfx("click");
+    const semIds = CURRICULUM_2022[semester].map(u => u.id);
+    const allChecked = semIds.every(id => progress.includes(id));
+    setProgress(prev => {
+      if (allChecked) return prev.filter(id => !semIds.includes(id));
+      return [...new Set([...prev, ...semIds])];
+    });
+  };
+
+  return (
+    <ScreenWrap title="진도 관리" back="관리자" backTo="admin">
+      <div style={{ padding: 16, overflowY: "auto" }}>
+        <p style={{ fontSize: 11, color: theme.textSec, marginBottom: 12 }}>
+          체크된 단원만 학생들의 문제 분석에 사용됩니다.
+        </p>
+        <div style={{
+          padding: "10px 14px", borderRadius: 12,
+          background: `${PASTEL.mint}10`, border: `1px solid ${PASTEL.mint}30`,
+          marginBottom: 16, fontSize: 12, color: theme.text,
+        }}>
+          <b>현재 진도:</b> {summarizeProgress(progress)}
+        </div>
+
+        {Object.keys(CURRICULUM_2022).map(semester => {
+          const units = CURRICULUM_2022[semester];
+          const checkedCount = units.filter(u => progress.includes(u.id)).length;
+          const allChecked = checkedCount === units.length;
+
+          return (
+            <div key={semester} style={{
+              marginBottom: 14, padding: 12, borderRadius: 14,
+              background: theme.card, border: `1px solid ${theme.border}`,
+            }}>
+              <div style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                marginBottom: 10, paddingBottom: 8, borderBottom: `1px solid ${theme.border}`,
+              }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>
+                  {semester} <span style={{ fontSize: 10, color: theme.textSec }}>
+                    ({checkedCount}/{units.length})
+                  </span>
+                </span>
+                <button onClick={() => toggleSemester(semester)} style={{
+                  padding: "4px 10px", borderRadius: 8,
+                  border: `1px solid ${theme.border}`, background: theme.bg,
+                  color: theme.textSec, fontSize: 10, cursor: "pointer",
+                }}>
+                  {allChecked ? "전체 해제" : "전체 선택"}
+                </button>
+              </div>
+              {units.map(unit => {
+                const isChecked = progress.includes(unit.id);
+                return (
+                  <label key={unit.id} style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "8px 4px", cursor: "pointer",
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleUnit(unit.id)}
+                      style={{ width: 18, height: 18, accentColor: PASTEL.coral }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div style={{
+                        fontSize: 13, fontWeight: isChecked ? 700 : 400,
+                        color: isChecked ? theme.text : theme.textSec,
+                      }}>
+                        {unit.name}
+                      </div>
+                      {unit.subunits && (
+                        <div style={{ fontSize: 9, color: theme.textSec, marginTop: 2 }}>
+                          {unit.subunits.join(" · ")}
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
     </ScreenWrap>
   );
