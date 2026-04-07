@@ -97,7 +97,7 @@ ${curriculumContext}
 
 {
   "problemText": "추출한 문제 전문. 보기/선택지는 줄바꿈으로 구분. 채점/필기/동그라미 무시, 원본만. 여러 문제 보이면 주요 1개만.",
-  "mathNotation": "수학 기호 규칙: 선분은 [seg]AB[/seg], 직선은 [line]AB[/line], 반직선은 [ray]AB[/ray], 분수는 [frac]분자|분모[/frac] (예: [frac]18|2²×5²×a[/frac]). 거듭제곱(지수)은 [exp]밑|지수[/exp] (예: [exp]2|10[/exp], [exp]2|22[/exp]). 단일 자리 지수는 ², ³ 같은 유니코드도 허용. 나머지: ∠ABC, △ABC, ∥, ⊥, ≡, °, √. combining overline(̅) 절대 금지.",
+  "mathNotation": "수학 기호 규칙: 선분은 [seg]AB[/seg], 직선은 [line]AB[/line], 반직선은 [ray]AB[/ray], 분수는 [frac]분자|분모[/frac] (예: [frac]18|5×a[/frac]). 거듭제곱(지수)은 반드시 [exp]밑|지수[/exp] 태그만 사용. 예: 2의 10제곱 → [exp]2|10[/exp], x의 n제곱 → [exp]x|n[/exp], 2의 (a+b)제곱 → [exp]2|a+b[/exp]. 유니코드 윗첨자(² ³ ¹ ⁰ ⁴ ⁵ ⁶ ⁷ ⁸ ⁹ ⁿ ˣ)와 ^ 기호는 절대 사용 금지. 한 자리 지수도 예외 없이 태그 사용. 나머지: ∠ABC, △ABC, ∥, ⊥, ≡, °, √. combining overline(̅) 절대 금지.",
   "figure": {
     "type": "triangle/quadrilateral/circle/line/none",
     "vertices": [{"label":"A","x":0,"y":0},{"label":"B","x":100,"y":0},{"label":"C","x":50,"y":-80}],
@@ -142,7 +142,15 @@ ${curriculumContext}
 }
 
 핵심 규칙:
-- problemText 안에서 선분은 [seg]AB[/seg], 분수는 [frac]분자|분모[/frac], 두 자리 이상 지수는 [exp]밑|지수[/exp] 형태 사용
+- problemText 안에서 선분은 [seg]AB[/seg], 분수는 [frac]분자|분모[/frac] 형태 사용
+- ⚠️ 거듭제곱(지수) 표기는 반드시 [exp]밑|지수[/exp] 태그만 사용할 것:
+  · 한 자리 지수든 두 자리 이상이든 모두 [exp] 태그로 표기 (예외 없음)
+  · 예: 2의 10제곱 → [exp]2|10[/exp]
+  · 예: x의 2제곱 → [exp]x|2[/exp]
+  · 예: 2의 (a+b)제곱 → [exp]2|a+b[/exp]
+  · 예: [frac] 안의 지수도 동일: [frac]1|[exp]2|10[/exp][/frac]
+  · 유니코드 윗첨자 문자(² ³ ¹ ⁰ ⁴ ⁵ ⁶ ⁷ ⁸ ⁹ ⁿ ˣ ʸ ᵃ ᵇ ᶜ 등) 절대 사용 금지 — 모바일 폰트에서 깨짐
+  · ^ 기호(예: 2^10) 절대 사용 금지
 - 사진의 채점/필기/동그라미 무시, 원본 문제만
 - figure.vertices: SVG좌표(y아래양수)
 - figureHighlight: step에서 강조할 변/각
@@ -173,6 +181,14 @@ ${curriculumContext}
     const data = await resp.json();
     if (data.error) return res.status(500).json({ error: data.error.message });
     const raw = data.content?.[0]?.text || "";
+
+    // 유니코드 윗첨자 사용 감지 → 경고 로그 (프롬프트 미준수 모니터링)
+    const SUPERSCRIPT_RE = /[\u00B2\u00B3\u00B9\u2070\u2074-\u2079\u207F\u02E3\u02B8\u1D43\u1D47\u1D9C]/;
+    if (SUPERSCRIPT_RE.test(raw)) {
+      const match = raw.match(/.{0,20}[\u00B2\u00B3\u00B9\u2070\u2074-\u2079\u207F\u02E3\u02B8\u1D43\u1D47\u1D9C].{0,20}/);
+      console.warn("[analyze.js] AI가 유니코드 윗첨자 사용함 — 프롬프트 미준수. context:", match?.[0]);
+    }
+
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return res.status(500).json({ error: "Parse failed", raw: raw.slice(0, 300) });
     const parsed = JSON.parse(jsonMatch[0]);
