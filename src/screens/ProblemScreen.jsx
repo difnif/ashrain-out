@@ -3,6 +3,19 @@ import { PASTEL } from "../config";
 
 const CMAP = { coral: PASTEL.coral, sky: PASTEL.sky, mint: PASTEL.mint, lavender: PASTEL.lavender };
 
+// Unicode superscript → normal digit/letter map (fallback when AI emits 2¹⁰ instead of [exp]2|10[/exp])
+const SUP_MAP = {
+  "\u00B2": "2", "\u00B3": "3", "\u00B9": "1",
+  "\u2070": "0", "\u2074": "4", "\u2075": "5",
+  "\u2076": "6", "\u2077": "7", "\u2078": "8", "\u2079": "9",
+  "\u207A": "+", "\u207B": "-", "\u207F": "n",
+  "\u02E3": "x", "\u02B8": "y",
+  "\u1D43": "a", "\u1D47": "b", "\u1D9C": "c",
+  "\u1D48": "d", "\u1D49": "e",
+};
+const SUP_CHARS = Object.keys(SUP_MAP).join("");
+const SUP_RE = new RegExp(`([a-zA-Z0-9])([${SUP_CHARS}]+)`, "g");
+
 // Clean up math symbols that don't render well on mobile
 function cleanMathText(text) {
   if (!text) return text;
@@ -32,7 +45,13 @@ function MathSpan({ children, highlightColor }) {
   if (!children) return null;
   let text = String(children);
 
-  // Auto-convert bare x^n / x^(abc) patterns to [exp] tags (fallback for AI responses that forget the tag)
+  // 1st fallback: Unicode superscripts → [exp] tag (e.g. "2¹⁰" → "[exp]2|10[/exp]")
+  text = text.replace(SUP_RE, (match, base, supSeq) => {
+    const converted = supSeq.split("").map(ch => SUP_MAP[ch] || ch).join("");
+    return `[exp]${base}|${converted}[/exp]`;
+  });
+
+  // 2nd fallback: Auto-convert bare x^n / x^(abc) patterns to [exp] tags
   text = text.replace(/([a-zA-Z0-9])\^\(([^)]+)\)/g, "[exp]$1|$2[/exp]");
   text = text.replace(/([a-zA-Z0-9])\^([a-zA-Z0-9]+)/g, "[exp]$1|$2[/exp]");
 
