@@ -11,6 +11,7 @@ import {
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import FloatingMsg from "./components/FloatingMsg";
 import InfoPanel from "./components/InfoPanel";
+import UpdateToast from "./components/UpdateToast";
 import { renderLoginScreen, renderSignupScreen } from "./screens/AuthScreens";
 import { renderPlazaScreen } from "./screens/PlazaScreen";
 import {
@@ -917,5 +918,127 @@ function AppInner() {
 }
 
 export default function App() {
-  return <ErrorBoundary><AppInner /></ErrorBoundary>;
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [toastThemeKey, setToastThemeKey] = useState(
+    () => (typeof window !== "undefined" && localStorage.getItem("ar_theme")) || "light"
+  );
+  const initialHashRef = useRef(null);
+  const updateAvailableRef = useRef(false);
+
+  // Keep toast theme in sync with AppInner's theme (written to localStorage)
+  useEffect(() => {
+    const syncTheme = () => {
+      const t = localStorage.getItem("ar_theme") || "light";
+      setToastThemeKey((prev) => (prev !== t ? t : prev));
+    };
+    window.addEventListener("storage", syncTheme);
+    const iv = setInterval(syncTheme, 1500);
+    return () => {
+      window.removeEventListener("storage", syncTheme);
+      clearInterval(iv);
+    };
+  }, []);
+
+  // ─── Version check via index.html hash comparison ───
+  // Vite builds produce /assets/index-[hash].js referenced in index.html.
+  // We snapshot the currently-loaded script hash, then refetch index.html
+  // on load and on focus-return to compare.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // Skip in dev (vite dev server serves unhashed /src/main.jsx)
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1" || host.startsWith("192.168.")) {
+      return;
+    }
+
+    const extractHash = (text) => {
+      const m = text && text.match(/assets\/index-([A-Za-z0-9_-]+)\.js/);
+      return m ? m[1] : null;
+    };
+
+    // Grab hash of currently-running script from the live DOM
+    const getRunningHash = () => {
+      const scripts = document.querySelectorAll('script[src*="assets/index-"]');
+      for (const s of scripts) {
+        const h = extractHash(s.src);
+        if (h) return h;
+      }
+      return null;
+    };
+
+    initialHashRef.current = getRunningHash();
+
+    const checkForUpdate = async () => {
+      if (updateAvailableRef.current) return;
+      try {
+        const res = await fetch(`/index.html?_=${Date.now()}`, {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" },
+        });
+        if (!res.ok) return;
+        const html = await res.text();
+        const latestHash = extractHash(html);
+        if (!latestHash) return;
+
+        // If we never got a running hash (rare), use first fetch as baseline
+        if (initialHashRef.current === null) {
+          initialHashRef.current = latestHash;
+          return;
+        }
+
+        if (latestHash !== initialHashRef.current) {
+          updateAvailableRef.current = true;
+          setUpdateAvailable(true);
+        }
+      } catch {
+        // Silent — network errors shouldn't disrupt the app
+      }
+    };
+
+    // Initial check on load
+    checkForUpdate();
+
+    // Check on focus return (visibilitychange fires when switching tabs/apps)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        checkForUpdate();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+
+  const handleUpdate = useCallback(() => {
+    // Clear any caches (service worker or browser cache) before reload
+    const reload = () => {
+      // Force a cache-bypassing reload
+      try {
+        window.location.reload();
+      } catch {
+        window.location.href = window.location.href;
+      }
+    };
+
+    if ("caches" in window) {
+      caches
+        .keys()
+        .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+        .finally(reload);
+    } else {
+      reload();
+    }
+  }, []);
+
+  return (
+    <ErrorBoundary>
+      <AppInner />
+      {updateAvailable && (
+        <UpdateToast onUpdate={handleUpdate} themeKey={toastThemeKey} />
+      )}
+    </ErrorBoundary>
+  );
 }
