@@ -545,9 +545,41 @@ function AppInner() {
     generateTriangleWithBase, handleSSSSubmit,
     handleDrawStart, handleDrawMove, handleDrawEnd,
     handleJedoClick, resetAll, recognizeAngle, recognizeLine,
-    saveToArchive, showArchiveSave, setShowArchiveSave, archivePublic, setArchivePublic,
+    saveToArchive: _unusedHookSave, showArchiveSave, setShowArchiveSave, archivePublic, setArchivePublic,
     failAnim, idleMsg, retryDraw, generateTriangle,
   } = jakdoCanvas;
+
+  // --- Triangle save: write into studentArchive (not the hook's local state) ---
+  const saveToArchive = useCallback(() => {
+    if (!triangle) { showMsg && showMsg("저장할 삼각형이 없어요", 1500); return; }
+    const entry = {
+      id: `draw-${Date.now()}`,
+      type: "삼각형 작도",
+      title: jedoType
+        ? (jedoType === "circum" ? "외접원 작도" : jedoType === "in" ? "내접원 작도" : "삼각형 작도")
+        : "삼각형 작도",
+      preview: `a=${triangle.a?.toFixed?.(1) ?? "?"}, b=${triangle.b?.toFixed?.(1) ?? "?"}, c=${triangle.c?.toFixed?.(1) ?? "?"}`,
+      content: {
+        triangle: { ...triangle },
+        jedoType, jedoCenter, jedoCircle,
+        jedoLines: Array.isArray(jedoLines) ? [...jedoLines] : [],
+        jakdoArcs: Array.isArray(jakdoArcs) ? [...jakdoArcs] : [],
+        jakdoRulerLines: Array.isArray(jakdoRulerLines) ? [...jakdoRulerLines] : [],
+      },
+      createdAt: Date.now(),
+      isPublic: archivePublic ?? (archiveDefaultPublic || false),
+      hidden: false,
+      userId: user?.id,
+      userName: user?.name || "익명",
+    };
+    setStudentArchive(prev => [...prev, entry]);
+    playSfx && playSfx("success");
+    setShowArchiveSave && setShowArchiveSave(false);
+    showMsg && showMsg("아카이브에 저장! 학생 홈 > 아카이브에서 확인하세요 📂", 2500);
+  }, [
+    triangle, jedoType, jedoCenter, jedoCircle, jedoLines, jakdoArcs, jakdoRulerLines,
+    archivePublic, archiveDefaultPublic, user, playSfx, showMsg, setShowArchiveSave, setStudentArchive,
+  ]);
 
   // --- Properties Data with highlight info ---
   // Properties, Highlight, Animation — see rendering/TriangleRenderer.jsx
@@ -656,6 +688,7 @@ function AppInner() {
     currentStroke, setCurrentStroke, isDrawing, drawPreview,
     handleDrawStart, handleDrawMove, handleDrawEnd, handleSSSSubmit,
     showProperties, setShowProperties, selectedProp, setSelectedProp, floatingMsg,
+    saveToArchive,
     showArchiveSave, setShowArchiveSave, archivePublic, setArchivePublic,
     renderTriangleAnim, renderHighlight, getProperties,
     handleJedoClick, handleJakdoDown, handleJakdoMove, handleJakdoUp, handleUndo,
