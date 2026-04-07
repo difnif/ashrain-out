@@ -19,28 +19,40 @@ function FracSpan({ num, den, color }) {
   );
 }
 
+function ExpSpan({ base, exp, color }) {
+  return (
+    <span style={{ display: "inline", whiteSpace: "nowrap" }}>
+      <span style={{ color }}>{base}</span>
+      <sup style={{ fontSize: "0.75em", lineHeight: 0, verticalAlign: "super", color, marginLeft: "1px" }}>{exp}</sup>
+    </span>
+  );
+}
+
 function MathSpan({ children, highlightColor }) {
   if (!children) return null;
-  const text = String(children);
-  // First handle fractions
-  const fracRegex = /\[frac\](.+?)\|(.+?)\[\/frac\]/g;
-  const hasFrac = fracRegex.test(text);
-  fracRegex.lastIndex = 0;
-  
-  if (hasFrac) {
-    const parts = []; let last = 0; let fm;
-    while ((fm = fracRegex.exec(text)) !== null) {
-      if (fm.index > last) parts.push({ type: "text", val: text.slice(last, fm.index) });
-      parts.push({ type: "frac", num: fm[1], den: fm[2] });
-      last = fracRegex.lastIndex;
-    }
-    if (last < text.length) parts.push({ type: "text", val: text.slice(last) });
-    return <>{parts.map((p, i) =>
-      p.type === "frac" ? <FracSpan key={i} num={p.num} den={p.den} color={highlightColor} /> :
-      <MathInner key={i}>{p.val}</MathInner>
-    )}</>;
+  let text = String(children);
+
+  // Auto-convert bare x^n / x^(abc) patterns to [exp] tags (fallback for AI responses that forget the tag)
+  text = text.replace(/([a-zA-Z0-9])\^\(([^)]+)\)/g, "[exp]$1|$2[/exp]");
+  text = text.replace(/([a-zA-Z0-9])\^([a-zA-Z0-9]+)/g, "[exp]$1|$2[/exp]");
+
+  // Handle [exp]base|exp[/exp] and [frac]num|den[/frac] together
+  const tagRegex = /\[(exp|frac)\](.+?)\|(.+?)\[\/\1\]/g;
+  const parts = []; let last = 0; let m;
+  while ((m = tagRegex.exec(text)) !== null) {
+    if (m.index > last) parts.push({ type: "text", val: text.slice(last, m.index) });
+    parts.push({ type: m[1], a: m[2], b: m[3] });
+    last = tagRegex.lastIndex;
   }
-  return <MathInner>{text}</MathInner>;
+  if (last < text.length) parts.push({ type: "text", val: text.slice(last) });
+
+  if (parts.length === 0) return <MathInner>{text}</MathInner>;
+
+  return <>{parts.map((p, i) => {
+    if (p.type === "frac") return <FracSpan key={i} num={p.a} den={p.b} color={highlightColor} />;
+    if (p.type === "exp") return <ExpSpan key={i} base={p.a} exp={p.b} color={highlightColor} />;
+    return <MathInner key={i}>{p.val}</MathInner>;
+  })}</>;
 }
 
 function MathInner({ children }) {
