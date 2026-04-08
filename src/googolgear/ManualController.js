@@ -1,68 +1,82 @@
-// 수동 모드 회전 컨트롤러
-// 첫 기어가 사용자 드래그로 회전 → 각 단은 1/B 속도로 따라감
-// 드래그 속도를 측정해서 현재 RPM을 산출 (최근 0.5초 평균)
-
+// 수동 모드 컨트롤러 — 관성 물리 포함
+// 사용자 드래그 → 드래그 속도 측정 → 손가락 뗀 후 마찰로 서서히 감속
 export function createManualController(B, E) {
   const stages = Math.min(E, 100);
   const rotations = new Float64Array(stages);
   const reductionPerStage = 1 / B;
 
-  // 드래그 샘플: { t, angle } — 최근 0.5초만 보관
-  const samples = [];
-  const SAMPLE_WINDOW = 0.5; // 초
-
-  let lastFirstAngle = 0;
-  let currentRpm = 0;
+  let velocity = 0;            // 첫 기어 각속도 (rad/sec)
   let hasInteracted = false;
+  let lastInputT = -Infinity;
 
-  function setFirstAngle(angle, tNow) {
-    const delta = angle - lastFirstAngle;
-    lastFirstAngle = angle;
-    rotations[0] = angle;
+  // 드래그 속도 계산용 최근 샘플
+  const samples = [];
+  const SAMPLE_WINDOW = 0.12;  // 최근 120ms
 
-    // cascade
-    let r = angle;
+  // 관성 파라미터
+  const FRICTION = 0.55;       // 초당 감쇠 계수 (작을수록 오래 돎)
+  const VELOCITY_CAP = 40;     // 최대 각속도 안전 한도 (rad/sec)
+
+  function cascade() {
+    let r = rotations[0];
     for (let k = 1; k < stages; k++) {
       r *= reductionPerStage;
       rotations[k] = r;
     }
-
-    // 샘플 기록
-    samples.push({ t: tNow, angle });
-    while (samples.length > 0 && samples[0].t < tNow - SAMPLE_WINDOW) {
-      samples.shift();
-    }
-
-    if (Math.abs(delta) > 0.001) hasInteracted = true;
   }
 
-  // 매 프레임 호출 — 드래그가 멈췄으면 RPM이 자연스럽게 0으로 감쇠
-  function step(tNow) {
-    // 최근 샘플 윈도우 정리
+  // 사용자가 드래그 중: 각도 변화분 적용 + 속도 갱신
+  function applyDragDelta(deltaAngle) {
+    const tNow = performance.now() / 1000;
+    rotations[0] += deltaAngle;
+    cascade();
+
+    samples.push({ t: tNow, delta: deltaAngle });
     while (samples.length > 0 && samples[0].t < tNow - SAMPLE_WINDOW) {
       samples.shift();
     }
+    // 즉시 속도도 갱신 (드래그 중에도 RPM 표시용)
     if (samples.length >= 2) {
-      const first = samples[0];
-      const last = samples[samples.length - 1];
-      const dt = last.t - first.t;
-      if (dt > 0.001) {
-        const dAngle = last.angle - first.angle;
-        const radPerSec = dAngle / dt;
-        currentRpm = Math.abs(radPerSec) / (Math.PI * 2) * 60;
-      } else {
-        currentRpm = 0;
+      const totalDelta = samples.reduce((s, x) => s + x.delta, 0);
+      const duration = tNow - samples[0].t;
+      if (duration > 0.001) {
+        velocity = totalDelta / duration;
+        if (velocity > VELOCITY_CAP) velocity = VELOCITY_CAP;
+        if (velocity < -VELOCITY_CAP) velocity = -VELOCITY_CAP;
       }
-    } else {
-      currentRpm = 0;
+    }
+    lastInputT = tNow;
+    hasInteracted = true;
+  }
+
+  // 손가락 뗌 — 별도 처리 없음 (step에서 자동 coast 시작)
+  function releaseDrag() {
+    // 샘플 윈도우는 이미 applyDragDelta에서 유지됨 — velocity만 그대로 사용
+    lastInputT = performance.now() / 1000 - 10; // coast 즉시 시작
+  }
+
+  // 매 프레임 호출 — coast(관성) 단계
+  function step(dt) {
+    const tNow = performance.now() / 1000;
+    // 입력이 멈춘 경우 (30ms 이상 신호 없음) → coast
+    if (tNow - lastInputT > 0.03) {
+      if (Math.abs(velocity) > 0.002) {
+        rotations[0] += velocity * dt;
+        // 지수 감쇠: v *= exp(-FRICTION * dt)
+        velocity *= Math.exp(-FRICTION * dt);
+        cascade();
+      } else {
+        velocity = 0;
+      }
     }
   }
 
   return {
     rotations,
-    setFirstAngle,
+    applyDragDelta,
+    releaseDrag,
     step,
-    getRpm: () => currentRpm,
+    getRpm: () => Math.abs(velocity) / (Math.PI * 2) * 60,
     getHasInteracted: () => hasInteracted,
   };
 }
