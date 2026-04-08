@@ -7,16 +7,19 @@ import {
   DARK_BG,
 } from "./GearMesh";
 
-// 지그재그 배치: 기어 지름 ≈ 2 이므로 X 교번 + Y 간격이 서로 얹힌 느낌
-const OFFSET_X = 0.55;   // 좌우 교번 폭
-const Y_STEP   = 0.62;   // 단 간 수직 간격
+// 다니엘 데 브루인 스타일 배치:
+// 가로 축 방향으로 기어들이 촘촘히 쌓이는 "통" 형태.
+// 두 개의 평행한 가상 축 — 짝수 단은 위쪽, 홀수 단은 아래쪽. 인접 단이 시각적으로 맞물림.
+const X_STEP      = 0.14;   // 단 간 가로 간격 (기어 depth ~0.22이므로 약간 겹침)
+const SHAFT_Y_UP  = 0.82;   // 위쪽 축 Y 좌표
+const SHAFT_Y_DN  = -0.82;  // 아래쪽 축 Y 좌표
 const MAX_STAGES = 100;
 
 function stagePosition(i) {
   return {
-    x: (i % 2 === 0) ? -OFFSET_X : OFFSET_X,
-    y: i * Y_STEP,
-    z: (i % 2 === 0) ? 0.1 : -0.1,
+    x: i * X_STEP,
+    y: (i % 2 === 0) ? SHAFT_Y_UP : SHAFT_Y_DN,
+    z: 0,
   };
 }
 
@@ -339,24 +342,24 @@ export default function GearTowerScene({
       }
     }
 
-    // 카메라 배치 — 첫 기어를 화면 중심에 두기
+    // 카메라 배치 — 가로 통을 옆면에서 비스듬히, 첫 기어 근처에 포커스
     if (previewMode === "single") {
       s.camera.position.set(0.4, 0.7, 3.6);
       s.camera.lookAt(0, 0, 0);
       s.controls.target.set(0, 0, 0);
       s.controls.enabled = false;
     } else if (previewMode === "tower") {
-      // 타워 프리뷰: 첫 기어가 화면 중앙~하단, 위쪽으로 단이 올라감
-      s.camera.position.set(3.8, 1.2, 4.6);
-      s.camera.lookAt(0, 0.5, 0);
-      s.controls.target.set(0, 0.5, 0);
+      // 타워 프리뷰: E≤12 가정, 짧은 통을 전체 보이도록
+      s.camera.position.set(-1.2, 1.6, 4.2);
+      s.camera.lookAt(0.8, 0, 0);
+      s.controls.target.set(0.8, 0, 0);
       s.controls.enabled = false;
     } else {
-      // 전체 씬: orbit 활성. 첫 기어 중심으로 포커스, 타워는 위로 퍼져 보임
-      s.camera.position.set(3.5, 1.4, 5.5);
-      s.camera.lookAt(0, 0.6, 0);
-      s.controls.target.set(0, 0.6, 0);
-      s.controls.maxDistance = 9;
+      // 전체 씬: 첫 기어가 화면 전경에 크게, 통은 뒤로 뻗어나감
+      s.camera.position.set(-1.5, 1.8, 4.5);
+      s.camera.lookAt(1.0, 0, 0);
+      s.controls.target.set(1.0, 0, 0);
+      s.controls.maxDistance = 10;
       s.controls.minDistance = 2;
       s.controls.enabled = true;
     }
