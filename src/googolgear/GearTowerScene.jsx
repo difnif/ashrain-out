@@ -26,6 +26,7 @@ function stagePosition(i) {
 export default function GearTowerScene({
   B, E, controller, previewMode, theme,
   onFirstGearDrag, onFirstGearRelease,
+  previewRpm,
 }) {
   const mountRef = useRef(null);
   const stateRef = useRef(null);
@@ -37,6 +38,8 @@ export default function GearTowerScene({
   onFirstGearDragRef.current = onFirstGearDrag;
   const onFirstGearReleaseRef = useRef(onFirstGearRelease);
   onFirstGearReleaseRef.current = onFirstGearRelease;
+  const previewRpmRef = useRef(previewRpm);
+  previewRpmRef.current = previewRpm;
 
   // ============ MOUNT 전용: 씬 1회 생성 ============
   useEffect(() => {
@@ -174,9 +177,13 @@ export default function GearTowerScene({
       // Rotation animation based on preview mode
       const pm = state.currentPreview;
       if (pm === "single" && state.gearEntries.length > 0) {
-        // 단일 기어 slow spin (own axis = local Z since no Y rotation)
+        // 단일 기어 회전 — previewRpm이 있으면 그 값 기준, 없으면 기본 느린 회전
+        const rpm = previewRpmRef.current;
+        const radPerSec = (typeof rpm === "number" && rpm > 0)
+          ? (rpm / 60) * Math.PI * 2
+          : 0.5;
         const m = state.gearEntries[0].mesh;
-        m.rotation.z += 0.5 * dt;
+        m.rotation.z += radPerSec * dt;
       } else if (pm === "tower" && state.gearEntries.length > 0) {
         // 타워: 첫 기어 spin + cascade (인접 기어는 역방향 회전)
         const first = state.gearEntries[0].mesh;
