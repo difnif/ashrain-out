@@ -1,6 +1,6 @@
 import { useFirestoreSync } from "./hooks/useFirestoreSync";
 import { DEFAULT_PROGRESS } from "./data/curriculum";
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import {
   PASTEL, THEMES, TONES,
   dist, midpoint, lerp,
@@ -31,6 +31,15 @@ import { renderQuizScreen } from "./screens/QuizScreen";
 import { renderDistanceScreen } from "./screens/DistanceScreen";
 import { renderSettingsScreen } from "./screens/SettingsScreen";
 import { renderDrawScreen } from "./screens/DrawScreen";
+// Lazy-loaded: Three.js bundle (+147KB gz) only fetched when user enters this screen.
+// Wrap the render function in a component so React.lazy can consume it.
+const LazyGoogolGearScreen = lazy(() =>
+  import("./screens/GoogolGearScreen").then(m => ({
+    default: function GoogolGearLazy(props) {
+      return m.renderGoogolGearScreen(props);
+    }
+  }))
+);
 import { getProperties as getPropertiesFn, renderHighlight as renderHighlightFn, renderTriangleAnim as renderTriangleAnimFn } from "./rendering/TriangleRenderer";
 import { useUserSystem } from "./hooks/useUserSystem";
 import { useJakdoCanvas } from "./hooks/useJakdoCanvas";
@@ -763,7 +772,7 @@ function AppInner() {
     const categories = [
       { icon: "⬡", label: "그려서 공부하기", desc: "삼각형, 외심, 내심", action: () => setScreen("polygons") },
       { icon: "📝", label: "문제의 문장 이해하기", desc: "AI 조건추출 · 유형분류 · 풀이방향", action: () => setScreen("sentence") },
-      { icon: "🧮", label: "쓸모 없어 보이는 수학", desc: "일상 속 숨은 수학 발견하기", disabled: true },
+      { icon: "🧮", label: "쓸모 없어 보이는 수학", desc: "일상 속 숨은 수학 발견하기", action: () => setScreen("googolGear") },
       { icon: "🧠", label: "쓸모 있는데 어려운 수학", desc: "심화 개념 도전하기", disabled: true },
     ];
     return (
@@ -809,6 +818,26 @@ function AppInner() {
 
   // --- Distance Screen (거리 개념) ---
   if (screen === "distance") return renderDistanceScreen(ctx);
+
+  // --- 쓸모 없어 보이는 수학: 구골 기어 (lazy-loaded Three.js) ---
+  if (screen === "googolGear") {
+    return (
+      <Suspense fallback={
+        <div style={{
+          height: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+          background: theme.bg, color: theme.text, fontSize: 14,
+          fontFamily: "'Noto Serif KR', serif",
+        }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 28, marginBottom: 12 }}>⚙️</div>
+            <div>3D 엔진을 불러오는 중...</div>
+          </div>
+        </div>
+      }>
+        <LazyGoogolGearScreen {...ctx} />
+      </Suspense>
+    );
+  }
 
   // --- Plaza (광장) Screen ---
   if (screen === "plaza") return renderPlazaScreen(ctx);
