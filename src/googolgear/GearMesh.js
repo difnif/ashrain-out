@@ -88,5 +88,5 @@ export function createEdgeMaterial() {
   });
 }
 
-// 어두운 배경 색 — 메탈이 돋보이도록
-export const DARK_BG = "#1C1612";
+// 배경 색 — 메탈이 돋보이면서도 어둡지 않게 (warm medium brown)
+export const DARK_BG = "#6B5340";
