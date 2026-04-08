@@ -67,7 +67,7 @@ export default function SetupPanel({
       }}>
         <GearTowerScene
           B={phase === "B" ? value : (B || 10)}
-          E={phase === "E" ? Math.min(value, 12) : 1}
+          E={phase === "E" ? value : 1}
           previewMode={phase === "B" ? "single" : "tower"}
           theme={theme}
         />
