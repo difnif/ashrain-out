@@ -30,24 +30,29 @@ function GoogolGearInner({ theme, setScreen }) {
   );
 
   // 수동 모드: 첫 기어 드래그 콜백
-  const handleFirstGearDrag = useCallback((deltaAngle, tNow) => {
+  const handleFirstGearDrag = useCallback((deltaAngle) => {
     if (!manualController) return;
-    const newAngle = manualController.rotations[0] + deltaAngle;
-    manualController.setFirstAngle(newAngle, tNow);
+    manualController.applyDragDelta(deltaAngle);
+  }, [manualController]);
+
+  // 수동 모드: 손가락 뗌 → 관성 coast 시작
+  const handleFirstGearRelease = useCallback(() => {
+    if (!manualController) return;
+    manualController.releaseDrag();
   }, [manualController]);
 
   // 수동 모드: 한 번이라도 돌리면 5초 후 설명 슬라이드인
+  // (controller.step은 animate loop에서 dt로 호출되므로 여기서는 interaction check만)
   const interactionCheckRef = useRef(null);
   useEffect(() => {
     if (phase !== "manual-scene" || !manualController) return;
     const interval = setInterval(() => {
-      manualController.step(performance.now() / 1000);
       if (manualController.getHasInteracted() && !interactionCheckRef.current) {
         interactionCheckRef.current = setTimeout(() => {
           setExplanationVisible(true);
         }, 5000);
       }
-    }, 100);
+    }, 200);
     return () => {
       clearInterval(interval);
       if (interactionCheckRef.current) {
@@ -236,6 +241,7 @@ function GoogolGearInner({ theme, setScreen }) {
             controller={manualController}
             theme={theme}
             onFirstGearDrag={handleFirstGearDrag}
+            onFirstGearRelease={handleFirstGearRelease}
           />
           <div style={{ position: "absolute", top: 12, left: 12, right: 12 }}>
             <RemainingTime B={B} E={E} rpm={manualRpm} theme={theme} />
