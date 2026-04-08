@@ -105,13 +105,22 @@ function GoogolGearInner({ theme, setScreen }) {
         }}
         style={{
           background: "transparent", border: "none", color: theme.text,
-          fontSize: 16, cursor: "pointer", padding: 4,
+          fontSize: 20, cursor: "pointer", padding: "4px 8px",
         }}
       >←</button>
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 11, opacity: 0.6 }}>🧮 쓸모없어 보이는 수학</div>
         <div style={{ fontSize: 14, fontWeight: 500 }}>{title}</div>
       </div>
+      <button
+        onClick={() => setScreen("studentHome")}
+        style={{
+          background: "transparent", border: `1px solid ${theme.border}`,
+          color: theme.text, fontSize: 13, cursor: "pointer",
+          padding: "6px 12px", borderRadius: 10,
+        }}
+        title="홈으로 나가기"
+      >✕ 닫기</button>
     </div>
   );
 
