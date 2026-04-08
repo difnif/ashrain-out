@@ -1,19 +1,16 @@
 import * as THREE from "three";
 
-// Build a single gear BufferGeometry with `teeth` rectangular teeth.
-// Diameter and tooth length are FIXED — only the count varies (per Park spec).
-// Result: outer radius ~1.0 unit, depth ~0.18 unit, hub hole in middle.
+// 기어 BufferGeometry 생성 — 축은 Z (XY 평면에 놓인 원반)
+// 타워에서 수직 축으로 쓸 땐 mesh를 rotateY(PI/2)로 돌려서 축을 X로 전환
 export function createGearGeometry(teeth, opts = {}) {
   const outerR = opts.outerR ?? 1.0;
   const innerR = opts.innerR ?? 0.82;
-  const holeR  = opts.holeR  ?? 0.12;
-  const depth  = opts.depth  ?? 0.18;
+  const holeR  = opts.holeR  ?? 0.18;
+  const depth  = opts.depth  ?? 0.22;
 
   const t = Math.max(2, Math.min(200, Math.floor(teeth)));
   const shape = new THREE.Shape();
 
-  // Trace outer perimeter: alternating gap (innerR) and tooth (outerR) per slot.
-  // Each slot occupies 1/t of the full circle. First half = gap, second half = tooth.
   for (let i = 0; i < t; i++) {
     const a0   = (i        / t) * Math.PI * 2;
     const aMid = ((i + 0.5) / t) * Math.PI * 2;
@@ -32,30 +29,64 @@ export function createGearGeometry(teeth, opts = {}) {
   }
   shape.closePath();
 
-  // Center hole
   const hole = new THREE.Path();
   hole.absarc(0, 0, holeR, 0, Math.PI * 2, true);
   shape.holes.push(hole);
 
   const geom = new THREE.ExtrudeGeometry(shape, {
     depth,
-    bevelEnabled: false,
+    bevelEnabled: true,
+    bevelThickness: 0.015,
+    bevelSize: 0.015,
+    bevelSegments: 2,
     curveSegments: 6,
     steps: 1,
   });
   geom.translate(0, 0, -depth / 2);
-  // Orient gear so its rotation axis is X (axes are horizontal in our tower)
-  geom.rotateY(Math.PI / 2);
   geom.computeVertexNormals();
   return geom;
 }
 
-// Single material — matte pastel, works in both light and dark themes
-export function createGearMaterial(color = "#DCAE96") {
+// 엣지(윤곽선) 지오메트리 — 레이어 구분 강화용
+export function createGearEdges(gearGeom, threshold = 25) {
+  return new THREE.EdgesGeometry(gearGeom, threshold);
+}
+
+// 레이어별 메탈릭 재질 — Daniel de Bruin 스타일 copper/brass 교번
+export function createGearMaterial(stageIndex = 0) {
+  const palette = [
+    "#C88A42",
+    "#A86F2E",
+    "#D8A050",
+    "#B88038",
+  ];
+  const color = palette[stageIndex % palette.length];
   return new THREE.MeshStandardMaterial({
     color,
-    roughness: 0.55,
-    metalness: 0.2,
-    flatShading: false,
+    roughness: 0.42,
+    metalness: 0.78,
   });
 }
+
+// 첫 기어 전용 — 눈에 띄게 밝은 메탈 + 살짝 발광
+export function createFirstGearMaterial() {
+  return new THREE.MeshStandardMaterial({
+    color: "#F0C060",
+    roughness: 0.3,
+    metalness: 0.85,
+    emissive: "#3A2810",
+    emissiveIntensity: 0.35,
+  });
+}
+
+// 엣지 라인 재질
+export function createEdgeMaterial() {
+  return new THREE.LineBasicMaterial({
+    color: "#1A0F08",
+    transparent: true,
+    opacity: 0.6,
+  });
+}
+
+// 어두운 배경 색 — 메탈이 돋보이도록
+export const DARK_BG = "#1C1612";
