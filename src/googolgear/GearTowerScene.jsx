@@ -7,12 +7,22 @@ import {
   DARK_BG,
 } from "./GearMesh";
 
-const STAGE_SPACING = 0.58;
+// 지그재그 배치: 기어 지름 ≈ 2 이므로 X 교번 + Y 간격이 서로 얹힌 느낌
+const OFFSET_X = 0.55;   // 좌우 교번 폭
+const Y_STEP   = 0.62;   // 단 간 수직 간격
 const MAX_STAGES = 100;
+
+function stagePosition(i) {
+  return {
+    x: (i % 2 === 0) ? -OFFSET_X : OFFSET_X,
+    y: i * Y_STEP,
+    z: (i % 2 === 0) ? 0.1 : -0.1,
+  };
+}
 
 export default function GearTowerScene({
   B, E, controller, previewMode, theme,
-  onFirstGearDrag,
+  onFirstGearDrag, onFirstGearRelease,
 }) {
   const mountRef = useRef(null);
   const stateRef = useRef(null);
@@ -22,6 +32,8 @@ export default function GearTowerScene({
   controllerRef.current = controller;
   const onFirstGearDragRef = useRef(onFirstGearDrag);
   onFirstGearDragRef.current = onFirstGearDrag;
+  const onFirstGearReleaseRef = useRef(onFirstGearRelease);
+  onFirstGearReleaseRef.current = onFirstGearRelease;
 
   // ============ MOUNT 전용: 씬 1회 생성 ============
   useEffect(() => {
@@ -114,7 +126,7 @@ export default function GearTowerScene({
       state.lastDragY = e.clientY;
       const deltaAngle = -dy / 100;
       if (onFirstGearDragRef.current) {
-        onFirstGearDragRef.current(deltaAngle, performance.now() / 1000);
+        onFirstGearDragRef.current(deltaAngle);
       }
     }
     function onPointerUp(e) {
@@ -122,6 +134,8 @@ export default function GearTowerScene({
       state.dragging = false;
       if (!state.currentPreview) state.controls.enabled = true;
       try { renderer.domElement.releasePointerCapture(e.pointerId); } catch {}
+      // 관성 트리거
+      if (onFirstGearReleaseRef.current) onFirstGearReleaseRef.current();
     }
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
     renderer.domElement.addEventListener("pointermove", onPointerMove);
@@ -161,21 +175,25 @@ export default function GearTowerScene({
         const m = state.gearEntries[0].mesh;
         m.rotation.z += 0.5 * dt;
       } else if (pm === "tower" && state.gearEntries.length > 0) {
-        // 타워: 첫 기어 spin + cascade (axis = X after Y rotation)
+        // 타워: 첫 기어 spin + cascade (인접 기어는 역방향 회전)
         const first = state.gearEntries[0].mesh;
         first.rotation.x += 0.7 * dt;
-        const base = first.rotation.x;
-        let r = base;
+        const invB = -1 / Math.max(2, state.currentB);
+        let r = first.rotation.x;
         for (let i = 1; i < state.gearEntries.length; i++) {
-          r *= 1 / Math.max(2, state.currentB);
+          r *= invB;
           state.gearEntries[i].mesh.rotation.x = r;
         }
       } else if (!pm && controllerRef.current) {
         const c = controllerRef.current;
-        if (c.step) c.step(c.getRpm ? tNow : dt);
-        const rots = c.rotations;
-        for (let i = 0; i < state.gearEntries.length && i < rots.length; i++) {
-          state.gearEntries[i].mesh.rotation.x = rots[i];
+        try {
+          if (c.step) c.step(dt);
+          const rots = c.rotations;
+          for (let i = 0; i < state.gearEntries.length && i < rots.length; i++) {
+            state.gearEntries[i].mesh.rotation.x = rots[i];
+          }
+        } catch (err) {
+          // 컨트롤러 전환 중 race condition 방지
         }
       }
 
@@ -199,25 +217,29 @@ export default function GearTowerScene({
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
 
-    // Cleanup
+    // Cleanup — try/catch로 감싸서 뒤로가기 시 에러가 상위로 전파되지 않도록
     return () => {
-      state.mounted = false;
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", onResize);
-      ro.disconnect();
-      renderer.domElement.removeEventListener("pointerdown", onPointerDown);
-      renderer.domElement.removeEventListener("pointermove", onPointerMove);
-      renderer.domElement.removeEventListener("pointerup", onPointerUp);
-      renderer.domElement.removeEventListener("pointercancel", onPointerUp);
-      controls.dispose();
-      if (state.geom) state.geom.dispose();
-      if (state.edgesGeom) state.edgesGeom.dispose();
-      state.stageMaterials.forEach(m => m.dispose());
-      state.firstMaterial.dispose();
-      state.edgeMaterial.dispose();
-      renderer.dispose();
-      if (renderer.domElement.parentNode === mount) {
-        mount.removeChild(renderer.domElement);
+      try {
+        state.mounted = false;
+        cancelAnimationFrame(raf);
+        window.removeEventListener("resize", onResize);
+        ro.disconnect();
+        renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+        renderer.domElement.removeEventListener("pointermove", onPointerMove);
+        renderer.domElement.removeEventListener("pointerup", onPointerUp);
+        renderer.domElement.removeEventListener("pointercancel", onPointerUp);
+        controls.dispose();
+        if (state.geom) state.geom.dispose();
+        if (state.edgesGeom) state.edgesGeom.dispose();
+        state.stageMaterials.forEach(m => { try { m.dispose(); } catch {} });
+        state.firstMaterial.dispose();
+        state.edgeMaterial.dispose();
+        renderer.dispose();
+        if (renderer.domElement.parentNode === mount) {
+          mount.removeChild(renderer.domElement);
+        }
+      } catch (err) {
+        console.warn("[GearTowerScene] cleanup error:", err);
       }
       stateRef.current = null;
     };
@@ -269,7 +291,8 @@ export default function GearTowerScene({
         mesh.position.set(0, 0, 0);
       } else {
         mesh.rotation.set(0, Math.PI / 2, 0);
-        mesh.position.set(0, idx * STAGE_SPACING, (idx % 2) * 0.04 - 0.02);
+        const pos = stagePosition(idx);
+        mesh.position.set(pos.x, pos.y, pos.z);
       }
       mesh.scale.setScalar(0); // animate in
 
@@ -310,35 +333,31 @@ export default function GearTowerScene({
         mesh.rotation.set(0, 0, 0);
         mesh.position.set(0, 0, 0);
       } else {
-        // Y는 PI/2 고정(축 방향 전환), X는 애니메이션에서 계속 업데이트됨
-        // Z 회전은 single mode 전환 후 잔여값이 있을 수 있으니 초기화
         mesh.rotation.set(mesh.rotation.x || 0, Math.PI / 2, 0);
-        mesh.position.set(0, i * STAGE_SPACING, (i % 2) * 0.04 - 0.02);
+        const pos = stagePosition(i);
+        mesh.position.set(pos.x, pos.y, pos.z);
       }
     }
 
-    // 카메라 배치
+    // 카메라 배치 — 첫 기어를 화면 중심에 두기
     if (previewMode === "single") {
       s.camera.position.set(0.4, 0.7, 3.6);
       s.camera.lookAt(0, 0, 0);
       s.controls.target.set(0, 0, 0);
       s.controls.enabled = false;
     } else if (previewMode === "tower") {
-      const visibleStages = Math.min(Math.max(1, E), 14);
-      const mid = (visibleStages - 1) * STAGE_SPACING / 2;
-      s.camera.position.set(4.2, mid + 1.6, 4.8);
-      s.camera.lookAt(0, mid, 0);
-      s.controls.target.set(0, mid, 0);
+      // 타워 프리뷰: 첫 기어가 화면 중앙~하단, 위쪽으로 단이 올라감
+      s.camera.position.set(3.8, 1.2, 4.6);
+      s.camera.lookAt(0, 0.5, 0);
+      s.controls.target.set(0, 0.5, 0);
       s.controls.enabled = false;
     } else {
-      // 전체 씬: orbit 활성
-      const stages = Math.min(Math.max(1, E), MAX_STAGES);
-      const mid = (stages - 1) * STAGE_SPACING / 2;
-      const dist = Math.max(6, stages * STAGE_SPACING * 0.9 + 4);
-      s.camera.position.set(dist * 0.35, mid + 1.5, dist);
-      s.camera.lookAt(0, mid, 0);
-      s.controls.target.set(0, mid, 0);
-      s.controls.maxDistance = dist;
+      // 전체 씬: orbit 활성. 첫 기어 중심으로 포커스, 타워는 위로 퍼져 보임
+      s.camera.position.set(3.5, 1.4, 5.5);
+      s.camera.lookAt(0, 0.6, 0);
+      s.controls.target.set(0, 0.6, 0);
+      s.controls.maxDistance = 9;
+      s.controls.minDistance = 2;
       s.controls.enabled = true;
     }
     s.controls.update();
