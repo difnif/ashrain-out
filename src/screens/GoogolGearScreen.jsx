@@ -222,7 +222,7 @@ function GoogolGearInner({ theme, setScreen }) {
             flex: 1, minHeight: 200, borderRadius: 12,
             background: theme.border + "22",
           }}>
-            <GearTowerScene B={B} E={1} previewMode="single" theme={theme} />
+            <GearTowerScene B={B} E={1} previewMode="single" theme={theme} previewRpm={rpm} />
           </div>
           <RpmSlider value={rpm} onChange={setRpm} theme={theme} />
           <button
