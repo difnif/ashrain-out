@@ -356,18 +356,26 @@ export default function GearTowerScene({
       s.controls.target.set(0, 0, 0);
       s.controls.enabled = false;
     } else if (previewMode === "tower") {
-      // 타워 프리뷰: E≤12 가정, 짧은 통을 전체 보이도록
-      s.camera.position.set(-1.2, 1.6, 4.2);
-      s.camera.lookAt(0.8, 0, 0);
-      s.controls.target.set(0.8, 0, 0);
+      // 타워 프리뷰: 단수에 비례해 카메라 거리를 조정, 통 전체가 보이도록
+      const stages = Math.max(1, Math.min(E, MAX_STAGES));
+      const towerLen = stages * 0.14;
+      const midX = towerLen / 2;
+      const dist = Math.max(4, towerLen * 0.9 + 3);
+      s.camera.position.set(midX - dist * 0.3, 1.4, dist);
+      s.camera.lookAt(midX, 0, 0);
+      s.controls.target.set(midX, 0, 0);
       s.controls.enabled = false;
     } else {
-      // 전체 씬: 첫 기어가 화면 전경에 크게, 통은 뒤로 뻗어나감
-      s.camera.position.set(-1.5, 1.8, 4.5);
-      s.camera.lookAt(1.0, 0, 0);
-      s.controls.target.set(1.0, 0, 0);
-      s.controls.maxDistance = 10;
-      s.controls.minDistance = 2;
+      // 전체 씬: orbit + pan 활성, 크게 물러날 수 있음
+      const stages = Math.max(1, Math.min(E, MAX_STAGES));
+      const towerLen = stages * 0.14;
+      const midX = towerLen / 2;
+      s.camera.position.set(midX - 2, 2.5, 7);
+      s.camera.lookAt(midX * 0.5, 0, 0);
+      s.controls.target.set(midX * 0.5, 0, 0);
+      s.controls.maxDistance = Math.max(25, towerLen * 2.5);
+      s.controls.minDistance = 1.5;
+      s.controls.enablePan = true;
       s.controls.enabled = true;
     }
     s.controls.update();
