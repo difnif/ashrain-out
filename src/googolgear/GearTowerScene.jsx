@@ -36,9 +36,8 @@ const SET_WIDTH = DEPTH_BIG + DEPTH_PIN;
 // 인접 단의 큰 기어가 이 단의 pinion 위치와 같은 X에 와야 맞물림
 // → 단 간격 = pinion까지의 거리 = DEPTH_BIG (큰 기어 두께만큼 떨어짐)
 
-// 12시 방향 톱니 한 개를 빨갛게 표시
-// 원본 createGearGeometry의 톱니 인덱스 중 12시에 가장 가까운 것을 골라 그대로 그림
-// → 원본 톱니와 정확히 겹쳐져 "그 톱니 하나만 빨강"으로 보임
+// 12시 방향 톱니 한 개의 끝 1/3만 빨갛게 표시
+// 원본 톱니와 정확히 겹치되, 톱니 바깥쪽 1/3 구간만 채움
 function createSingleToothGeometry(teeth, opts = {}) {
   const outerR = opts.outerR ?? 1.0;
   const innerR = opts.innerR ?? 0.82;
@@ -47,20 +46,20 @@ function createSingleToothGeometry(teeth, opts = {}) {
   const t = Math.max(2, Math.min(200, Math.floor(teeth)));
   const slotAng = (Math.PI * 2) / t;
 
-  // 원본에서 i번째 톱니는 aMid=(i+0.5)*slot ~ aEnd=(i+1)*slot 범위에 있음.
-  // 톱니 중심 각 = (i + 0.75) * slot
-  // 12시(π/2)에 가장 가까운 i 선택
+  // 12시에 가장 가까운 톱니 인덱스
   const idealI = Math.round((Math.PI / 2) / slotAng - 0.75);
   const aMid = (idealI + 0.5) * slotAng;
   const aEnd = (idealI + 1) * slotAng;
 
-  // 원본 톱니 이빨 폐곡선:
-  //   (aMid, innerR) → (aMid, outerR) → (aEnd, outerR) → (aEnd, innerR) → close
+  // 톱니 끝 1/3만 — 반지름 방향으로 innerR 대신 (outerR - 1/3 * toothLen) 사용
+  const toothLen = outerR - innerR;
+  const tipStartR = outerR - toothLen * (1 / 3);
+
   const shape = new THREE.Shape();
-  const p1 = [Math.cos(aMid) * innerR, Math.sin(aMid) * innerR];
-  const p2 = [Math.cos(aMid) * outerR, Math.sin(aMid) * outerR];
-  const p3 = [Math.cos(aEnd) * outerR, Math.sin(aEnd) * outerR];
-  const p4 = [Math.cos(aEnd) * innerR, Math.sin(aEnd) * innerR];
+  const p1 = [Math.cos(aMid) * tipStartR, Math.sin(aMid) * tipStartR];
+  const p2 = [Math.cos(aMid) * outerR,    Math.sin(aMid) * outerR];
+  const p3 = [Math.cos(aEnd) * outerR,    Math.sin(aEnd) * outerR];
+  const p4 = [Math.cos(aEnd) * tipStartR, Math.sin(aEnd) * tipStartR];
 
   shape.moveTo(p1[0], p1[1]);
   shape.lineTo(p2[0], p2[1]);
@@ -284,7 +283,7 @@ export default function GearTowerScene({
       if (!state.dragging) return;
       const dy = e.clientY - state.lastDragY;
       state.lastDragY = e.clientY;
-      const deltaAngle = -dy / 100;
+      const deltaAngle = dy / 100;
       if (onFirstGearDragRef.current) onFirstGearDragRef.current(deltaAngle);
     }
     function onPointerUp(e) {
