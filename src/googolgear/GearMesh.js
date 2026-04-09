@@ -105,17 +105,18 @@ export const GEAR_STYLES = {
     metalness: 0.2,
   },
   lineart: {
-    label: "라인 아트",
-    palette: ["#FFFFFF"],
+    label: "블루프린트",
+    palette: ["#7FC8FF"],
     firstColor: "#FFFFFF",
     firstEmissive: "#000000",
     firstEmissiveIntensity: 0,
-    bg: "#FFFFFF",
-    edgeColor: "#000000",
+    bg: "#0F2540",
+    edgeColor: "#9FD4FF",
     edgeOpacity: 1.0,
     roughness: 1.0,
     metalness: 0.0,
     lineartMode: true, // fill을 거의 투명하게
+    blueprint: true,   // GridHelper + 그리드 평면 추가
   },
 };
 
@@ -166,4 +167,9 @@ export function createEdgeMaterial(styleKey = DEFAULT_STYLE) {
 
 export function getStyleBg(styleKey = DEFAULT_STYLE) {
   return (GEAR_STYLES[styleKey] || GEAR_STYLES[DEFAULT_STYLE]).bg;
+}
+
+export function isBlueprint(styleKey) {
+  const s = GEAR_STYLES[styleKey];
+  return !!(s && s.blueprint);
 }
