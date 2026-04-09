@@ -20,6 +20,20 @@ function GoogolGearInner({ theme, setScreen }) {
   const [explanationVisible, setExplanationVisible] = useState(false);
   const [styleKey, setStyleKey] = useState("copper");
 
+  // 화면 가로/세로 감지
+  const [isLandscape, setIsLandscape] = useState(
+    typeof window !== "undefined" ? window.innerWidth > window.innerHeight : false
+  );
+  useEffect(() => {
+    const onResize = () => setIsLandscape(window.innerWidth > window.innerHeight);
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, []);
+
   // 컨트롤러는 useMemo로 phase 진입 시점에 한 번만 생성
   const autoController = useMemo(
     () => phase === "auto-scene" ? createAutoController(B, E, rpm) : null,
@@ -71,11 +85,17 @@ function GoogolGearInner({ theme, setScreen }) {
     return () => clearTimeout(t);
   }, [phase]);
 
-  // 수동 모드용 RPM 표시 (매 100ms 갱신)
+  // 수동 모드용 RPM 표시 + 최고 기록 (매 100ms 갱신)
   const [manualRpm, setManualRpm] = useState(0);
+  const [manualMaxRpm, setManualMaxRpm] = useState(0);
   useEffect(() => {
     if (phase !== "manual-scene" || !manualController) return;
-    const id = setInterval(() => setManualRpm(manualController.getRpm()), 100);
+    setManualMaxRpm(0); // 진입 시 리셋
+    const id = setInterval(() => {
+      const cur = manualController.getRpm();
+      setManualRpm(cur);
+      setManualMaxRpm(prev => cur > prev ? cur : prev);
+    }, 100);
     return () => clearInterval(id);
   }, [phase, manualController]);
 
@@ -244,30 +264,38 @@ function GoogolGearInner({ theme, setScreen }) {
     return (
       <div style={baseStyle}>
         <Header title="수동 모드" />
-        <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
-          <GearTowerScene
-            B={B}
-            E={E}
-            controller={manualController}
-            theme={theme}
-            styleKey={styleKey}
-            onFirstGearDrag={handleFirstGearDrag}
-            onFirstGearRelease={handleFirstGearRelease}
-          />
-          <div style={{ position: "absolute", top: 12, left: 12, right: 12, pointerEvents: "none" }}>
-            <div style={{ pointerEvents: "auto" }}>
-              <RemainingTime B={B} E={E} rpm={manualRpm} theme={theme} />
-            </div>
-          </div>
-          <StylePicker value={styleKey} onChange={setStyleKey} theme={theme} />
-          {explanationVisible && (
-            <ExplanationPanel
-              B={B} E={E} rpm={manualRpm || 60} theme={theme} mode="manual"
-              onContinue={() => setExplanationVisible(false)}
-              collapsible={true}
+        <SceneArea
+          isLandscape={isLandscape}
+          showPanel={explanationVisible}
+          theme={theme}
+          sceneNode={
+            <GearTowerScene
+              B={B} E={E}
+              controller={manualController}
+              theme={theme}
+              styleKey={styleKey}
+              onFirstGearDrag={handleFirstGearDrag}
+              onFirstGearRelease={handleFirstGearRelease}
             />
-          )}
-        </div>
+          }
+          topOverlay={
+            <ManualTopBar
+              B={B} E={E} rpm={manualRpm} maxRpm={manualMaxRpm} theme={theme}
+              onResetMax={() => setManualMaxRpm(0)}
+            />
+          }
+          stylePicker={<StylePicker value={styleKey} onChange={setStyleKey} theme={theme} />}
+          panelNode={
+            explanationVisible ? (
+              <ExplanationPanel
+                B={B} E={E} rpm={manualRpm || 60} theme={theme} mode="manual"
+                onContinue={() => setExplanationVisible(false)}
+                collapsible={true}
+                docked={isLandscape}
+              />
+            ) : null
+          }
+        />
       </div>
     );
   }
@@ -277,33 +305,140 @@ function GoogolGearInner({ theme, setScreen }) {
     return (
       <div style={baseStyle}>
         <Header title="자동 모드" />
-        <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
-          <GearTowerScene
-            B={B}
-            E={E}
-            controller={autoController}
-            theme={theme}
-            styleKey={styleKey}
-          />
-          <div style={{ position: "absolute", top: 12, left: 12, right: 12, pointerEvents: "none" }}>
-            <div style={{ pointerEvents: "auto" }}>
+        <SceneArea
+          isLandscape={isLandscape}
+          showPanel={explanationVisible}
+          theme={theme}
+          sceneNode={
+            <GearTowerScene
+              B={B} E={E}
+              controller={autoController}
+              theme={theme}
+              styleKey={styleKey}
+            />
+          }
+          topOverlay={
+            <div style={{ padding: 0 }}>
               <RemainingTime B={B} E={E} rpm={rpm} theme={theme} />
             </div>
-          </div>
-          <StylePicker value={styleKey} onChange={setStyleKey} theme={theme} />
-          {explanationVisible && (
-            <ExplanationPanel
-              B={B} E={E} rpm={rpm} theme={theme} mode="auto"
-              onContinue={() => setExplanationVisible(false)}
-              collapsible={true}
-            />
-          )}
-        </div>
+          }
+          stylePicker={<StylePicker value={styleKey} onChange={setStyleKey} theme={theme} />}
+          panelNode={
+            explanationVisible ? (
+              <ExplanationPanel
+                B={B} E={E} rpm={rpm} theme={theme} mode="auto"
+                onContinue={() => setExplanationVisible(false)}
+                collapsible={true}
+                docked={isLandscape}
+              />
+            ) : null
+          }
+        />
       </div>
     );
   }
 
   return null;
+}
+
+// 가로/세로 모드에 따라 씬과 설명 패널을 배치하는 컨테이너
+function SceneArea({ isLandscape, showPanel, theme, sceneNode, topOverlay, stylePicker, panelNode }) {
+  // 가로 + 설명 활성: 좌(씬) | 우(패널)
+  if (isLandscape && showPanel && panelNode) {
+    return (
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row" }}>
+        <div style={{ flex: "1 1 60%", minWidth: 0, position: "relative" }}>
+          {sceneNode}
+          <div style={{ position: "absolute", top: 12, left: 12, right: 12, pointerEvents: "none" }}>
+            <div style={{ pointerEvents: "auto" }}>{topOverlay}</div>
+          </div>
+          {stylePicker}
+        </div>
+        <div style={{
+          flex: "0 0 40%", maxWidth: 460, minWidth: 280,
+          borderLeft: `1px solid ${theme.border}`,
+          background: theme.bg,
+          position: "relative",
+          overflowY: "auto",
+        }}>
+          {panelNode}
+        </div>
+      </div>
+    );
+  }
+
+  // 세로: 위(씬) / 아래(패널). showPanel일 때 씬은 55%로 줄어듦
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <div style={{
+        flex: showPanel && panelNode ? "0 0 55%" : "1 1 100%",
+        minHeight: 0,
+        position: "relative",
+        transition: "flex-basis 0.4s ease",
+      }}>
+        {sceneNode}
+        <div style={{ position: "absolute", top: 12, left: 12, right: 12, pointerEvents: "none" }}>
+          <div style={{ pointerEvents: "auto" }}>{topOverlay}</div>
+        </div>
+        {stylePicker}
+      </div>
+      {showPanel && panelNode && (
+        <div style={{
+          flex: "1 1 45%", minHeight: 0,
+          borderTop: `1px solid ${theme.border}`,
+          background: theme.bg,
+          position: "relative",
+          overflowY: "auto",
+        }}>
+          {panelNode}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 수동 모드 상단 바: 남은 시간 + 현재 RPM + 최고 RPM
+function ManualTopBar({ B, E, rpm, maxRpm, theme, onResetMax }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <RemainingTime B={B} E={E} rpm={rpm} theme={theme} />
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10,
+        background: theme.border + "33",
+        borderRadius: 10,
+        padding: "8px 12px",
+        fontSize: 12,
+        color: theme.text,
+      }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 10, opacity: 0.6 }}>현재 RPM</div>
+          <div style={{ fontSize: 16, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>
+            {Math.round(rpm)}
+          </div>
+        </div>
+        <div style={{ width: 1, alignSelf: "stretch", background: theme.border }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 10, opacity: 0.6 }}>🏆 최고 기록</div>
+          <div style={{ fontSize: 16, fontWeight: 500, fontVariantNumeric: "tabular-nums", color: theme.accent }}>
+            {Math.round(maxRpm)}
+          </div>
+        </div>
+        <button
+          onClick={onResetMax}
+          title="최고 기록 초기화"
+          style={{
+            background: "transparent",
+            border: `1px solid ${theme.border}`,
+            color: theme.text,
+            fontSize: 10,
+            padding: "4px 8px",
+            borderRadius: 6,
+            cursor: "pointer",
+          }}
+        >리셋</button>
+      </div>
+    </div>
+  );
 }
 
 // 스타일 선택 UI — 화면 우측 상단 고정
