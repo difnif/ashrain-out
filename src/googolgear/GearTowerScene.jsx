@@ -505,14 +505,13 @@ export default function GearTowerScene({
     if (!s) return;
     s.currentB = B;
 
-    // 톱니 비율 = B : 1 정확히 유지
-    // 작은 B에서 톱니 모양이 망가지지 않도록 multiplier 적용
-    // pinion 톱니 최소 2개, 최대 6개 정도 유지
-    const multiplier = Math.max(2, Math.ceil(10 / B));
-    const bigT = B * multiplier;
-    const pinT = multiplier;
+    // 큰 기어 톱니 수 = 사용자가 설정한 B 그대로 (학생이 "B=10이면 톱니 10개" 기대)
+    // 피니언은 시각상 2개 최소 (1개는 불가능)
+    // 물리 감속비는 컨트롤러에서 1/B 그대로 — 시각비와 살짝 다를 수 있음 (작은 B에서만 두드러짐)
+    const bigT = Math.max(2, Math.min(200, B));
+    const pinT = 2;
 
-    // pinion 반지름 = 정확히 R_BIG / B (시각=물리 일치)
+    // pinion 반지름 = R_BIG / B (정확한 물리 비율)
     // 단 너무 작아지지 않게 최소값 보장
     const rPin = getRPin(B);
 
