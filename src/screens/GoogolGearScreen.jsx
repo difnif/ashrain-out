@@ -501,7 +501,7 @@ function StylePicker({ value, onChange, theme }) {
     { key: "rainbow", label: "컬러",  color: "#F9A825" },
     { key: "black",   label: "블랙",  color: "#1A1A1A" },
     { key: "white",   label: "화이트", color: "#F5F0E8" },
-    { key: "lineart", label: "라인",  color: "#FFFFFF" },
+    { key: "lineart", label: "블루프린트", color: "#0F2540" },
   ];
   return (
     <div style={{
