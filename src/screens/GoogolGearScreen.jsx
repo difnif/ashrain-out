@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 import SetupPanel from "../googolgear/SetupPanel";
 import GearTowerScene from "../googolgear/GearTowerScene";
 import RemainingTime from "../googolgear/RemainingTime";
@@ -7,9 +7,62 @@ import { createAutoController } from "../googolgear/AutoController";
 import { createManualController } from "../googolgear/ManualController";
 import { RPM_MAX, RPM_MIN } from "../googolgear/rpmExamples";
 
+// 전체 화면 에러 바운더리 — 흰 화면 방지
+class GoogolErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, err: null };
+  }
+  static getDerivedStateFromError(err) {
+    return { hasError: true, err };
+  }
+  componentDidCatch(err, info) {
+    console.error("[GoogolGear] caught:", err, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      const t = this.props.theme || {};
+      return (
+        <div style={{
+          position: "fixed", inset: 0,
+          background: t.bg || "#fff",
+          color: t.text || "#000",
+          display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          padding: 24, gap: 16, textAlign: "center",
+        }}>
+          <div style={{ fontSize: 40 }}>⚙️</div>
+          <div style={{ fontSize: 16, fontWeight: 500 }}>구골 기어가 잠시 멈췄어요</div>
+          <div style={{ fontSize: 12, opacity: 0.7, maxWidth: 300 }}>
+            화면을 빠져나오던 중 오류가 났어요. 홈으로 돌아가서 다시 들어와 주세요.
+          </div>
+          <button
+            onClick={() => this.props.onExit && this.props.onExit()}
+            style={{
+              padding: "12px 24px",
+              borderRadius: 12,
+              border: "none",
+              background: t.accent || "#888",
+              color: "#fff",
+              fontSize: 14,
+              fontWeight: 500,
+              cursor: "pointer",
+            }}
+          >홈으로</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function renderGoogolGearScreen(ctx) {
   const { theme, setScreen } = ctx;
-  return <GoogolGearInner theme={theme} setScreen={setScreen} />;
+  return (
+    <GoogolErrorBoundary theme={theme} onExit={() => setScreen("studentHome")}>
+      <GoogolGearInner theme={theme} setScreen={setScreen} />
+    </GoogolErrorBoundary>
+  );
 }
 
 function GoogolGearInner({ theme, setScreen }) {
