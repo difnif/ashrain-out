@@ -156,63 +156,61 @@ export default function GearTowerScene({
     let lastT = performance.now() / 1000;
     function animate() {
       if (!state.mounted) return;
-      const tNow = performance.now() / 1000;
-      const dt = Math.min(0.05, tNow - lastT);
-      lastT = tNow;
+      try {
+        const tNow = performance.now() / 1000;
+        const dt = Math.min(0.05, tNow - lastT);
+        lastT = tNow;
 
-      // Scale add/remove 애니메이션
-      for (let i = state.gearEntries.length - 1; i >= 0; i--) {
-        const entry = state.gearEntries[i];
-        const diff = entry.targetScale - entry.currentScale;
-        if (Math.abs(diff) > 0.002) {
-          entry.currentScale += diff * Math.min(1, dt * 9);
-          entry.mesh.scale.setScalar(entry.currentScale);
-        } else if (entry.currentScale !== entry.targetScale) {
-          entry.currentScale = entry.targetScale;
-          entry.mesh.scale.setScalar(entry.currentScale);
+        // Scale add/remove 애니메이션
+        for (let i = state.gearEntries.length - 1; i >= 0; i--) {
+          const entry = state.gearEntries[i];
+          const diff = entry.targetScale - entry.currentScale;
+          if (Math.abs(diff) > 0.002) {
+            entry.currentScale += diff * Math.min(1, dt * 9);
+            entry.mesh.scale.setScalar(entry.currentScale);
+          } else if (entry.currentScale !== entry.targetScale) {
+            entry.currentScale = entry.targetScale;
+            entry.mesh.scale.setScalar(entry.currentScale);
+          }
+          if (entry.removing && entry.currentScale < 0.02) {
+            state.gearGroup.remove(entry.mesh);
+            state.gearEntries.splice(i, 1);
+          }
         }
-        if (entry.removing && entry.currentScale < 0.02) {
-          state.gearGroup.remove(entry.mesh);
-          state.gearEntries.splice(i, 1);
-        }
-      }
 
-      // Rotation animation based on preview mode
-      const pm = state.currentPreview;
-      if (pm === "single" && state.gearEntries.length > 0) {
-        // 단일 기어 회전 — previewRpm이 있으면 그 값 기준, 없으면 기본 느린 회전
-        const rpm = previewRpmRef.current;
-        const radPerSec = (typeof rpm === "number" && rpm > 0)
-          ? (rpm / 60) * Math.PI * 2
-          : 0.5;
-        const m = state.gearEntries[0].mesh;
-        m.rotation.z += radPerSec * dt;
-      } else if (pm === "tower" && state.gearEntries.length > 0) {
-        // 타워: 첫 기어 spin + cascade (인접 기어는 역방향 회전)
-        const first = state.gearEntries[0].mesh;
-        first.rotation.x += 0.7 * dt;
-        const invB = -1 / Math.max(2, state.currentB);
-        let r = first.rotation.x;
-        for (let i = 1; i < state.gearEntries.length; i++) {
-          r *= invB;
-          state.gearEntries[i].mesh.rotation.x = r;
-        }
-      } else if (!pm && controllerRef.current) {
-        const c = controllerRef.current;
-        try {
+        // Rotation animation based on preview mode
+        const pm = state.currentPreview;
+        if (pm === "single" && state.gearEntries.length > 0) {
+          const rpm = previewRpmRef.current;
+          const radPerSec = (typeof rpm === "number" && rpm > 0)
+            ? (rpm / 60) * Math.PI * 2
+            : 0.5;
+          const m = state.gearEntries[0].mesh;
+          m.rotation.z += radPerSec * dt;
+        } else if (pm === "tower" && state.gearEntries.length > 0) {
+          const first = state.gearEntries[0].mesh;
+          first.rotation.x += 0.7 * dt;
+          const invB = -1 / Math.max(2, state.currentB);
+          let r = first.rotation.x;
+          for (let i = 1; i < state.gearEntries.length; i++) {
+            r *= invB;
+            state.gearEntries[i].mesh.rotation.x = r;
+          }
+        } else if (!pm && controllerRef.current) {
+          const c = controllerRef.current;
           if (c.step) c.step(dt);
           const rots = c.rotations;
           for (let i = 0; i < state.gearEntries.length && i < rots.length; i++) {
             state.gearEntries[i].mesh.rotation.x = rots[i];
           }
-        } catch (err) {
-          // 컨트롤러 전환 중 race condition 방지
         }
-      }
 
-      state.controls.update();
-      state.renderer.render(state.scene, state.camera);
-      raf = requestAnimationFrame(animate);
+        state.controls.update();
+        state.renderer.render(state.scene, state.camera);
+      } catch (err) {
+        console.warn("[GearTowerScene] animate error:", err);
+      }
+      if (state.mounted) raf = requestAnimationFrame(animate);
     }
     raf = requestAnimationFrame(animate);
 
