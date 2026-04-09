@@ -4,10 +4,11 @@ import { RPM_EXAMPLES, findClosestExample } from "./rpmExamples";
 // 4단계 설명 슬라이드인 패널
 // 자동 모드: 5초 후 자동 등장 / 수동 모드: 학생이 한 번이라도 돌리면 5초 후 등장
 export default function ExplanationPanel({
-  B, E, rpm, theme, onContinue, mode,
+  B, E, rpm, theme, onContinue, mode, collapsible = false,
 }) {
-  const [step, setStep] = useState(0); // 0~3
+  const [step, setStep] = useState(0);
   const [visible, setVisible] = useState(false);
+  const [minimized, setMinimized] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 30);
@@ -94,6 +95,31 @@ export default function ExplanationPanel({
   const isLast = step === steps.length - 1;
   const cur = steps[step];
 
+  // 최소화 상태 — 작은 버튼만 남김
+  if (minimized) {
+    return (
+      <button
+        onClick={() => setMinimized(false)}
+        style={{
+          position: "absolute",
+          left: "50%",
+          bottom: 20,
+          transform: "translateX(-50%)",
+          padding: "10px 18px",
+          borderRadius: 20,
+          border: `2px solid ${theme.border}`,
+          background: theme.bg,
+          color: theme.text,
+          fontSize: 13,
+          fontWeight: 500,
+          cursor: "pointer",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+          zIndex: 50,
+        }}
+      >📖 설명 다시 보기</button>
+    );
+  }
+
   return (
     <div style={{
       position: "absolute",
@@ -101,7 +127,7 @@ export default function ExplanationPanel({
       bottom: visible ? 20 : -400,
       transform: "translateX(-50%)",
       width: "min(420px, 92vw)",
-      maxHeight: "75vh",
+      maxHeight: "70vh",
       overflowY: "auto",
       background: theme.bg,
       border: `2px solid ${theme.border}`,
@@ -112,15 +138,34 @@ export default function ExplanationPanel({
       color: theme.text,
       zIndex: 50,
     }}>
-      <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
-        {steps.map((_, i) => (
-          <div key={i} style={{
-            flex: 1,
-            height: 3,
-            borderRadius: 2,
-            background: i <= step ? theme.accent : theme.border,
-          }} />
-        ))}
+      {/* 상단: 진행바 + 최소화 버튼 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        <div style={{ flex: 1, display: "flex", gap: 4 }}>
+          {steps.map((_, i) => (
+            <div key={i} style={{
+              flex: 1,
+              height: 3,
+              borderRadius: 2,
+              background: i <= step ? theme.accent : theme.border,
+            }} />
+          ))}
+        </div>
+        {collapsible && (
+          <button
+            onClick={() => setMinimized(true)}
+            title="설명 접기"
+            style={{
+              background: "transparent",
+              border: `1px solid ${theme.border}`,
+              color: theme.text,
+              fontSize: 11,
+              padding: "3px 8px",
+              borderRadius: 8,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >접기 ▾</button>
+        )}
       </div>
       <h3 style={{ margin: "0 0 10px", fontSize: 16, fontWeight: 500 }}>{cur.title}</h3>
       <div style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>{cur.body}</div>
