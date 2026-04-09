@@ -36,16 +36,59 @@ const SET_WIDTH = DEPTH_BIG + DEPTH_PIN;
 // 인접 단의 큰 기어가 이 단의 pinion 위치와 같은 X에 와야 맞물림
 // → 단 간격 = pinion까지의 거리 = DEPTH_BIG (큰 기어 두께만큼 떨어짐)
 
-// 12시 방향 마커 — 기어의 평면(원반 앞면)에 붙이는 얇고 긴 빨간 박스.
-// 기어 local 좌표계: 원반이 XY 평면, Z는 두께 방향.
-// 12시 = +Y 방향. 원반 중심에서 outerR까지 뻗은 가느다란 스트라이프.
-function createTickMarker(outerR, gearDepth) {
-  const stripeLen = outerR * 0.85;   // 중심→outerR 방향 길이
-  const stripeW   = outerR * 0.08;   // 폭 (좁음)
-  const stripeThk = gearDepth * 0.3; // 원반 표면 살짝 돌출
-  const geo = new THREE.BoxGeometry(stripeW, stripeLen, stripeThk);
-  // 중심이 원반 중심이므로 Y 방향으로 절반 이동 → 중심부터 outer까지
-  geo.translate(0, stripeLen / 2, gearDepth / 2 + stripeThk / 2);
+// 12시 방향 톱니 한 개를 빨갛게 표시 — 기어의 12시 톱니 위에 겹쳐 놓는 독립 mesh.
+// 기어의 톱니 한 개와 정확히 같은 모양/크기로 만들어서 겹쳐 놓으면 그 톱니만 빨강으로 보임.
+// 파라미터는 createGearGeometry의 것과 동일해야 정확히 일치.
+function createSingleToothGeometry(teeth, opts = {}) {
+  const outerR = opts.outerR ?? 1.0;
+  const innerR = opts.innerR ?? 0.82;
+  const depth  = opts.depth  ?? 0.22;
+
+  const t = Math.max(2, Math.min(200, Math.floor(teeth)));
+  // 12시 위치에 톱니가 오려면, Shape 구성 시 각도를 π/2만큼 회전해야 함
+  // 원본 createGearGeometry는 i=0 톱니가 0 rad(3시 방향)에서 시작함
+  // 12시는 π/2. 따라서 톱니 하나를 그릴 때 각도에 π/2 - (slot/2)를 더함
+  // (slot 중심이 12시에 오도록)
+  const slotAng = (Math.PI * 2) / t;
+  const shiftAng = Math.PI / 2 - slotAng / 2;
+
+  // 한 톱니 slot: createGearGeometry의 원본 배치
+  //   a0 → innerR 시작점
+  //   aMid → innerR 중간점 (여기서 outerR로 올라감)
+  //   aMid → outerR 톱니 꼭대기 시작
+  //   aEnd → outerR 톱니 꼭대기 끝 (여기서 다음 slot의 innerR로)
+  // 톱니 이빨만 그리려면 aMid~aEnd 구간의 outerR arc 부분만 필요
+  // 단 extrude를 위해 닫힌 shape이어야 하므로, innerR 측면도 포함
+  //
+  // 이빨 한 개 폐곡선:
+  //   (aMid, innerR) → (aMid, outerR) → (aEnd, outerR) → (aEnd, innerR) → close
+  const shape = new THREE.Shape();
+  const aMid = shiftAng + slotAng / 2;  // 원본 for i=0, aMid = slotAng/2
+  const aEnd = shiftAng + slotAng;       // 원본 for i=0, aEnd = slotAng
+
+  const p1 = [Math.cos(aMid) * innerR, Math.sin(aMid) * innerR];
+  const p2 = [Math.cos(aMid) * outerR, Math.sin(aMid) * outerR];
+  const p3 = [Math.cos(aEnd) * outerR, Math.sin(aEnd) * outerR];
+  const p4 = [Math.cos(aEnd) * innerR, Math.sin(aEnd) * innerR];
+
+  shape.moveTo(p1[0], p1[1]);
+  shape.lineTo(p2[0], p2[1]);
+  shape.lineTo(p3[0], p3[1]);
+  shape.lineTo(p4[0], p4[1]);
+  shape.closePath();
+
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth,
+    bevelEnabled: true,
+    bevelThickness: 0.018,
+    bevelSize: 0.018,
+    bevelSegments: 2,
+    curveSegments: 4,
+    steps: 1,
+  });
+  // 원본 기어와 같은 Z 정렬
+  geo.translate(0, 0, -depth / 2);
+  geo.computeVertexNormals();
   return geo;
 }
 
@@ -492,8 +535,12 @@ export default function GearTowerScene({
     });
     const newBigEdges = createGearEdges(newBigGeom);
     const newPinEdges = createGearEdges(newPinGeom);
-    const newBigTickGeom = createTickMarker(R_BIG, DEPTH_BIG);
-    const newPinTickGeom = createTickMarker(rPin, DEPTH_PIN);
+    const newBigTickGeom = createSingleToothGeometry(bigT, {
+      outerR: R_BIG, innerR: R_BIG * 0.84, depth: DEPTH_BIG,
+    });
+    const newPinTickGeom = createSingleToothGeometry(pinT, {
+      outerR: rPin, innerR: rPin * 0.7, depth: DEPTH_PIN,
+    });
 
     if (s.bigGeom) s.bigGeom.dispose();
     if (s.pinGeom) s.pinGeom.dispose();
