@@ -18,6 +18,7 @@ function GoogolGearInner({ theme, setScreen }) {
   const [E, setE] = useState(10);
   const [rpm, setRpm] = useState(60);
   const [explanationVisible, setExplanationVisible] = useState(false);
+  const [styleKey, setStyleKey] = useState("copper");
 
   // 컨트롤러는 useMemo로 phase 진입 시점에 한 번만 생성
   const autoController = useMemo(
@@ -249,16 +250,21 @@ function GoogolGearInner({ theme, setScreen }) {
             E={E}
             controller={manualController}
             theme={theme}
+            styleKey={styleKey}
             onFirstGearDrag={handleFirstGearDrag}
             onFirstGearRelease={handleFirstGearRelease}
           />
-          <div style={{ position: "absolute", top: 12, left: 12, right: 12 }}>
-            <RemainingTime B={B} E={E} rpm={manualRpm} theme={theme} />
+          <div style={{ position: "absolute", top: 12, left: 12, right: 12, pointerEvents: "none" }}>
+            <div style={{ pointerEvents: "auto" }}>
+              <RemainingTime B={B} E={E} rpm={manualRpm} theme={theme} />
+            </div>
           </div>
+          <StylePicker value={styleKey} onChange={setStyleKey} theme={theme} />
           {explanationVisible && (
             <ExplanationPanel
               B={B} E={E} rpm={manualRpm || 60} theme={theme} mode="manual"
               onContinue={() => setExplanationVisible(false)}
+              collapsible={true}
             />
           )}
         </div>
@@ -277,14 +283,19 @@ function GoogolGearInner({ theme, setScreen }) {
             E={E}
             controller={autoController}
             theme={theme}
+            styleKey={styleKey}
           />
-          <div style={{ position: "absolute", top: 12, left: 12, right: 12 }}>
-            <RemainingTime B={B} E={E} rpm={rpm} theme={theme} />
+          <div style={{ position: "absolute", top: 12, left: 12, right: 12, pointerEvents: "none" }}>
+            <div style={{ pointerEvents: "auto" }}>
+              <RemainingTime B={B} E={E} rpm={rpm} theme={theme} />
+            </div>
           </div>
+          <StylePicker value={styleKey} onChange={setStyleKey} theme={theme} />
           {explanationVisible && (
             <ExplanationPanel
               B={B} E={E} rpm={rpm} theme={theme} mode="auto"
               onContinue={() => setExplanationVisible(false)}
+              collapsible={true}
             />
           )}
         </div>
@@ -293,6 +304,44 @@ function GoogolGearInner({ theme, setScreen }) {
   }
 
   return null;
+}
+
+// 스타일 선택 UI — 화면 우측 상단 고정
+function StylePicker({ value, onChange, theme }) {
+  const styles = [
+    { key: "copper",  label: "구리",  color: "#C88A42" },
+    { key: "rainbow", label: "컬러",  color: "#F9A825" },
+    { key: "black",   label: "블랙",  color: "#1A1A1A" },
+    { key: "white",   label: "화이트", color: "#F5F0E8" },
+    { key: "lineart", label: "라인",  color: "#FFFFFF" },
+  ];
+  return (
+    <div style={{
+      position: "absolute",
+      top: 12, right: 12,
+      display: "flex", flexDirection: "column", gap: 6,
+      zIndex: 10,
+    }}>
+      {styles.map(s => (
+        <button
+          key={s.key}
+          onClick={() => onChange(s.key)}
+          title={s.label}
+          style={{
+            width: 32, height: 32,
+            borderRadius: "50%",
+            border: value === s.key
+              ? `3px solid ${theme.accent}`
+              : `1.5px solid ${theme.border}`,
+            background: s.color,
+            cursor: "pointer",
+            padding: 0,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+          }}
+        />
+      ))}
+    </div>
+  );
 }
 
 // 자동 모드 RPM 슬라이더 — 가로 슬라이더 + 숫자 표시
