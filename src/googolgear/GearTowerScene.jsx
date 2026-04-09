@@ -422,7 +422,7 @@ export default function GearTowerScene({
       touchAction: "none",
       borderRadius: 12,
       overflow: "hidden",
-      background: DARK_BG,
+      background: getStyleBg(styleKey),
     }} />
   );
 }
