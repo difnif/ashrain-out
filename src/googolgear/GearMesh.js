@@ -167,6 +167,3 @@ export function createEdgeMaterial(styleKey = DEFAULT_STYLE) {
 export function getStyleBg(styleKey = DEFAULT_STYLE) {
   return (GEAR_STYLES[styleKey] || GEAR_STYLES[DEFAULT_STYLE]).bg;
 }
-
-// 배경 색 (기존 호환)
-export const DARK_BG = GEAR_STYLES.copper.bg;
