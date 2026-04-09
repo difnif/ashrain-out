@@ -36,6 +36,21 @@ const SET_WIDTH = DEPTH_BIG + DEPTH_PIN;
 // 인접 단의 큰 기어가 이 단의 pinion 위치와 같은 X에 와야 맞물림
 // → 단 간격 = pinion까지의 거리 = DEPTH_BIG (큰 기어 두께만큼 떨어짐)
 
+// 12시 방향 마커 — 기어의 평면(원반 앞면)에 붙이는 얇고 긴 빨간 박스.
+// 기어 local 좌표계: 원반이 XY 평면, Z는 두께 방향.
+// 12시 = +Y 방향. 원반 중심에서 outerR까지 뻗은 가느다란 스트라이프.
+function createTickMarker(outerR, gearDepth) {
+  const stripeLen = outerR * 0.85;   // 중심→outerR 방향 길이
+  const stripeW   = outerR * 0.08;   // 폭 (좁음)
+  const stripeThk = gearDepth * 0.3; // 원반 표면 살짝 돌출
+  const geo = new THREE.BoxGeometry(stripeW, stripeLen, stripeThk);
+  // 중심이 원반 중심이므로 Y 방향으로 절반 이동 → 중심부터 outer까지
+  geo.translate(0, stripeLen / 2, gearDepth / 2 + stripeThk / 2);
+  return geo;
+}
+
+const TICK_COLOR = "#E8342F"; // 빨강
+
 const MAX_STAGES = 100;
 
 // 단 i의 부품 위치
@@ -172,6 +187,15 @@ export default function GearTowerScene({
       pinGeom: null,
       bigEdges: null,
       pinEdges: null,
+      bigTickGeom: null,
+      pinTickGeom: null,
+      tickMaterial: new THREE.MeshStandardMaterial({
+        color: TICK_COLOR,
+        roughness: 0.5,
+        metalness: 0.2,
+        emissive: TICK_COLOR,
+        emissiveIntensity: 0.3,
+      }),
       stageMaterials: [],
       firstMaterial: createFirstGearMaterial(initStyle),
       edgeMaterial: createEdgeMaterial(initStyle),
@@ -358,9 +382,12 @@ export default function GearTowerScene({
       try { if (state.pinGeom) state.pinGeom.dispose(); } catch {}
       try { if (state.bigEdges) state.bigEdges.dispose(); } catch {}
       try { if (state.pinEdges) state.pinEdges.dispose(); } catch {}
+      try { if (state.bigTickGeom) state.bigTickGeom.dispose(); } catch {}
+      try { if (state.pinTickGeom) state.pinTickGeom.dispose(); } catch {}
       try { state.stageMaterials.forEach(m => { try { m.dispose(); } catch {} }); } catch {}
       try { state.firstMaterial.dispose(); } catch {}
       try { state.edgeMaterial.dispose(); } catch {}
+      try { state.tickMaterial.dispose(); } catch {}
 
       // scene 전체 traverse dispose
       try {
@@ -465,16 +492,22 @@ export default function GearTowerScene({
     });
     const newBigEdges = createGearEdges(newBigGeom);
     const newPinEdges = createGearEdges(newPinGeom);
+    const newBigTickGeom = createTickMarker(R_BIG, DEPTH_BIG);
+    const newPinTickGeom = createTickMarker(rPin, DEPTH_PIN);
 
     if (s.bigGeom) s.bigGeom.dispose();
     if (s.pinGeom) s.pinGeom.dispose();
     if (s.bigEdges) s.bigEdges.dispose();
     if (s.pinEdges) s.pinEdges.dispose();
+    if (s.bigTickGeom) s.bigTickGeom.dispose();
+    if (s.pinTickGeom) s.pinTickGeom.dispose();
 
     s.bigGeom = newBigGeom;
     s.pinGeom = newPinGeom;
     s.bigEdges = newBigEdges;
     s.pinEdges = newPinEdges;
+    s.bigTickGeom = newBigTickGeom;
+    s.pinTickGeom = newPinTickGeom;
 
     // 기존 mesh들의 geometry 교체 + 위치 재계산 (B 바뀌면 SHAFT_DIST 변함)
     for (let i = 0; i < s.stageEntries.length; i++) {
@@ -483,10 +516,12 @@ export default function GearTowerScene({
       if (entry.pinMesh) entry.pinMesh.geometry = newPinGeom;
       entry.bigMesh.children.forEach(c => {
         if (c.isLineSegments) c.geometry = newBigEdges;
+        else if (c.isMesh && c.userData.isTick) c.geometry = newBigTickGeom;
       });
       if (entry.pinMesh) {
         entry.pinMesh.children.forEach(c => {
           if (c.isLineSegments) c.geometry = newPinEdges;
+          else if (c.isMesh && c.userData.isTick) c.geometry = newPinTickGeom;
         });
       }
       // 위치 재배치 (z가 B에 의존)
@@ -519,11 +554,18 @@ export default function GearTowerScene({
       const bigMesh = new THREE.Mesh(s.bigGeom, mat);
       const bigEdgesMesh = new THREE.LineSegments(s.bigEdges, s.edgeMaterial);
       bigMesh.add(bigEdgesMesh);
+      // 12시 방향 빨간 마커
+      const bigTick = new THREE.Mesh(s.bigTickGeom, s.tickMaterial);
+      bigTick.userData.isTick = true;
+      bigMesh.add(bigTick);
 
       // pinion mesh (single 미리보기 모드에선 안 보임)
       const pinMesh = new THREE.Mesh(s.pinGeom, mat);
       const pinEdgesMesh = new THREE.LineSegments(s.pinEdges, s.edgeMaterial);
       pinMesh.add(pinEdgesMesh);
+      const pinTick = new THREE.Mesh(s.pinTickGeom, s.tickMaterial);
+      pinTick.userData.isTick = true;
+      pinMesh.add(pinTick);
 
       // 위치/회전은 preview mode 적용 effect에서 처리
       bigMesh.scale.setScalar(0);
