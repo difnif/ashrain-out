@@ -228,30 +228,82 @@ export default function GearTowerScene({
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
 
-    // Cleanup — try/catch로 감싸서 뒤로가기 시 에러가 상위로 전파되지 않도록
+    // Cleanup — Three.js 리소스 누수 방지가 핵심
+    // 모바일에서 WebGL context는 동시 8개까지만 — dispose 누락 시 진입 반복하면 컨텍스트 추방돼 크래시
     return () => {
       try {
         state.mounted = false;
-        cancelAnimationFrame(raf);
-        window.removeEventListener("resize", onResize);
-        ro.disconnect();
+      } catch {}
+
+      // 1) animation loop 정지
+      try { cancelAnimationFrame(raf); } catch {}
+
+      // 2) 이벤트 리스너 정리
+      try { window.removeEventListener("resize", onResize); } catch {}
+      try { ro.disconnect(); } catch {}
+      try {
         renderer.domElement.removeEventListener("pointerdown", onPointerDown);
         renderer.domElement.removeEventListener("pointermove", onPointerMove);
         renderer.domElement.removeEventListener("pointerup", onPointerUp);
         renderer.domElement.removeEventListener("pointercancel", onPointerUp);
-        controls.dispose();
-        if (state.geom) state.geom.dispose();
-        if (state.edgesGeom) state.edgesGeom.dispose();
-        state.stageMaterials.forEach(m => { try { m.dispose(); } catch {} });
-        state.firstMaterial.dispose();
-        state.edgeMaterial.dispose();
-        renderer.dispose();
-        if (renderer.domElement.parentNode === mount) {
+      } catch {}
+
+      // 3) controls
+      try { controls.dispose(); } catch {}
+
+      // 4) gear meshes 전부 순회하면서 dispose + scene에서 제거
+      try {
+        for (const entry of state.gearEntries) {
+          // 엣지 LineSegments는 mesh의 child
+          if (entry.edges) {
+            try { entry.mesh.remove(entry.edges); } catch {}
+          }
+          try { state.gearGroup.remove(entry.mesh); } catch {}
+        }
+        state.gearEntries.length = 0;
+      } catch {}
+
+      // 5) 공유 geometry / edges / materials dispose
+      try { if (state.geom) state.geom.dispose(); } catch {}
+      try { if (state.edgesGeom) state.edgesGeom.dispose(); } catch {}
+      try { state.stageMaterials.forEach(m => { try { m.dispose(); } catch {} }); } catch {}
+      try { state.firstMaterial.dispose(); } catch {}
+      try { state.edgeMaterial.dispose(); } catch {}
+
+      // 6) scene 비우기 (조명, gearGroup 등 포함 — 모든 child 순회 dispose)
+      try {
+        scene.traverse((obj) => {
+          if (obj.geometry && typeof obj.geometry.dispose === "function") {
+            try { obj.geometry.dispose(); } catch {}
+          }
+          if (obj.material) {
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            for (const m of mats) {
+              try { m.dispose(); } catch {}
+            }
+          }
+        });
+        while (scene.children.length > 0) {
+          scene.remove(scene.children[0]);
+        }
+      } catch {}
+
+      // 7) renderer dispose + WebGL context 강제 손실
+      try { renderer.dispose(); } catch {}
+      try {
+        const ctx = renderer.getContext && renderer.getContext();
+        const lose = ctx && ctx.getExtension && ctx.getExtension("WEBGL_lose_context");
+        if (lose) lose.loseContext();
+      } catch {}
+
+      // 8) DOM에서 canvas 제거
+      try {
+        if (renderer.domElement && renderer.domElement.parentNode === mount) {
           mount.removeChild(renderer.domElement);
         }
-      } catch (err) {
-        console.warn("[GearTowerScene] cleanup error:", err);
-      }
+      } catch {}
+
+      // 9) state 초기화
       stateRef.current = null;
     };
   }, []); // MOUNT ONCE ONLY
