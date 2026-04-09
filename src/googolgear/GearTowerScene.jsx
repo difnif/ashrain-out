@@ -4,7 +4,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import {
   createGearGeometry, createGearEdges,
   createGearMaterial, createFirstGearMaterial, createEdgeMaterial,
-  getStyleBg, DEFAULT_STYLE,
+  getStyleBg, DEFAULT_STYLE, isBlueprint,
 } from "./GearMesh";
 
 // ============================================================
@@ -15,26 +15,43 @@ import {
 // ============================================================
 
 // 기하 상수
-const R_BIG = 1.0;          // 큰 기어 반지름
-const R_PIN = 0.25;         // 작은 피니언 반지름
-const SHAFT_DIST = R_BIG + R_PIN;  // 두 축 사이 거리 (인접 단 맞물림 조건)
+const R_BIG = 1.0;          // 큰 기어 반지름 (고정)
+// R_PIN은 B에 따라 동적 계산: R_BIG / B (정확한 비율)
+// 단 너무 작아지지 않게 최소값 보장
+const R_PIN_MIN = 0.06;
+function getRPin(B) {
+  return Math.max(R_PIN_MIN, R_BIG / B);
+}
+function getShaftDist(B) {
+  return R_BIG + getRPin(B);
+}
 
-// X 방향: 같은 단의 bigGear-pinion은 거의 붙음, 인접 단끼리도 좁게
-const DEPTH_BIG = 0.16;     // 큰 기어 두께
-const DEPTH_PIN = 0.20;     // 피니언 두께 (살짝 더 두껍게 — 옆 단의 큰 기어와 맞물림 강조)
-const STAGE_X_GAP = 0.02;   // 같은 단 내 부품 간 여유
-const X_STEP = DEPTH_BIG + DEPTH_PIN / 2 + STAGE_X_GAP;  // 단 내 bigGear → pinion 중심 거리
-// 한 단 너비 = 2*X_STEP 정도. 인접 단 bigGear가 그 중간에 들어옴.
+// 기어 두께
+const DEPTH_BIG = 0.18;
+const DEPTH_PIN = 0.18;
+
+// 한 단의 한 셋트 너비: bigGear depth + pinion depth (둘이 옆구리로 붙음)
+const SET_WIDTH = DEPTH_BIG + DEPTH_PIN;
+// 한 단의 X 영역: 셋트 너비 + 약간의 여유
+// 인접 단의 큰 기어가 이 단의 pinion 위치와 같은 X에 와야 맞물림
+// → 단 간격 = pinion까지의 거리 = DEPTH_BIG (큰 기어 두께만큼 떨어짐)
 
 const MAX_STAGES = 100;
 
-// 단 i의 위치 정보
-function stageGeometry(i) {
+// 단 i의 부품 위치
+// bigGear는 단의 시작 X에, pinion은 그 옆구리 (DEPTH_BIG/2 + DEPTH_PIN/2 만큼 옆)
+// 다음 단의 bigGear는 이 단의 pinion 위치에서 +DEPTH_BIG 만큼 옆 → pinion 옆에 바로 붙음
+function stageGeometry(i, B) {
   const onShaft0 = i % 2 === 0;
-  const z = onShaft0 ? -SHAFT_DIST / 2 : SHAFT_DIST / 2;
-  // 단 폭 = 2 * X_STEP. 인접 단 시작점이 X_STEP만큼 어긋남.
-  const xBig = i * X_STEP;
-  const xPin = xBig + X_STEP;
+  const sd = getShaftDist(B);
+  const z = onShaft0 ? -sd / 2 : sd / 2;
+  // 단 i의 bigGear X = i * (DEPTH_BIG + DEPTH_PIN)
+  // 단 i의 pinion X = bigGear X + (DEPTH_BIG/2 + DEPTH_PIN/2) (옆구리 붙음)
+  // 단 i+1의 bigGear X = 단 i의 pinion X + (DEPTH_PIN/2 + DEPTH_BIG/2)
+  //                    = 단 i의 bigGear X + (DEPTH_BIG + DEPTH_PIN)
+  // 즉 단 간격 = DEPTH_BIG + DEPTH_PIN = SET_WIDTH
+  const xBig = i * SET_WIDTH;
+  const xPin = xBig + (DEPTH_BIG + DEPTH_PIN) / 2;
   return { xBig, xPin, z };
 }
 
@@ -93,6 +110,54 @@ export default function GearTowerScene({
     const gearGroup = new THREE.Group();
     scene.add(gearGroup);
 
+    // 블루프린트 그리드 — 별도 그룹, 스타일 변경 시 추가/제거
+    const blueprintGroup = new THREE.Group();
+    blueprintGroup.visible = false;
+    scene.add(blueprintGroup);
+
+    function buildBlueprintGrid() {
+      // 기존 자식 정리
+      while (blueprintGroup.children.length > 0) {
+        const c = blueprintGroup.children[0];
+        blueprintGroup.remove(c);
+        if (c.geometry) try { c.geometry.dispose(); } catch {}
+        if (c.material) try { c.material.dispose(); } catch {}
+      }
+      // 1) 바닥 그리드 (XZ 평면)
+      const gridSize = 60;
+      const gridDiv = 60;
+      const grid1 = new THREE.GridHelper(gridSize, gridDiv, 0x4A8FCC, 0x2A5580);
+      grid1.position.y = -1.6;
+      grid1.material.transparent = true;
+      grid1.material.opacity = 0.55;
+      blueprintGroup.add(grid1);
+
+      // 2) 뒤쪽 벽 그리드 (XY 평면)
+      const grid2 = new THREE.GridHelper(gridSize, gridDiv, 0x3A6FA8, 0x1F4470);
+      grid2.rotation.x = Math.PI / 2;
+      grid2.position.z = -8;
+      grid2.material.transparent = true;
+      grid2.material.opacity = 0.4;
+      blueprintGroup.add(grid2);
+
+      // 3) 옆쪽 벽 그리드 (YZ 평면)
+      const grid3 = new THREE.GridHelper(gridSize, gridDiv, 0x3A6FA8, 0x1F4470);
+      grid3.rotation.z = Math.PI / 2;
+      grid3.position.x = -8;
+      grid3.material.transparent = true;
+      grid3.material.opacity = 0.35;
+      blueprintGroup.add(grid3);
+
+      // 4) 좌표축 (X 빨강 → 시안 / Y 초록 → 시안 / Z 파랑 → 시안 — 모두 톤 통일)
+      const axisLen = 5;
+      const axMat = new THREE.LineBasicMaterial({ color: 0x9FD4FF, transparent: true, opacity: 0.6 });
+      const axGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-axisLen, -1.6, -8),
+        new THREE.Vector3(axisLen, -1.6, -8),
+      ]);
+      blueprintGroup.add(new THREE.Line(axGeo, axMat));
+    }
+
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.1;
@@ -102,6 +167,7 @@ export default function GearTowerScene({
 
     const state = {
       scene, camera, renderer, controls, gearGroup,
+      blueprintGroup, buildBlueprintGrid,
       bigGeom: null,
       pinGeom: null,
       bigEdges: null,
@@ -123,6 +189,12 @@ export default function GearTowerScene({
       mounted: true,
     };
     stateRef.current = state;
+
+    // 초기 스타일이 blueprint면 그리드 켜기
+    if (isBlueprint(initStyle)) {
+      buildBlueprintGrid();
+      blueprintGroup.visible = true;
+    }
 
     // Pointer handlers
     function getClientXY(e) {
@@ -329,6 +401,14 @@ export default function GearTowerScene({
     s.currentStyle = styleKey;
     s.scene.background = new THREE.Color(getStyleBg(styleKey));
 
+    // 블루프린트 토글
+    if (isBlueprint(styleKey)) {
+      s.buildBlueprintGrid();
+      s.blueprintGroup.visible = true;
+    } else {
+      s.blueprintGroup.visible = false;
+    }
+
     try { s.firstMaterial.dispose(); } catch {}
     try { s.edgeMaterial.dispose(); } catch {}
     for (const m of s.stageMaterials) try { m.dispose(); } catch {}
@@ -366,18 +446,22 @@ export default function GearTowerScene({
     if (!s) return;
     s.currentB = B;
 
-    // bigGear: 톱니 B개, 반지름 R_BIG
-    // pinion: 톱니 1개 (실제로는 시각상 4개로 그림), 반지름 R_PIN
-    // 톱니 비율 1/B는 *물리*에서 처리. 시각적으로는 크기 차이로 표현.
-    const bigT = Math.max(2, Math.min(200, B));
-    const pinT = Math.max(2, Math.min(20, Math.round(bigT / Math.max(2, B / 4))));
-    // 위 식: bigT가 작을 때(B=2) pinT=4, 클 때(B=100)도 pinT=4 정도
+    // 톱니 비율 = B : 1 정확히 유지
+    // 작은 B에서 톱니 모양이 망가지지 않도록 multiplier 적용
+    // pinion 톱니 최소 2개, 최대 6개 정도 유지
+    const multiplier = Math.max(2, Math.ceil(10 / B));
+    const bigT = B * multiplier;
+    const pinT = multiplier;
+
+    // pinion 반지름 = 정확히 R_BIG / B (시각=물리 일치)
+    // 단 너무 작아지지 않게 최소값 보장
+    const rPin = getRPin(B);
 
     const newBigGeom = createGearGeometry(bigT, {
-      outerR: R_BIG, innerR: R_BIG * 0.82, holeR: R_BIG * 0.15, depth: DEPTH_BIG,
+      outerR: R_BIG, innerR: R_BIG * 0.84, holeR: R_BIG * 0.12, depth: DEPTH_BIG,
     });
     const newPinGeom = createGearGeometry(pinT, {
-      outerR: R_PIN, innerR: R_PIN * 0.7, holeR: R_PIN * 0.35, depth: DEPTH_PIN,
+      outerR: rPin, innerR: rPin * 0.7, holeR: Math.min(rPin * 0.35, 0.04), depth: DEPTH_PIN,
     });
     const newBigEdges = createGearEdges(newBigGeom);
     const newPinEdges = createGearEdges(newPinGeom);
@@ -392,11 +476,11 @@ export default function GearTowerScene({
     s.bigEdges = newBigEdges;
     s.pinEdges = newPinEdges;
 
-    // 기존 mesh들의 geometry 교체
-    for (const entry of s.stageEntries) {
+    // 기존 mesh들의 geometry 교체 + 위치 재계산 (B 바뀌면 SHAFT_DIST 변함)
+    for (let i = 0; i < s.stageEntries.length; i++) {
+      const entry = s.stageEntries[i];
       entry.bigMesh.geometry = newBigGeom;
       if (entry.pinMesh) entry.pinMesh.geometry = newPinGeom;
-      // 엣지도 교체
       entry.bigMesh.children.forEach(c => {
         if (c.isLineSegments) c.geometry = newBigEdges;
       });
@@ -404,6 +488,12 @@ export default function GearTowerScene({
         entry.pinMesh.children.forEach(c => {
           if (c.isLineSegments) c.geometry = newPinEdges;
         });
+      }
+      // 위치 재배치 (z가 B에 의존)
+      if (s.currentPreview !== "single") {
+        const g = stageGeometry(i, B);
+        entry.bigMesh.position.set(g.xBig, 0, g.z);
+        if (entry.pinMesh) entry.pinMesh.position.set(g.xPin, 0, g.z);
       }
     }
   }, [B]);
@@ -477,7 +567,7 @@ export default function GearTowerScene({
       }
       bigMesh.visible = (i === 0); // single 모드에선 첫 단만
     } else {
-      const g = stageGeometry(i);
+      const g = stageGeometry(i, s.currentB);
       bigMesh.rotation.set(0, Math.PI / 2, 0);
       bigMesh.position.set(g.xBig, 0, g.z);
       bigMesh.visible = true;
@@ -507,7 +597,7 @@ export default function GearTowerScene({
       s.controls.enabled = false;
     } else if (previewMode === "tower") {
       const stages = Math.max(1, Math.min(E, MAX_STAGES));
-      const towerLen = stages * X_STEP;
+      const towerLen = stages * SET_WIDTH;
       const midX = towerLen / 2;
       const dist = Math.max(5, towerLen * 0.7 + 4);
       s.camera.position.set(midX - dist * 0.3, 1.8, dist);
@@ -516,7 +606,7 @@ export default function GearTowerScene({
       s.controls.enabled = false;
     } else {
       const stages = Math.max(1, Math.min(E, MAX_STAGES));
-      const towerLen = stages * X_STEP;
+      const towerLen = stages * SET_WIDTH;
       s.camera.position.set(-2, 2.5, 6.5);
       s.camera.lookAt(1.0, 0, 0);
       s.controls.target.set(1.0, 0, 0);
