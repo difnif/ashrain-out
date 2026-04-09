@@ -4,22 +4,22 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import {
   createGearGeometry, createGearEdges,
   createGearMaterial, createFirstGearMaterial, createEdgeMaterial,
-  DARK_BG,
+  getStyleBg, DEFAULT_STYLE,
 } from "./GearMesh";
 
 // 다니엘 데 브루인 스타일 배치:
-// 가로 축 방향으로 기어들이 촘촘히 쌓이는 "통" 형태.
-// 두 개의 평행한 가상 축 — 짝수 단은 위쪽, 홀수 단은 아래쪽. 인접 단이 시각적으로 맞물림.
-const X_STEP      = 0.14;   // 단 간 가로 간격 (기어 depth ~0.22이므로 약간 겹침)
-const SHAFT_Y_UP  = 0.82;   // 위쪽 축 Y 좌표
-const SHAFT_Y_DN  = -0.82;  // 아래쪽 축 Y 좌표
+// 가로 축(X) 방향으로 기어들이 촘촘히 쌓이는 "통" 형태.
+// 두 개의 평행한 축이 가로로 나란히 (앞열/뒷열) — Z축으로 분리.
+const X_STEP       = 0.14;
+const SHAFT_Z_FRONT = 0.82;
+const SHAFT_Z_BACK  = -0.82;
 const MAX_STAGES = 100;
 
 function stagePosition(i) {
   return {
     x: i * X_STEP,
-    y: (i % 2 === 0) ? SHAFT_Y_UP : SHAFT_Y_DN,
-    z: 0,
+    y: 0,
+    z: (i % 2 === 0) ? SHAFT_Z_FRONT : SHAFT_Z_BACK,
   };
 }
 
@@ -27,6 +27,7 @@ export default function GearTowerScene({
   B, E, controller, previewMode, theme,
   onFirstGearDrag, onFirstGearRelease,
   previewRpm,
+  styleKey = DEFAULT_STYLE,
 }) {
   const mountRef = useRef(null);
   const stateRef = useRef(null);
@@ -46,8 +47,9 @@ export default function GearTowerScene({
     const mount = mountRef.current;
     if (!mount) return;
 
+    const initStyle = styleKey;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(DARK_BG);
+    scene.background = new THREE.Color(getStyleBg(initStyle));
 
     const width = mount.clientWidth || 300;
     const height = mount.clientHeight || 300;
@@ -62,15 +64,16 @@ export default function GearTowerScene({
     mount.appendChild(renderer.domElement);
 
     // 조명: 헤미스피어(채움) + 키(앞위) + 림(뒤) + 필(하단)
-    const hemi = new THREE.HemisphereLight(0xfff3e0, 0x1a0e08, 0.55);
+    // 스타일 무관하게 충분히 밝게 (어두운 스타일에서 너무 어두워지지 않도록)
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x606060, 0.85);
     scene.add(hemi);
-    const key = new THREE.DirectionalLight(0xffe8cc, 1.3);
+    const key = new THREE.DirectionalLight(0xffffff, 1.1);
     key.position.set(3, 6, 4);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0xffa060, 0.9);
+    const rim = new THREE.DirectionalLight(0xffcfa0, 0.7);
     rim.position.set(-4, 2, -5);
     scene.add(rim);
-    const fill = new THREE.DirectionalLight(0xfff0e0, 0.35);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.45);
     fill.position.set(-2, -3, 2);
     scene.add(fill);
 
@@ -88,10 +91,9 @@ export default function GearTowerScene({
       scene, camera, renderer, controls, gearGroup,
       geom: null,
       edgesGeom: null,
-      stageMaterials: [], // index 1부터 (0은 firstMaterial)
-      firstMaterial: createFirstGearMaterial(),
-      edgeMaterial: createEdgeMaterial(),
-      // gearEntries[i] = { mesh, edges, targetScale, currentScale, removing, stageIdx }
+      stageMaterials: [],
+      firstMaterial: createFirstGearMaterial(initStyle),
+      edgeMaterial: createEdgeMaterial(initStyle),
       gearEntries: [],
       raycaster: new THREE.Raycaster(),
       ndc: new THREE.Vector2(),
@@ -100,6 +102,7 @@ export default function GearTowerScene({
       currentB: 10,
       currentE: 0,
       currentPreview: null,
+      currentStyle: initStyle,
       mounted: true,
     };
     stateRef.current = state;
@@ -255,6 +258,36 @@ export default function GearTowerScene({
     };
   }, []); // MOUNT ONCE ONLY
 
+  // ============ STYLE EFFECT: rebuild materials + bg ============
+  useEffect(() => {
+    const s = stateRef.current;
+    if (!s) return;
+    if (s.currentStyle === styleKey) return;
+
+    s.currentStyle = styleKey;
+    s.scene.background = new THREE.Color(getStyleBg(styleKey));
+
+    try { s.firstMaterial.dispose(); } catch {}
+    try { s.edgeMaterial.dispose(); } catch {}
+    for (const m of s.stageMaterials) { try { m.dispose(); } catch {} }
+    s.stageMaterials = [];
+
+    s.firstMaterial = createFirstGearMaterial(styleKey);
+    s.edgeMaterial = createEdgeMaterial(styleKey);
+
+    for (let i = 0; i < s.gearEntries.length; i++) {
+      const entry = s.gearEntries[i];
+      if (i === 0) {
+        entry.mesh.material = s.firstMaterial;
+      } else {
+        const m = createGearMaterial(i, styleKey);
+        s.stageMaterials.push(m);
+        entry.mesh.material = m;
+      }
+      if (entry.edges) entry.edges.material = s.edgeMaterial;
+    }
+  }, [styleKey]);
+
   // ============ B EFFECT: regen geometry, swap on all meshes ============
   useEffect(() => {
     const s = stateRef.current;
@@ -286,7 +319,7 @@ export default function GearTowerScene({
       if (idx === 0) {
         mat = s.firstMaterial;
       } else {
-        mat = createGearMaterial(idx);
+        mat = createGearMaterial(idx, s.currentStyle);
         s.stageMaterials.push(mat);
       }
       const mesh = new THREE.Mesh(s.geom, mat);
