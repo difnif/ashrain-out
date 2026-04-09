@@ -36,36 +36,27 @@ const SET_WIDTH = DEPTH_BIG + DEPTH_PIN;
 // 인접 단의 큰 기어가 이 단의 pinion 위치와 같은 X에 와야 맞물림
 // → 단 간격 = pinion까지의 거리 = DEPTH_BIG (큰 기어 두께만큼 떨어짐)
 
-// 12시 방향 톱니 한 개를 빨갛게 표시 — 기어의 12시 톱니 위에 겹쳐 놓는 독립 mesh.
-// 기어의 톱니 한 개와 정확히 같은 모양/크기로 만들어서 겹쳐 놓으면 그 톱니만 빨강으로 보임.
-// 파라미터는 createGearGeometry의 것과 동일해야 정확히 일치.
+// 12시 방향 톱니 한 개를 빨갛게 표시
+// 원본 createGearGeometry의 톱니 인덱스 중 12시에 가장 가까운 것을 골라 그대로 그림
+// → 원본 톱니와 정확히 겹쳐져 "그 톱니 하나만 빨강"으로 보임
 function createSingleToothGeometry(teeth, opts = {}) {
   const outerR = opts.outerR ?? 1.0;
   const innerR = opts.innerR ?? 0.82;
   const depth  = opts.depth  ?? 0.22;
 
   const t = Math.max(2, Math.min(200, Math.floor(teeth)));
-  // 12시 위치에 톱니가 오려면, Shape 구성 시 각도를 π/2만큼 회전해야 함
-  // 원본 createGearGeometry는 i=0 톱니가 0 rad(3시 방향)에서 시작함
-  // 12시는 π/2. 따라서 톱니 하나를 그릴 때 각도에 π/2 - (slot/2)를 더함
-  // (slot 중심이 12시에 오도록)
   const slotAng = (Math.PI * 2) / t;
-  const shiftAng = Math.PI / 2 - slotAng / 2;
 
-  // 한 톱니 slot: createGearGeometry의 원본 배치
-  //   a0 → innerR 시작점
-  //   aMid → innerR 중간점 (여기서 outerR로 올라감)
-  //   aMid → outerR 톱니 꼭대기 시작
-  //   aEnd → outerR 톱니 꼭대기 끝 (여기서 다음 slot의 innerR로)
-  // 톱니 이빨만 그리려면 aMid~aEnd 구간의 outerR arc 부분만 필요
-  // 단 extrude를 위해 닫힌 shape이어야 하므로, innerR 측면도 포함
-  //
-  // 이빨 한 개 폐곡선:
+  // 원본에서 i번째 톱니는 aMid=(i+0.5)*slot ~ aEnd=(i+1)*slot 범위에 있음.
+  // 톱니 중심 각 = (i + 0.75) * slot
+  // 12시(π/2)에 가장 가까운 i 선택
+  const idealI = Math.round((Math.PI / 2) / slotAng - 0.75);
+  const aMid = (idealI + 0.5) * slotAng;
+  const aEnd = (idealI + 1) * slotAng;
+
+  // 원본 톱니 이빨 폐곡선:
   //   (aMid, innerR) → (aMid, outerR) → (aEnd, outerR) → (aEnd, innerR) → close
   const shape = new THREE.Shape();
-  const aMid = shiftAng + slotAng / 2;  // 원본 for i=0, aMid = slotAng/2
-  const aEnd = shiftAng + slotAng;       // 원본 for i=0, aEnd = slotAng
-
   const p1 = [Math.cos(aMid) * innerR, Math.sin(aMid) * innerR];
   const p2 = [Math.cos(aMid) * outerR, Math.sin(aMid) * outerR];
   const p3 = [Math.cos(aEnd) * outerR, Math.sin(aEnd) * outerR];
@@ -86,7 +77,6 @@ function createSingleToothGeometry(teeth, opts = {}) {
     curveSegments: 4,
     steps: 1,
   });
-  // 원본 기어와 같은 Z 정렬
   geo.translate(0, 0, -depth / 2);
   geo.computeVertexNormals();
   return geo;
