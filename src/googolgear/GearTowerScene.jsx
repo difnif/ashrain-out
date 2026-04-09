@@ -19,10 +19,12 @@ const R_BIG = 1.0;          // 큰 기어 반지름
 const R_PIN = 0.25;         // 작은 피니언 반지름
 const SHAFT_DIST = R_BIG + R_PIN;  // 두 축 사이 거리 (인접 단 맞물림 조건)
 
-// X 방향: 한 단의 bigGear와 pinion 사이 간격 = 단 간격
-// 인접 단의 bigGear가 정확히 그 사이 X에 위치
-const X_STEP = 0.32;        // 부품 간 가로 간격
-const DEPTH = 0.18;         // 기어 두께
+// X 방향: 같은 단의 bigGear-pinion은 거의 붙음, 인접 단끼리도 좁게
+const DEPTH_BIG = 0.16;     // 큰 기어 두께
+const DEPTH_PIN = 0.20;     // 피니언 두께 (살짝 더 두껍게 — 옆 단의 큰 기어와 맞물림 강조)
+const STAGE_X_GAP = 0.02;   // 같은 단 내 부품 간 여유
+const X_STEP = DEPTH_BIG + DEPTH_PIN / 2 + STAGE_X_GAP;  // 단 내 bigGear → pinion 중심 거리
+// 한 단 너비 = 2*X_STEP 정도. 인접 단 bigGear가 그 중간에 들어옴.
 
 const MAX_STAGES = 100;
 
@@ -30,8 +32,8 @@ const MAX_STAGES = 100;
 function stageGeometry(i) {
   const onShaft0 = i % 2 === 0;
   const z = onShaft0 ? -SHAFT_DIST / 2 : SHAFT_DIST / 2;
-  // X: bigGear는 단의 시작 위치, pinion은 step만큼 다음
-  const xBig = i * X_STEP * 2;
+  // 단 폭 = 2 * X_STEP. 인접 단 시작점이 X_STEP만큼 어긋남.
+  const xBig = i * X_STEP;
   const xPin = xBig + X_STEP;
   return { xBig, xPin, z };
 }
@@ -372,10 +374,10 @@ export default function GearTowerScene({
     // 위 식: bigT가 작을 때(B=2) pinT=4, 클 때(B=100)도 pinT=4 정도
 
     const newBigGeom = createGearGeometry(bigT, {
-      outerR: R_BIG, innerR: R_BIG * 0.82, holeR: R_BIG * 0.15, depth: DEPTH,
+      outerR: R_BIG, innerR: R_BIG * 0.82, holeR: R_BIG * 0.15, depth: DEPTH_BIG,
     });
     const newPinGeom = createGearGeometry(pinT, {
-      outerR: R_PIN, innerR: R_PIN * 0.7, holeR: R_PIN * 0.35, depth: DEPTH,
+      outerR: R_PIN, innerR: R_PIN * 0.7, holeR: R_PIN * 0.35, depth: DEPTH_PIN,
     });
     const newBigEdges = createGearEdges(newBigGeom);
     const newPinEdges = createGearEdges(newPinGeom);
@@ -505,7 +507,7 @@ export default function GearTowerScene({
       s.controls.enabled = false;
     } else if (previewMode === "tower") {
       const stages = Math.max(1, Math.min(E, MAX_STAGES));
-      const towerLen = stages * X_STEP * 2;
+      const towerLen = stages * X_STEP;
       const midX = towerLen / 2;
       const dist = Math.max(5, towerLen * 0.7 + 4);
       s.camera.position.set(midX - dist * 0.3, 1.8, dist);
@@ -514,7 +516,7 @@ export default function GearTowerScene({
       s.controls.enabled = false;
     } else {
       const stages = Math.max(1, Math.min(E, MAX_STAGES));
-      const towerLen = stages * X_STEP * 2;
+      const towerLen = stages * X_STEP;
       s.camera.position.set(-2, 2.5, 6.5);
       s.camera.lookAt(1.0, 0, 0);
       s.controls.target.set(1.0, 0, 0);
