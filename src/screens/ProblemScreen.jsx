@@ -162,6 +162,10 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
   const [excludeUnits, setExcludeUnits] = useState([]);
 
   const analyze = async (extraExcludes = null) => {
+    // 이벤트 객체나 다른 비배열 객체가 실수로 전달된 경우 방어 (React Fiber 순환 참조 → JSON.stringify 크래시 방지)
+    if (extraExcludes !== null && !Array.isArray(extraExcludes)) {
+      extraExcludes = null;
+    }
     if (!input.trim() && !imageData) { showMsg("문제를 입력하거나 사진을 올려주세요", 2000); return; }
     if (loading) return; // 중복 요청 방지
     setLoading(true); setError(""); setResult(null); setCurrentStep(-1); setHelpMode(null);
@@ -362,7 +366,7 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
                 rows={3} style={ist} />
             </div>
 
-            <button onClick={analyze} disabled={loading || (!input.trim() && !imageData)}
+            <button onClick={() => analyze()} disabled={loading || (!input.trim() && !imageData)}
               style={{ ...btnPrimary, opacity: (!loading && (input.trim() || imageData)) ? 1 : 0.4 }}>
               {loading ? "분석 중..." : "🔍 문제 분석하기"}
             </button>
