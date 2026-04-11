@@ -14,12 +14,6 @@ export function createManualController(B, E) {
   const SAMPLE_WINDOW = 0.12;       // 최근 120ms
   const MIN_SAMPLES_FOR_VEL = 2;    // 최소 2개 샘플
 
-  // Peak 인정 조건: 첫 기어를 "한 바퀴 이상" 돌린 시점부터
-  // — 탭/이상치는 절대 한 바퀴 안 돌아가므로 자연스러운 방어
-  const PEAK_UNLOCK_ANGLE = Math.PI * 2;
-  let sessionAccumAngle = 0;        // 현재 드래그 세션에서 누적 회전량
-  let peakUnlocked = false;         // 한 바퀴 이상 돌린 적 있는가
-
   // 관성 파라미터
   const FRICTION = 0.55;
   const VELOCITY_CAP = 300;         // rad/sec ≈ 2865 RPM (물리 한도)
@@ -37,18 +31,6 @@ export function createManualController(B, E) {
     const tNow = performance.now() / 1000;
     rotations[0] += deltaAngle;
     cascade();
-
-    // 드래그 세션 감지: 200ms 이상 입력 없었으면 새 세션으로 간주
-    // (세션별 누적 각도만 리셋 — samples는 그대로 둬서 velocity 계산 안정성 유지)
-    if (tNow - lastInputT > 0.2) {
-      sessionAccumAngle = 0;
-    }
-
-    // 세션 누적 각도 갱신
-    sessionAccumAngle += deltaAngle;
-    if (Math.abs(sessionAccumAngle) >= PEAK_UNLOCK_ANGLE) {
-      peakUnlocked = true;
-    }
 
     samples.push({ t: tNow, delta: deltaAngle });
     while (samples.length > 0 && samples[0].t < tNow - SAMPLE_WINDOW) {
@@ -97,14 +79,7 @@ export function createManualController(B, E) {
     applyDragDelta,
     releaseDrag,
     step,
-    // 실시간 RPM은 항상 반환 (unlock 무관)
     getRpm: () => Math.abs(velocity) / (Math.PI * 2) * 60,
-    // 누적 한 바퀴 넘었는지 — UI에서 max 갱신 여부 결정용
-    isUnlocked: () => peakUnlocked,
-    resetPeakRpm: () => {
-      peakUnlocked = false;
-      sessionAccumAngle = 0;
-    },
     getHasInteracted: () => hasInteracted,
   };
 }
