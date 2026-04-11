@@ -8,6 +8,7 @@ export function createManualController(B, E) {
   let velocity = 0;            // 첫 기어 각속도 (rad/sec)
   let hasInteracted = false;
   let lastInputT = -Infinity;
+  let peakAbsVelocity = 0;     // 누적 최고 절대 각속도 (매 입력/프레임마다 갱신)
 
   // 드래그 속도 계산용 최근 샘플
   const samples = [];
@@ -15,7 +16,9 @@ export function createManualController(B, E) {
 
   // 관성 파라미터
   const FRICTION = 0.55;       // 초당 감쇠 계수 (작을수록 오래 돎)
-  const VELOCITY_CAP = 40;     // 최대 각속도 안전 한도 (rad/sec)
+  // 최대 각속도 제한 — 1200 RPM을 훨씬 웃도는 값으로 (자동 모드 상한의 2배 여유)
+  // 1200 RPM ≈ 125.66 rad/sec. 학생이 실제로 도달 가능한 수치 + 여유
+  const VELOCITY_CAP = 300;    // rad/sec ≈ 2865 RPM
 
   function cascade() {
     let r = rotations[0];
@@ -43,6 +46,8 @@ export function createManualController(B, E) {
         velocity = totalDelta / duration;
         if (velocity > VELOCITY_CAP) velocity = VELOCITY_CAP;
         if (velocity < -VELOCITY_CAP) velocity = -VELOCITY_CAP;
+        const absV = Math.abs(velocity);
+        if (absV > peakAbsVelocity) peakAbsVelocity = absV;
       }
     }
     lastInputT = tNow;
@@ -77,6 +82,8 @@ export function createManualController(B, E) {
     releaseDrag,
     step,
     getRpm: () => Math.abs(velocity) / (Math.PI * 2) * 60,
+    getPeakRpm: () => peakAbsVelocity / (Math.PI * 2) * 60,
+    resetPeakRpm: () => { peakAbsVelocity = 0; },
     getHasInteracted: () => hasInteracted,
   };
 }
