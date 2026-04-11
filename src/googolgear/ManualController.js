@@ -97,9 +97,10 @@ export function createManualController(B, E) {
     applyDragDelta,
     releaseDrag,
     step,
-    // 누적 한 바퀴 이전에는 RPM 0 반환 — 첫 탭 이상치 차단
-    // 한 번 풀리면 계속 정상 RPM
-    getRpm: () => peakUnlocked ? Math.abs(velocity) / (Math.PI * 2) * 60 : 0,
+    // 실시간 RPM은 항상 반환 (unlock 무관)
+    getRpm: () => Math.abs(velocity) / (Math.PI * 2) * 60,
+    // 누적 한 바퀴 넘었는지 — UI에서 max 갱신 여부 결정용
+    isUnlocked: () => peakUnlocked,
     resetPeakRpm: () => {
       peakUnlocked = false;
       sessionAccumAngle = 0;
