@@ -148,7 +148,10 @@ function GoogolGearInner({ theme, setScreen }) {
     const id = setInterval(() => {
       const cur = manualController.getRpm();
       setManualRpm(cur);
-      setManualMaxRpm(prev => cur > prev ? cur : prev);
+      // 최고 기록은 누적 한 바퀴 이상 돌렸을 때만 갱신 (첫 탭 이상치 차단)
+      if (manualController.isUnlocked && manualController.isUnlocked()) {
+        setManualMaxRpm(prev => cur > prev ? cur : prev);
+      }
     }, 100);
     return () => clearInterval(id);
   }, [phase, manualController]);
