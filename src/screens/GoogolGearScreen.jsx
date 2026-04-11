@@ -146,11 +146,9 @@ function GoogolGearInner({ theme, setScreen }) {
     manualController.resetPeakRpm && manualController.resetPeakRpm();
     setManualMaxRpm(0);
     const id = setInterval(() => {
-      setManualRpm(manualController.getRpm());
-      // peak은 컨트롤러가 프레임 단위로 추적 → UI 동기화만
-      if (manualController.getPeakRpm) {
-        setManualMaxRpm(manualController.getPeakRpm());
-      }
+      const cur = manualController.getRpm();
+      setManualRpm(cur);
+      setManualMaxRpm(prev => cur > prev ? cur : prev);
     }, 100);
     return () => clearInterval(id);
   }, [phase, manualController]);
