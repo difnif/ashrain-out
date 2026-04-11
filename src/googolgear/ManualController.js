@@ -8,7 +8,6 @@ export function createManualController(B, E) {
   let velocity = 0;            // 첫 기어 각속도 (rad/sec)
   let hasInteracted = false;
   let lastInputT = -Infinity;
-  let peakAbsVelocity = 0;     // 누적 최고 절대 각속도 (매 입력/프레임마다 갱신)
 
   // 드래그 속도 계산용 최근 샘플
   const samples = [];
@@ -65,12 +64,6 @@ export function createManualController(B, E) {
         if (v > VELOCITY_CAP) v = VELOCITY_CAP;
         if (v < -VELOCITY_CAP) v = -VELOCITY_CAP;
         velocity = v;
-
-        // Peak 갱신: 한 바퀴 이상 돌린 이후부터만
-        if (peakUnlocked) {
-          const absV = Math.abs(velocity);
-          if (absV > peakAbsVelocity) peakAbsVelocity = absV;
-        }
       }
     }
     lastInputT = tNow;
@@ -104,10 +97,10 @@ export function createManualController(B, E) {
     applyDragDelta,
     releaseDrag,
     step,
-    getRpm: () => Math.abs(velocity) / (Math.PI * 2) * 60,
-    getPeakRpm: () => peakAbsVelocity / (Math.PI * 2) * 60,
+    // 누적 한 바퀴 이전에는 RPM 0 반환 — 첫 탭 이상치 차단
+    // 한 번 풀리면 계속 정상 RPM
+    getRpm: () => peakUnlocked ? Math.abs(velocity) / (Math.PI * 2) * 60 : 0,
     resetPeakRpm: () => {
-      peakAbsVelocity = 0;
       peakUnlocked = false;
       sessionAccumAngle = 0;
     },
