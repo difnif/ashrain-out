@@ -143,26 +143,19 @@ function GoogolGearInner({ theme, setScreen }) {
   const [manualMaxRpm, setManualMaxRpm] = useState(0);
   useEffect(() => {
     if (phase !== "manual-scene" || !manualController) return;
-    manualController.resetPeakRpm && manualController.resetPeakRpm();
     setManualMaxRpm(0);
     const id = setInterval(() => {
       const cur = manualController.getRpm();
       setManualRpm(cur);
-      // 최고 기록은 누적 한 바퀴 이상 돌렸을 때만 갱신 (첫 탭 이상치 차단)
-      if (manualController.isUnlocked && manualController.isUnlocked()) {
-        setManualMaxRpm(prev => cur > prev ? cur : prev);
-      }
+      setManualMaxRpm(prev => cur > prev ? cur : prev);
     }, 100);
     return () => clearInterval(id);
   }, [phase, manualController]);
 
-  // 최고 RPM 리셋 핸들러 — 컨트롤러와 UI 둘 다 초기화
+  // 최고 RPM 리셋 핸들러
   const resetManualMaxRpm = useCallback(() => {
-    if (manualController && manualController.resetPeakRpm) {
-      manualController.resetPeakRpm();
-    }
     setManualMaxRpm(0);
-  }, [manualController]);
+  }, []);
 
   // === 화면 렌더링 ===
   const baseStyle = {
