@@ -12,13 +12,18 @@ export function createManualController(B, E) {
 
   // 드래그 속도 계산용 최근 샘플
   const samples = [];
-  const SAMPLE_WINDOW = 0.12;  // 최근 120ms
+  const SAMPLE_WINDOW = 0.12;       // 최근 120ms
+  const MIN_SAMPLES_FOR_VEL = 2;    // 최소 2개 샘플
+
+  // Peak 인정 조건: 첫 기어를 "한 바퀴 이상" 돌린 시점부터
+  // — 탭/이상치는 절대 한 바퀴 안 돌아가므로 자연스러운 방어
+  const PEAK_UNLOCK_ANGLE = Math.PI * 2;
+  let sessionAccumAngle = 0;        // 현재 드래그 세션에서 누적 회전량
+  let peakUnlocked = false;         // 한 바퀴 이상 돌린 적 있는가
 
   // 관성 파라미터
-  const FRICTION = 0.55;       // 초당 감쇠 계수 (작을수록 오래 돎)
-  // 최대 각속도 제한 — 1200 RPM을 훨씬 웃도는 값으로 (자동 모드 상한의 2배 여유)
-  // 1200 RPM ≈ 125.66 rad/sec. 학생이 실제로 도달 가능한 수치 + 여유
-  const VELOCITY_CAP = 300;    // rad/sec ≈ 2865 RPM
+  const FRICTION = 0.55;
+  const VELOCITY_CAP = 300;         // rad/sec ≈ 2865 RPM (물리 한도)
 
   function cascade() {
     let r = rotations[0];
@@ -34,20 +39,38 @@ export function createManualController(B, E) {
     rotations[0] += deltaAngle;
     cascade();
 
+    // 드래그 세션 감지: 200ms 이상 입력 없었으면 새 세션으로 간주
+    // (세션별 누적 각도만 리셋 — samples는 그대로 둬서 velocity 계산 안정성 유지)
+    if (tNow - lastInputT > 0.2) {
+      sessionAccumAngle = 0;
+    }
+
+    // 세션 누적 각도 갱신
+    sessionAccumAngle += deltaAngle;
+    if (Math.abs(sessionAccumAngle) >= PEAK_UNLOCK_ANGLE) {
+      peakUnlocked = true;
+    }
+
     samples.push({ t: tNow, delta: deltaAngle });
     while (samples.length > 0 && samples[0].t < tNow - SAMPLE_WINDOW) {
       samples.shift();
     }
-    // 즉시 속도도 갱신 (드래그 중에도 RPM 표시용)
-    if (samples.length >= 2) {
+
+    // velocity 계산
+    if (samples.length >= MIN_SAMPLES_FOR_VEL) {
       const totalDelta = samples.reduce((s, x) => s + x.delta, 0);
       const duration = tNow - samples[0].t;
       if (duration > 0.001) {
-        velocity = totalDelta / duration;
-        if (velocity > VELOCITY_CAP) velocity = VELOCITY_CAP;
-        if (velocity < -VELOCITY_CAP) velocity = -VELOCITY_CAP;
-        const absV = Math.abs(velocity);
-        if (absV > peakAbsVelocity) peakAbsVelocity = absV;
+        let v = totalDelta / duration;
+        if (v > VELOCITY_CAP) v = VELOCITY_CAP;
+        if (v < -VELOCITY_CAP) v = -VELOCITY_CAP;
+        velocity = v;
+
+        // Peak 갱신: 한 바퀴 이상 돌린 이후부터만
+        if (peakUnlocked) {
+          const absV = Math.abs(velocity);
+          if (absV > peakAbsVelocity) peakAbsVelocity = absV;
+        }
       }
     }
     lastInputT = tNow;
@@ -83,7 +106,11 @@ export function createManualController(B, E) {
     step,
     getRpm: () => Math.abs(velocity) / (Math.PI * 2) * 60,
     getPeakRpm: () => peakAbsVelocity / (Math.PI * 2) * 60,
-    resetPeakRpm: () => { peakAbsVelocity = 0; },
+    resetPeakRpm: () => {
+      peakAbsVelocity = 0;
+      peakUnlocked = false;
+      sessionAccumAngle = 0;
+    },
     getHasInteracted: () => hasInteracted,
   };
 }
