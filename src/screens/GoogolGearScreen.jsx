@@ -143,14 +143,25 @@ function GoogolGearInner({ theme, setScreen }) {
   const [manualMaxRpm, setManualMaxRpm] = useState(0);
   useEffect(() => {
     if (phase !== "manual-scene" || !manualController) return;
-    setManualMaxRpm(0); // 진입 시 리셋
+    manualController.resetPeakRpm && manualController.resetPeakRpm();
+    setManualMaxRpm(0);
     const id = setInterval(() => {
-      const cur = manualController.getRpm();
-      setManualRpm(cur);
-      setManualMaxRpm(prev => cur > prev ? cur : prev);
+      setManualRpm(manualController.getRpm());
+      // peak은 컨트롤러가 프레임 단위로 추적 → UI 동기화만
+      if (manualController.getPeakRpm) {
+        setManualMaxRpm(manualController.getPeakRpm());
+      }
     }, 100);
     return () => clearInterval(id);
   }, [phase, manualController]);
+
+  // 최고 RPM 리셋 핸들러 — 컨트롤러와 UI 둘 다 초기화
+  const resetManualMaxRpm = useCallback(() => {
+    if (manualController && manualController.resetPeakRpm) {
+      manualController.resetPeakRpm();
+    }
+    setManualMaxRpm(0);
+  }, [manualController]);
 
   // === 화면 렌더링 ===
   const baseStyle = {
@@ -334,7 +345,7 @@ function GoogolGearInner({ theme, setScreen }) {
           topOverlay={
             <ManualTopBar
               B={B} E={E} rpm={manualRpm} maxRpm={manualMaxRpm} theme={theme}
-              onResetMax={() => setManualMaxRpm(0)}
+              onResetMax={resetManualMaxRpm}
             />
           }
           stylePicker={<StylePicker value={styleKey} onChange={setStyleKey} theme={theme} />}
