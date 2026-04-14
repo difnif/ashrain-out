@@ -13,6 +13,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { PASTEL } from "../config";
+import { useBackGuard } from "../hooks/useBackGuard";
 
 const HIGHLIGHTER_COLORS = ["#FFEB3B", "#FFCDD2", "#C8E6C9", "#BBDEFB"];
 const PENCIL_COLORS = ["#212121", "#D32F2F", "#1976D2", "#388E3C"];
@@ -39,6 +40,27 @@ export default function WrongNoteAnnotator({
   const [drawing, setDrawing] = useState(false);
   const currentPathRef = useRef(null);
   const svgRef = useRef(null);
+
+  // Undo 스택: 매 동작(stroke 완료 / 지우기 / 모두 지우기)마다 직전 paths 상태를 push
+  // 메모리 보호를 위해 상한 50
+  const UNDO_LIMIT = 50;
+  const [undoStack, setUndoStack] = useState([]);
+  const pushUndo = useCallback((prevPaths) => {
+    setUndoStack((s) => {
+      const next = [...s, prevPaths];
+      if (next.length > UNDO_LIMIT) next.shift();
+      return next;
+    });
+  }, []);
+  const handleUndo = useCallback(() => {
+    setUndoStack((s) => {
+      if (s.length === 0) return s;
+      const prev = s[s.length - 1];
+      setPaths(prev);
+      playSfx?.("click");
+      return s.slice(0, -1);
+    });
+  }, [playSfx]);
 
   // 도구 변경 시 색상 자동 전환
   const switchTool = useCallback(
@@ -82,16 +104,22 @@ export default function WrongNoteAnnotator({
       if (tool === "eraser") {
         // 지우개: 터치한 좌표에 가까운 path 제거
         const ERASER_RADIUS = 24;
-        setPaths((prev) =>
-          prev.filter((p) => {
+        setPaths((prev) => {
+          const next = prev.filter((p) => {
             const d = pointToPathDistance(pt.x, pt.y, p.points || []);
             return d > ERASER_RADIUS;
-          })
-        );
+          });
+          // 실제로 뭔가 지워졌을 때만 undo 스택에 push
+          if (next.length !== prev.length) {
+            pushUndo(prev);
+          }
+          return next;
+        });
         return;
       }
 
-      // 형광펜/색연필: 새 path 시작
+      // 형광펜/색연필: 새 path 시작 — 직전 paths를 undo 스택에 push
+      pushUndo(paths);
       const newPath = {
         id: `p-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         tool,
@@ -102,7 +130,7 @@ export default function WrongNoteAnnotator({
       setPaths((prev) => [...prev, newPath]);
       setDrawing(true);
     },
-    [tool, color, toSvgCoords]
+    [tool, color, toSvgCoords, paths, pushUndo]
   );
 
   const handlePointerMove = useCallback(
@@ -132,14 +160,24 @@ export default function WrongNoteAnnotator({
     }
   }, [drawing]);
 
-  // ESC 키로 취소
+  // ESC = 취소, Ctrl/Cmd+Z = undo
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === "Escape") onCancel?.();
+      if (e.key === "Escape") {
+        onCancel?.();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        handleUndo();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  }, [onCancel, handleUndo]);
+
+  // 안드로이드 ◁ / 브라우저 ← 가드: 누르면 메인이 아니라 onCancel로
+  useBackGuard(onCancel, true);
 
   const handleSave = () => {
     playSfx?.("success");
@@ -149,6 +187,7 @@ export default function WrongNoteAnnotator({
   const handleClear = () => {
     if (paths.length === 0) return;
     if (window.confirm("모든 표시를 지울까요?")) {
+      pushUndo(paths);
       setPaths([]);
       playSfx?.("click");
     }
@@ -361,6 +400,54 @@ export default function WrongNoteAnnotator({
           ))}
         </div>
 
+        {/* 액션 row (undo / 모두 지우기) — 모든 도구에서 표시 */}
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            justifyContent: "center",
+            marginBottom: 8,
+          }}
+        >
+          <button
+            onClick={handleUndo}
+            disabled={undoStack.length === 0}
+            style={{
+              padding: "6px 14px",
+              height: 30,
+              fontSize: 11,
+              border: "1px solid rgba(255,255,255,0.3)",
+              borderRadius: 14,
+              background: "transparent",
+              color: "#fff",
+              cursor: undoStack.length === 0 ? "not-allowed" : "pointer",
+              opacity: undoStack.length === 0 ? 0.35 : 1,
+              fontFamily: "'Noto Serif KR', serif",
+            }}
+            aria-label="되돌리기"
+          >
+            ↶ 되돌리기{undoStack.length > 0 ? ` (${undoStack.length})` : ""}
+          </button>
+          <button
+            onClick={handleClear}
+            disabled={paths.length === 0}
+            style={{
+              padding: "6px 14px",
+              height: 30,
+              fontSize: 11,
+              border: "1px solid rgba(255,255,255,0.3)",
+              borderRadius: 14,
+              background: "transparent",
+              color: "#fff",
+              cursor: paths.length === 0 ? "not-allowed" : "pointer",
+              opacity: paths.length === 0 ? 0.35 : 1,
+              fontFamily: "'Noto Serif KR', serif",
+            }}
+          >
+            모두 지우기
+          </button>
+        </div>
+
         {/* 색상 팔레트 (지우개 제외) */}
         {currentColors.length > 0 && (
           <div
@@ -394,23 +481,6 @@ export default function WrongNoteAnnotator({
                 }}
               />
             ))}
-            <button
-              onClick={handleClear}
-              style={{
-                marginLeft: 8,
-                padding: "0 10px",
-                height: 28,
-                fontSize: 10,
-                border: "1px solid rgba(255,255,255,0.3)",
-                borderRadius: 14,
-                background: "transparent",
-                color: "#fff",
-                cursor: "pointer",
-                fontFamily: "'Noto Serif KR', serif",
-              }}
-            >
-              모두 지우기
-            </button>
           </div>
         )}
 
