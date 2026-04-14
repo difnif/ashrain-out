@@ -27,9 +27,19 @@
   </head>
   <body>
     <div id="root"></div>
-    <!-- TEMP DEBUG: eruda mobile console — 디버깅 끝나면 제거 -->
-    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-    <script>eruda.init();</script>
+    <!-- Eruda mobile debug console — 관리자 토글 기반 조건부 로드 (localStorage "ar_eruda" === "on" 일 때만) -->
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem("ar_eruda") === "on") {
+            var s = document.createElement("script");
+            s.src = "https://cdn.jsdelivr.net/npm/eruda";
+            s.onload = function () { try { window.eruda && window.eruda.init(); } catch (e) {} };
+            document.body.appendChild(s);
+          }
+        } catch (e) {}
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
