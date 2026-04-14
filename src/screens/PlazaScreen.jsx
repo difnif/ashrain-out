@@ -1556,14 +1556,43 @@ export function renderPlazaScreen(ctx) {
       {/* ======== PINNED MESSAGES (#3) ======== */}
       {pinnedMsgs.length > 0 && (
         <div style={{ flexShrink: 0, padding: "6px 16px", borderBottom: `1px solid ${theme.border}`, background: `${PASTEL.yellow}12` }}>
-          {pinnedMsgs.slice(-3).map((m, i) => (
-            <div key={i} style={{ fontSize: 11, color: theme.text, display: "flex", alignItems: "center", gap: 4, padding: "2px 0" }}>
-              <span>📌</span>
-              <span style={{ fontWeight: 600 }}>{m.user}:</span>
-              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.text?.slice(0, 50)}</span>
-              {userRole === "admin" && <button onClick={() => togglePin(m.time)} style={{ background: "none", border: "none", fontSize: 9, color: theme.textSec, cursor: "pointer" }}>✕</button>}
-            </div>
-          ))}
+          {pinnedMsgs.slice(-3).map((m, i) => {
+            const hasNicknameKeyword = m.text && m.text.includes("닉네임");
+            return (
+              <div key={i} style={{ padding: "2px 0" }}>
+                <div style={{ fontSize: 11, color: theme.text, display: "flex", alignItems: "center", gap: 4 }}>
+                  <span>📌</span>
+                  <span style={{ fontWeight: 600 }}>{m.user}:</span>
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.text?.slice(0, 50)}</span>
+                  {userRole === "admin" && <button onClick={() => togglePin(m.time)} style={{ background: "none", border: "none", fontSize: 9, color: theme.textSec, cursor: "pointer" }}>✕</button>}
+                </div>
+                {hasNicknameKeyword && (
+                  <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 4, marginLeft: 18 }}>
+                    <button
+                      onClick={() => {
+                        try { sessionStorage.setItem("ar_open_settings_nickname", "1"); } catch {}
+                        playSfx("click");
+                        setScreen("student-home");
+                      }}
+                      style={{
+                        padding: "4px 12px",
+                        borderRadius: 10,
+                        border: "none",
+                        background: `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
+                        color: "white",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        boxShadow: `0 1px 4px ${PASTEL.coral}40`,
+                      }}
+                    >
+                      ✏️ 닉네임 설정하러 가기
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
