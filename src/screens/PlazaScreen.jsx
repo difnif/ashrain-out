@@ -1,5 +1,6 @@
 import { PASTEL } from "../config";
 import { fbGet, fbSet } from "../firebase";
+import { dbGetAllNotes } from "../lib/wrongNoteDB";
 
 // --- Profanity Filter (Smart Detection) ---
 
@@ -984,6 +985,77 @@ export function renderPlazaScreen(ctx) {
     setPanel("");
   };
 
+  // ---- Wrong note share (#NEW) ----
+  // Lazy-load my wrong notes (cached on window object)
+  const loadMyWrongNotes = () => {
+    if (window._wrongNotesLoading) return;
+    window._wrongNotesLoading = true;
+    dbGetAllNotes(user?.id || "anon")
+      .then(notes => {
+        window._wrongNotesCache = Array.isArray(notes) ? notes : [];
+        window._wrongNotesLoading = false;
+        setChatLog(prev => [...prev]);
+      })
+      .catch(e => {
+        console.error("[plaza] wrong notes load:", e);
+        window._wrongNotesCache = [];
+        window._wrongNotesLoading = false;
+        setChatLog(prev => [...prev]);
+      });
+  };
+  // Resize a base64 image to a smaller version for transport.
+  const resizeBase64 = (dataUrl, maxDim, quality) => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > maxDim || h > maxDim) {
+        const s = maxDim / Math.max(w, h);
+        w = Math.round(w * s);
+        h = Math.round(h * s);
+      }
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      c.getContext("2d").drawImage(img, 0, 0, w, h);
+      try {
+        resolve({ dataUrl: c.toDataURL("image/jpeg", quality), width: w, height: h });
+      } catch {
+        resolve({ dataUrl, width: img.width, height: img.height });
+      }
+    };
+    img.onerror = () => resolve({ dataUrl, width: 400, height: 300 });
+    img.src = dataUrl;
+  });
+  // Send a wrong-note as a chat card (with comment)
+  const sendWrongNote = async (note, comment) => {
+    if (!note?.photoBase64) { showMsg("이미지가 없는 노트입니다", 1500); return; }
+    if (isFrozen && userRole !== "admin") { showMsg("🧊 광장이 얼어있어요!", 1500); return; }
+    if (isMuted(myName)) { showMsg("🔇 뮤트 상태입니다", 1500); return; }
+    try {
+      // Aggressive resize: 400px max, JPEG 0.6 → ~30-60KB, safe for Firestore
+      const { dataUrl, width, height } = await resizeBase64(note.photoBase64, 400, 0.6);
+      const newMsg = {
+        user: myName, role: userRole,
+        type: "wrong_note",
+        photoBase64: dataUrl,
+        photoW: width, photoH: height,
+        text: (comment || "").trim(),
+        noteId: note.id,
+        time: Date.now(), reactions: {},
+      };
+      const updated = [...chatLog, newMsg].slice(-200);
+      setChatLog(updated);
+      localStorage.setItem("ar_chat", JSON.stringify(updated));
+      fbSet("plaza", { chat: updated });
+      setPanel("");
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+      showMsg("📓 오답노트 공유 완료!", 1500);
+      playSfx("success");
+    } catch (e) {
+      console.error("[plaza] send wrong note:", e);
+      showMsg("이미지 처리 실패", 2000);
+    }
+  };
+
   // ---- Chat log export (#18) ----
   const exportLog = () => {
     const lines = filteredLog.map(m => {
@@ -1084,6 +1156,36 @@ export function renderPlazaScreen(ctx) {
           <div style={{ fontSize: 11, fontWeight: 700, color: PASTEL.sky, marginBottom: 4 }}>🎨 화이트보드</div>
           {msg.imageData && <img src={msg.imageData} alt="whiteboard" style={{ width: "100%", maxWidth: 250, borderRadius: 8, border: `1px solid ${theme.border}` }} />}
           {msg.text && <div style={{ fontSize: 11, color: theme.text, marginTop: 4 }}>{msg.text}</div>}
+        </div>
+      );
+    }
+    // Wrong note share (#NEW)
+    if (msg.type === "wrong_note") {
+      return (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: PASTEL.coral, marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+            <span>📓</span> 오답노트 공유
+          </div>
+          {msg.photoBase64 && (
+            <img
+              src={msg.photoBase64}
+              alt="오답노트"
+              onClick={() => window.open(msg.photoBase64, "_blank")}
+              style={{
+                width: "100%", maxWidth: 280, borderRadius: 8,
+                border: `1px solid ${theme.border}`, display: "block",
+                cursor: "zoom-in", background: "#fff",
+              }}
+            />
+          )}
+          {msg.text && (
+            <div style={{
+              fontSize: 12, color: theme.text, marginTop: 6, padding: "6px 10px",
+              background: `${PASTEL.coral}10`, borderRadius: 8,
+              borderLeft: `2px solid ${PASTEL.coral}`,
+              fontStyle: "italic", lineHeight: 1.4,
+            }}>"{msg.text}"</div>
+          )}
         </div>
       );
     }
@@ -1214,6 +1316,11 @@ export function renderPlazaScreen(ctx) {
             <button onClick={() => setPanel("problem")} className="plaza-btn" style={toolBtnStyle(theme)}>📝 문제공유</button>
             {/* Whiteboard (#21) */}
             <button onClick={() => setPanel("whiteboard")} className="plaza-btn" style={toolBtnStyle(theme)}>🎨 보드</button>
+            {/* Wrong note share (#NEW) */}
+            <button onClick={() => {
+              loadMyWrongNotes();
+              setPanel("wrongnote");
+            }} className="plaza-btn" style={toolBtnStyle(theme)}>📓 오답노트</button>
             {/* Timer (#22) */}
             {userRole === "admin" && <button onClick={() => setPanel("timer")} className="plaza-btn" style={toolBtnStyle(theme)}>⏱️ 타이머</button>}
             {/* Challenge (#9) */}
@@ -1530,6 +1637,103 @@ export function renderPlazaScreen(ctx) {
           </div>
         </div>
       )}
+
+      {/* Wrong note share panel (#NEW) */}
+      {activePanel === "wrongnote" && (() => {
+        const notes = window._wrongNotesCache;
+        const loading = window._wrongNotesLoading || notes === undefined;
+        const selectedId = (() => { try { return localStorage.getItem("ar_plaza_wn_selected") || ""; } catch { return ""; } })();
+        const selectNote = (id) => { localStorage.setItem("ar_plaza_wn_selected", id); setChatLog(prev => [...prev]); };
+        const selected = notes?.find(n => n.id === selectedId) || null;
+        return (
+          <div style={subPanelStyle(theme)}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>📓 오답노트 공유</div>
+              <button onClick={() => { loadMyWrongNotes(); }} style={{
+                background: "none", border: `1px solid ${theme.border}`, borderRadius: 6,
+                padding: "2px 8px", fontSize: 10, color: theme.textSec, cursor: "pointer",
+              }}>↻ 새로고침</button>
+            </div>
+
+            {loading && (
+              <div style={{ textAlign: "center", padding: "20px 0", color: theme.textSec, fontSize: 11 }}>
+                불러오는 중...
+              </div>
+            )}
+
+            {!loading && (!notes || notes.length === 0) && (
+              <div style={{ textAlign: "center", padding: "20px 0", color: theme.textSec, fontSize: 11 }}>
+                오답노트가 없어요.<br />
+                <span style={{ fontSize: 10 }}>오답노트 화면에서 먼저 문제를 추가해보세요!</span>
+              </div>
+            )}
+
+            {!loading && notes && notes.length > 0 && (
+              <>
+                <div style={{
+                  display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6,
+                  maxHeight: 180, overflowY: "auto", padding: 2,
+                }}>
+                  {notes.map(n => {
+                    const isSel = n.id === selectedId;
+                    return (
+                      <button key={n.id} onClick={() => selectNote(n.id)} style={{
+                        position: "relative", padding: 0, borderRadius: 8,
+                        border: isSel ? `2px solid ${PASTEL.coral}` : `1px solid ${theme.border}`,
+                        background: theme.card, cursor: "pointer", overflow: "hidden",
+                        aspectRatio: "1 / 1",
+                      }}>
+                        {n.photoBase64 ? (
+                          <img src={n.photoBase64} alt="note" style={{
+                            width: "100%", height: "100%", objectFit: "cover", display: "block",
+                          }} />
+                        ) : (
+                          <div style={{ fontSize: 20, color: theme.textSec, lineHeight: "60px" }}>📄</div>
+                        )}
+                        {isSel && (
+                          <div style={{
+                            position: "absolute", top: 2, right: 2,
+                            background: PASTEL.coral, color: "#fff", borderRadius: 10,
+                            width: 16, height: 16, fontSize: 10, fontWeight: 700,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}>✓</div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {selected && (
+                  <div style={{ marginTop: 10, padding: "8px 10px", background: `${PASTEL.coral}08`, borderRadius: 8, border: `1px solid ${PASTEL.coral}30` }}>
+                    <div style={{ fontSize: 10, color: theme.textSec, marginBottom: 6 }}>
+                      📅 {new Date(selected.createdAt).toLocaleDateString("ko-KR")}
+                    </div>
+                    <textarea
+                      id="wn-comment"
+                      placeholder="이 문제에 대해 한마디 (예: 이거 어떻게 풀어요?)"
+                      rows={2}
+                      maxLength={200}
+                      style={{ ...inputStyle(theme), resize: "vertical", fontSize: 12 }}
+                    />
+                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                      <button onClick={() => {
+                        const comment = document.getElementById("wn-comment")?.value || "";
+                        sendWrongNote(selected, comment);
+                        localStorage.removeItem("ar_plaza_wn_selected");
+                      }} style={actionBtnStyle(PASTEL.coral)}>📤 공유</button>
+                      <button onClick={() => { localStorage.removeItem("ar_plaza_wn_selected"); setChatLog(prev => [...prev]); }}
+                        style={actionBtnStyle(theme.textSec)}>선택 해제</button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            <button onClick={() => { localStorage.removeItem("ar_plaza_wn_selected"); setPanel(""); }}
+              style={{ ...actionBtnStyle(theme.textSec), marginTop: 8 }}>닫기</button>
+          </div>
+        );
+      })()}
 
       {/* ======== SHARED TIMER BAR (#22) ======== */}
       {timer && timerRemaining > 0 && (
