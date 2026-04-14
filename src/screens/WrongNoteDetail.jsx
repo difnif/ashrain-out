@@ -17,6 +17,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { PASTEL } from "../config";
 import WrongNoteAnnotator from "./WrongNoteAnnotator";
+import { useBackGuard } from "../hooks/useBackGuard";
 
 const LONG_PRESS_MS = 450;
 const SWIPE_MIN_DIST = 50;
@@ -86,6 +87,24 @@ export default function WrongNoteDetail({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [annotatorOpen, picker, confirmDelete, onBack]);
+
+  // 통합 뒤로가기 — picker/confirmDelete가 열려 있으면 그것부터 닫고, 아니면 갤러리로
+  // (annotatorOpen 케이스는 Annotator 자체가 useBackGuard로 처리하므로 여기서는 다루지 않음)
+  const handleBack = useCallback(() => {
+    if (picker) {
+      setPicker(null);
+      setHoverPickerId(null);
+      return;
+    }
+    if (confirmDelete) {
+      setConfirmDelete(false);
+      return;
+    }
+    onBack?.();
+  }, [picker, confirmDelete, onBack]);
+
+  // 안드로이드 ◁ 가드 — annotator가 열렸을 때는 Annotator가 자체 가드를 가지므로 비활성
+  useBackGuard(handleBack, !annotatorOpen);
 
   const goPrev = useCallback(() => {
     if (idx > 0) {
