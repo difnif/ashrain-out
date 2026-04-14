@@ -855,14 +855,18 @@ export function renderPlazaScreen(ctx) {
 
   // ---- Time filtering ----
   const now = Date.now();
+  // filteredLog: data-level — pinned messages persist so 공지 영역에 계속 남음
   const filteredLog = chatLog.filter(m => {
-    if (m.pinned) return true; // Pinned messages don't expire (#3)
+    if (m.pinned) return true; // Pinned messages don't expire (data-level)
     return now - m.time < 10 * 60 * 1000;
   });
   if (filteredLog.length !== chatLog.length) {
     setChatLog(filteredLog);
     localStorage.setItem("ar_chat", JSON.stringify(filteredLog));
   }
+  // visibleLog: chat-area only — pinned messages also disappear from the stream after 10 min
+  // (but they stay in pinnedMsgs / 공지 영역 forever until unpinned)
+  const visibleLog = filteredLog.filter(m => now - m.time < 10 * 60 * 1000);
 
   const myName = user?.nickname || user?.name || "익명";
 
@@ -1877,15 +1881,15 @@ export function renderPlazaScreen(ctx) {
 
       {/* ======== CHAT AREA ======== */}
       <div className="plaza-content" style={{ flex: 1, overflowY: "auto", padding: "12px 16px", WebkitOverflowScrolling: "touch" }}>
-        {filteredLog.length === 0 && (
+        {visibleLog.length === 0 && (
           <p style={{ textAlign: "center", color: theme.textSec, fontSize: 13, marginTop: 40 }}>
             아직 대화가 없어요. 첫 메시지를 보내보세요!
-            <br /><span style={{ fontSize: 10 }}>메시지는 10분 후 자동 삭제됩니다 (고정 제외)</span>
+            <br /><span style={{ fontSize: 10 }}>메시지는 10분 후 자동 삭제됩니다 (공지는 상단에 유지)</span>
           </p>
         )}
-        {filteredLog.map((msg, i) => {
+        {visibleLog.map((msg, i) => {
           const isMe = msg.user === myName;
-          const remaining = msg.pinned ? null : Math.max(0, Math.ceil((10 * 60 * 1000 - (now - msg.time)) / 60000));
+          const remaining = Math.max(0, Math.ceil((10 * 60 * 1000 - (now - msg.time)) / 60000));
           const reactions = msg.reactions || {};
           const reactionEntries = Object.entries(reactions).filter(([, arr]) => arr?.length > 0);
 
@@ -1932,7 +1936,7 @@ export function renderPlazaScreen(ctx) {
                     <span style={{ fontSize: 9, color: theme.textSec }}>
                       {new Date(msg.time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
                     </span>
-                    {remaining !== null && remaining <= 3 && <span style={{ fontSize: 8, color: PASTEL.coral }}>{remaining}분</span>}
+                    {remaining <= 3 && <span style={{ fontSize: 8, color: PASTEL.coral }}>{remaining}분</span>}
                   </div>
 
                   {/* Content */}
