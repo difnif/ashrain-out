@@ -28,6 +28,7 @@ import { renderParentHomeScreen } from "./screens/ParentHomeScreen";
 import { renderSVGEditorScreen } from "./screens/SVGEditorScreen";
 import { renderRankingScreen } from "./screens/RankingScreen";
 import { renderQuizScreen } from "./screens/QuizScreen";
+import { renderWrongNoteScreen } from "./screens/WrongNoteScreen";
 import { renderDistanceScreen } from "./screens/DistanceScreen";
 import { renderSettingsScreen } from "./screens/SettingsScreen";
 import { renderDrawScreen } from "./screens/DrawScreen";
@@ -802,6 +803,9 @@ function AppInner() {
     return renderStudentHomeScreen(ctx);
   }
   if (screen === "student-home") return renderStudentHomeScreen(ctx);
+
+  // --- Wrong Note Screen (오답노트) ---
+  if (screen === "wrongNote") return renderWrongNoteScreen(ctx);
 
   // --- Learning Dashboard ---
   if (screen === "learning-dashboard") return renderLearningDashboard(ctx);
