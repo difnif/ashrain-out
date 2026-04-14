@@ -5,7 +5,6 @@
 // 분류 상태는 그대로 유지. 활성으로 되돌리거나 영구 삭제 가능.
 
 import { PASTEL } from "../config";
-import { useBackGuard } from "../hooks/useBackGuard";
 
 export default function WrongNoteArchive({
   theme,
@@ -20,9 +19,6 @@ export default function WrongNoteArchive({
   findFlag,
   findCircle,
 }) {
-  // 안드로이드 ◁ / 브라우저 ← 가드
-  useBackGuard(onBack, true);
-
   const handleRestore = async (id) => {
     await toggleActive(id);
     playSfx?.("success");
