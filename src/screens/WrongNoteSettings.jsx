@@ -7,6 +7,7 @@
 
 import { useState } from "react";
 import { PASTEL } from "../config";
+import { useBackGuard } from "../hooks/useBackGuard";
 
 const COLOR_PALETTE = [
   PASTEL.pink,
@@ -304,6 +305,9 @@ export default function WrongNoteSettings({
   setAutoSaveToDevice,
 }) {
   const [tab, setTab] = useState("flag"); // "flag" | "circle" | "options"
+
+  // 안드로이드 ◁ / 브라우저 ← 가드
+  useBackGuard(onBack, true);
 
   const flagActiveOverflow = activeFlags.length >= MAX_ACTIVE;
   const circleActiveOverflow = activeCircles.length >= MAX_ACTIVE;
