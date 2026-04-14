@@ -16,6 +16,27 @@ export function renderAdminScreen(ctx) {
     { icon: "📖", label: "튜토리얼 초기화", desc: "모든 튜토리얼 다시 보기", action: () => { if(ctx.tutorial?.resetAll) ctx.tutorial.resetAll(); ctx.showMsg("튜토리얼이 초기화되었어요!", 1500); } },
     { icon: "🎨", label: "SVG 에디터", desc: "수학 콘텐츠 오브젝트 편집", action: () => setScreen("svg-editor") },
     { icon: "🔑", label: "권한 관리", desc: "역할별 기능 제한", action: () => setScreen("admin-perms") },
+    {
+      icon: "🐞",
+      label: "디버거 콘솔 (Eruda)",
+      desc: (() => { try { return localStorage.getItem("ar_eruda") === "on" ? "✅ 켜짐 · 화면 우측 하단에 톱니 버튼 표시" : "꺼짐 · 탭하면 켜기"; } catch { return "꺼짐"; } })(),
+      action: () => {
+        try {
+          const isOn = localStorage.getItem("ar_eruda") === "on";
+          if (isOn) {
+            localStorage.removeItem("ar_eruda");
+            try { window.eruda && window.eruda.destroy && window.eruda.destroy(); } catch {}
+            ctx.showMsg("🐞 디버거 콘솔 OFF · 새로고침 중...", 1500);
+          } else {
+            localStorage.setItem("ar_eruda", "on");
+            ctx.showMsg("🐞 디버거 콘솔 ON · 새로고침 중...", 1500);
+          }
+          setTimeout(() => { try { window.location.reload(); } catch {} }, 800);
+        } catch (e) {
+          ctx.showMsg("토글 실패: " + e.message, 2000);
+        }
+      },
+    },
   ];
   return (
     <ScreenWrap title="관리자" back="메뉴" backTo="menu">
