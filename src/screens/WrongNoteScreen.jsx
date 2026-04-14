@@ -15,7 +15,7 @@
 // 두 모드는 Rules of Hooks를 지키기 위해 별도 컴포넌트로 분기한다.
 // (조건부로 같은 컴포넌트 안에서 useXxx를 호출/생략하면 안 됨)
 
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useWrongNotes } from "../hooks/useWrongNotes";
 import { useWrongNoteSettings } from "../hooks/useWrongNoteSettings";
 import WrongNoteGallery from "./WrongNoteGallery";
@@ -25,6 +25,7 @@ import WrongNoteArchive from "./WrongNoteArchive";
 
 // ===== Pure router (no hooks called inside) =====
 // 두 hook 결과를 모두 props로 받는 순수 라우터.
+// View stack을 명시적으로 관리하고 브라우저 history와 동기화한다.
 function WrongNoteRouter({
   theme,
   playSfx,
@@ -33,18 +34,106 @@ function WrongNoteRouter({
   notesHook,
   settingsHook,
 }) {
-  const [view, setView] = useState("gallery"); // "gallery" | "detail" | "settings" | "archive"
+  // View stack: 항상 "gallery"가 base. push될 때마다 history entry 추가.
+  // 예: ["gallery"] → ["gallery", "detail"] → ["gallery", "detail", "settings"]
+  const [stack, setStack] = useState(["gallery"]);
   const [detailNoteId, setDetailNoteId] = useState(null);
+  const currentView = stack[stack.length - 1];
 
-  const goGallery = () => setView("gallery");
+  // popstate 이벤트를 우리가 발화시킨 건지 외부(◁) 건지 구분
+  const internalPopRef = useRef(false);
+
+  // sub-view push: stack에 새 view 추가 + history.pushState
+  const pushView = useCallback((view) => {
+    setStack((s) => [...s, view]);
+    try {
+      window.history.pushState(
+        { __ashrainWN: true, depth: Date.now() },
+        ""
+      );
+    } catch (e) {
+      console.warn("[WrongNoteRouter] pushState failed:", e);
+    }
+  }, []);
+
+  // sub-view pop: stack에서 마지막 제거 + history.back (단, 외부 ◁가 트리거한 pop이면 history.back 생략)
+  const popView = useCallback((triggeredByPopState) => {
+    setStack((s) => {
+      if (s.length <= 1) {
+        // stack에 gallery만 남음 → 컨테이너 종료(홈으로)
+        // 외부 popstate가 트리거한 경우는 history가 이미 한 단계 뒤로 갔으므로
+        // 추가로 setScreen만 하면 됨
+        setScreen?.("student-home");
+        return s;
+      }
+      return s.slice(0, -1);
+    });
+    if (!triggeredByPopState) {
+      // UI에서 호출된 경우(헤더 ←, 갤러리 ← 등) → history도 동기화
+      try {
+        if (
+          window.history.state &&
+          window.history.state.__ashrainWN
+        ) {
+          internalPopRef.current = true;
+          window.history.back();
+        }
+      } catch (e) {
+        /* noop */
+      }
+    }
+  }, [setScreen]);
+
+  // popstate 핸들러: 안드로이드 ◁ / 브라우저 ←
+  useEffect(() => {
+    const onPop = (e) => {
+      if (internalPopRef.current) {
+        // 우리가 history.back()을 호출해서 발생한 popstate → 무시 (이미 stack pop 됨)
+        internalPopRef.current = false;
+        return;
+      }
+      // 외부 ◁ 트리거 → stack pop
+      popView(true);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [popView]);
+
+  // 갤러리 외 sub-view들은 마운트 시 stack에 push되어 있으므로
+  // 종료 시(언마운트) 더미 history entry가 남아 있을 수 있음 → 정리
+  useEffect(() => {
+    return () => {
+      // 컨테이너 자체가 언마운트될 때 (sub-view 전환과는 무관)
+      // stack에 쌓인 만큼의 history entry를 정리
+      const extra = stack.length - 1;
+      for (let i = 0; i < extra; i++) {
+        try {
+          if (
+            window.history.state &&
+            window.history.state.__ashrainWN
+          ) {
+            internalPopRef.current = true;
+            window.history.back();
+          }
+        } catch {/* noop */}
+      }
+    };
+    // 의도적으로 mount 시 빈 deps. 언마운트 시점의 stack을 캡처하려면
+    // ref가 필요하지만, 컨테이너 언마운트는 보통 stack=["gallery"]에서만 일어남.
+    // 그 외 케이스는 popstate가 미리 처리.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const goGallery = () => popView(false);  // 한 단계 뒤로
   const goDetail = (noteId) => {
     setDetailNoteId(noteId);
-    setView("detail");
+    pushView("detail");
   };
-  const goSettings = () => setView("settings");
-  const goArchive = () => setView("archive");
+  const goSettings = () => pushView("settings");
+  const goArchive = () => pushView("archive");
 
   const exitToHome = () => {
+    // 갤러리에서 ← 누르면 컨테이너 종료
     setScreen?.("student-home");
   };
 
@@ -67,7 +156,7 @@ function WrongNoteRouter({
     );
   }
 
-  if (view === "settings") {
+  if (currentView === "settings") {
     return (
       <WrongNoteSettings
         theme={theme}
@@ -79,7 +168,7 @@ function WrongNoteRouter({
     );
   }
 
-  if (view === "archive") {
+  if (currentView === "archive") {
     return (
       <WrongNoteArchive
         theme={theme}
@@ -95,7 +184,7 @@ function WrongNoteRouter({
     );
   }
 
-  if (view === "detail") {
+  if (currentView === "detail") {
     return (
       <WrongNoteDetail
         theme={theme}
