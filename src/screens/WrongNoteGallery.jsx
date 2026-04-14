@@ -7,7 +7,6 @@
 import { useState, useRef, useCallback } from "react";
 import { PASTEL } from "../config";
 import { maybeSaveImageToDevice } from "../lib/saveImageToDevice";
-import { useBackGuard } from "../hooks/useBackGuard";
 
 const LONG_PRESS_MS = 450;
 
@@ -181,6 +180,7 @@ export default function WrongNoteGallery({
   }, []);
 
   // 통합 뒤로가기 — syncDialog → selectMode → 갤러리 종료(홈) 우선순위
+  // 헤더 ← 버튼에서 사용. 안드로이드 ◁는 컨테이너가 처리.
   const handleBack = useCallback(() => {
     if (syncDialog) {
       setSyncDialog(false);
@@ -192,9 +192,6 @@ export default function WrongNoteGallery({
     }
     onBack?.();
   }, [syncDialog, selectMode, exitSelectMode, onBack]);
-
-  // 안드로이드 ◁ / 브라우저 ← 가드
-  useBackGuard(handleBack, true);
 
   // 일괄 동기화 적용 — 첫 번째 선택 노트가 템플릿
   const applySync = useCallback(
