@@ -392,6 +392,18 @@ function SettingsTab({ theme, playSfx, showMsg, user, updateMember, handleLogout
   const [editVal, setEditVal] = useState("");
   const [editPwOld, setEditPwOld] = useState("");
 
+  // 광장 핀 공지 → "닉네임 설정하러 가기" 진입 시 자동으로 닉네임 편집 모달 오픈
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("ar_open_settings_nickname") === "1") {
+        sessionStorage.removeItem("ar_open_settings_nickname");
+        setEditField("nickname");
+        setEditVal("");
+        setEditPwOld("");
+      }
+    } catch {}
+  }, []);
+
   const member = user || {};
   const idChangeCount = member.idChangeCount || 0;
   const lastNicknameChange = member.lastNicknameChange || 0;
@@ -568,7 +580,14 @@ function SettingsTab({ theme, playSfx, showMsg, user, updateMember, handleLogout
 // ===== Main =====
 export function StudentHomeScreenInner(props) {
   const { theme, playSfx, isAdminPreview, exitPreview, notifications, homework, setScreen } = props;
-  const [tab, setTab] = useState("home");
+  const [tab, setTab] = useState(() => {
+    // 광장 핀 메시지의 "닉네임 설정하러 가기" 버튼에서 진입 시 → 설정 탭 자동 활성화
+    // 플래그는 SettingsTab이 닉네임 편집 모달을 연 후 제거함 (여기서 제거하면 모달이 안 열림)
+    try {
+      if (sessionStorage.getItem("ar_open_settings_nickname") === "1") return "settings";
+    } catch {}
+    return "home";
+  });
   const contentRef = useRef(null);
   const unread = 0; // notifications badge removed
   const pendingHw = homework.filter(h => h.status !== "completed").length;
