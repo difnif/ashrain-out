@@ -89,7 +89,7 @@ export default function WrongNoteDetail({
   }, [annotatorOpen, picker, confirmDelete, onBack]);
 
   // 통합 뒤로가기 — picker/confirmDelete가 열려 있으면 그것부터 닫고, 아니면 갤러리로
-  // (annotatorOpen 케이스는 Annotator 자체가 useBackGuard로 처리하므로 여기서는 다루지 않음)
+  // 헤더 ← 버튼에서 사용.
   const handleBack = useCallback(() => {
     if (picker) {
       setPicker(null);
@@ -103,8 +103,19 @@ export default function WrongNoteDetail({
     onBack?.();
   }, [picker, confirmDelete, onBack]);
 
-  // 안드로이드 ◁ 가드 — annotator가 열렸을 때는 Annotator가 자체 가드를 가지므로 비활성
-  useBackGuard(handleBack, !annotatorOpen);
+  // 모달용 가드: picker 또는 confirmDelete가 열렸을 때만 활성.
+  // (Annotator는 자체 가드를 가지고, sub-view 전환은 컨테이너가 처리하므로
+  //  여기서는 "Detail 화면 안에서 열린 모달"만 책임짐.)
+  const closeTopModal = useCallback(() => {
+    if (picker) {
+      setPicker(null);
+      setHoverPickerId(null);
+    } else if (confirmDelete) {
+      setConfirmDelete(false);
+    }
+  }, [picker, confirmDelete]);
+  const modalOpen = (!!picker || confirmDelete) && !annotatorOpen;
+  useBackGuard(closeTopModal, modalOpen);
 
   const goPrev = useCallback(() => {
     if (idx > 0) {
