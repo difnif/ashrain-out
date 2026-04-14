@@ -44,8 +44,34 @@ function HomeTab({ theme, user, setScreen, playSfx, homework, notifications, arc
 
   return (
     <div style={{ padding: 20, animation: "fadeIn 0.3s ease" }}>
-      <div style={{ fontSize: 20, fontWeight: 700, color: theme.text, marginBottom: 4 }}>
-        안녕, {user?.name || "학생"}! 👋
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+        <div style={{ fontSize: 20, fontWeight: 700, color: theme.text }}>
+          안녕, {user?.name || "학생"}! 👋
+        </div>
+        <a
+          href="https://www.instagram.com/ashrain.out"
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => playSfx && playSfx("click")}
+          style={{
+            flexShrink: 0,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "5px 10px",
+            borderRadius: 8,
+            border: `1px solid ${theme.border}`,
+            background: theme.card,
+            color: theme.textSec,
+            fontSize: 10,
+            fontWeight: 600,
+            textDecoration: "none",
+            whiteSpace: "nowrap",
+            fontFamily: "'Noto Serif KR', serif",
+          }}
+        >
+          🐞 앱 오류 제보
+        </a>
       </div>
       <p style={{ fontSize: 12, color: theme.textSec, marginBottom: 16 }}>오늘도 열심히 공부하자!</p>
 
