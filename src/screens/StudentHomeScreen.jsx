@@ -5,7 +5,8 @@ import DiaryTab from "./DiaryScreen";
 const TABS = [
   { key: "home", icon: "🏠", label: "홈" },
   { key: "archive", icon: "📂", label: "아카이브" },
-  { key: "diary", icon: "📓", label: "다이어리" },
+  // { key: "diary", icon: "📓", label: "다이어리" }, // 임시 비활성화 — 광장으로 교체. 되돌리려면 이 줄 활성화하고 아래 plaza 줄 제거
+  { key: "plaza", icon: "🏛️", label: "광장", external: true }, // external: 탭 클릭 시 setScreen("plaza")로 외부 화면 진입
   { key: "homework", icon: "📝", label: "숙제" },
   { key: "settings", icon: "⚙️", label: "설정" },
 ];
@@ -566,7 +567,7 @@ function SettingsTab({ theme, playSfx, showMsg, user, updateMember, handleLogout
 
 // ===== Main =====
 export function StudentHomeScreenInner(props) {
-  const { theme, playSfx, isAdminPreview, exitPreview, notifications, homework } = props;
+  const { theme, playSfx, isAdminPreview, exitPreview, notifications, homework, setScreen } = props;
   const [tab, setTab] = useState("home");
   const contentRef = useRef(null);
   const unread = 0; // notifications badge removed
@@ -597,7 +598,12 @@ export function StudentHomeScreenInner(props) {
           const active = tab === t.key;
           const badge = t.key === "homework" ? pendingHw : 0;
           return (
-            <button key={t.key} onClick={() => { setTab(t.key); playSfx("click"); contentRef.current?.scrollTo(0, 0); }}
+            <button key={t.key} onClick={() => {
+                playSfx("click");
+                if (t.external) { setScreen(t.key); return; }
+                setTab(t.key);
+                contentRef.current?.scrollTo(0, 0);
+              }}
               style={{ flex: 1, padding: "12px 0 10px", border: "none", background: "transparent", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, position: "relative", minHeight: 50 }}>
               <span style={{ fontSize: 20, opacity: active ? 1 : 0.5 }}>{t.icon}</span>
               <span style={{ fontSize: 10, color: active ? PASTEL.coral : theme.textSec, fontWeight: active ? 700 : 400 }}>{t.label}</span>
