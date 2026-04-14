@@ -73,6 +73,16 @@ function HomeTab({ theme, user, setScreen, playSfx, homework, notifications, arc
         </div>
       </button>
 
+      {/* Quick action - 오답노트 */}
+      <button onClick={() => { playSfx("click"); setScreen("wrongNote"); }}
+        style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderRadius: 14, border: `1px solid ${theme.border}`, background: theme.card, cursor: "pointer", textAlign: "left", marginBottom: 16 }}>
+        <span style={{ fontSize: 24 }}>📒</span>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>오답노트</div>
+          <div style={{ fontSize: 10, color: theme.textSec }}>사진 분류 · 표시 · 누적 학습</div>
+        </div>
+      </button>
+
       {/* Learning graph */}
       <div style={{ padding: "14px", borderRadius: 14, background: theme.card, border: `1px solid ${theme.border}`, marginBottom: 16 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginBottom: 10 }}>📈 이번 주 학습량</div>
@@ -92,7 +102,8 @@ function HomeTab({ theme, user, setScreen, playSfx, homework, notifications, arc
         </div>
       </div>
 
-      {/* Ranking */}
+      {/* Ranking — 임시 비활성 (복구하려면 false → true로 변경) */}
+      {false && (
       <div style={{ padding: "14px", borderRadius: 14, background: theme.card, border: `1px solid ${theme.border}` }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginBottom: 10 }}>🏆 학습량 순위</div>
         {ranking.length === 0 && <p style={{ fontSize: 11, color: theme.textSec, textAlign: "center" }}>아직 데이터가 없어요</p>}
@@ -106,6 +117,7 @@ function HomeTab({ theme, user, setScreen, playSfx, homework, notifications, arc
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }
