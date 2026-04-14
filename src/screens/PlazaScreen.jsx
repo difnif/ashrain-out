@@ -605,7 +605,7 @@ function filterProfanity(text) {
   for (const word of PHONETIC_VARIANTS) {
     if (word.length < 1) continue;
     try {
-      const regex = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, "\$&"), "gi");
+      const regex = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
       result = result.replace(regex, m => "♡".repeat(m.length));
     } catch {}
   }
@@ -624,7 +624,7 @@ function filterProfanity(text) {
     if (nw.length < 2) continue;
     if (pNorm.includes(nw) && !BASE_PROFANITY.some(w => result.includes("♡".repeat(w.length)))) {
       try {
-        const regex = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, "\$&"), "gi");
+        const regex = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
         result = result.replace(regex, m => "♡".repeat(m.length));
       } catch {}
     }
@@ -637,15 +637,17 @@ function filterProfanity(text) {
     // Check in normalized text
     if (normalized.includes(nw)) {
       // Find and replace in original text (fuzzy position)
-      const regex = new RegExp(
-        word.split("").map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\$&") + "[\s.·•_\-~=+*]*").join(""),
-        "gi"
-      );
-      result = result.replace(regex, m => "♡".repeat(Math.max(m.replace(/\s/g,"").length, 1)));
+      try {
+        const regex = new RegExp(
+          word.split("").map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "[\s.·•_\-~=+*]*").join(""),
+          "gi"
+        );
+        result = result.replace(regex, m => "♡".repeat(Math.max(m.replace(/\s/g,"").length, 1)));
+      } catch {}
     }
     // Also try direct regex on original
     try {
-      const directRegex = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, "\$&"), "gi");
+      const directRegex = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
       result = result.replace(directRegex, m => "♡".repeat(m.length));
     } catch {}
   }
@@ -654,12 +656,12 @@ function filterProfanity(text) {
   for (const group of CHOSUNG_MAP) {
     for (const pattern of group) {
       if (text.includes(pattern) || normalized.includes(pattern.replace(/\s/g,""))) {
-        const regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, "\$&"), "g");
+        const regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g");
         result = result.replace(regex, m => "♡".repeat(m.length));
         // Also without spaces
         const noSpace = pattern.replace(/\s/g, "");
         if (noSpace !== pattern) {
-          const regex2 = new RegExp(noSpace.replace(/[.*+?^${}()|[\]\\]/g, "\$&"), "g");
+          const regex2 = new RegExp(noSpace.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g");
           result = result.replace(regex2, m => "♡".repeat(m.length));
         }
       }
@@ -669,7 +671,7 @@ function filterProfanity(text) {
   // 3. Check leet/substitution patterns
   for (const group of LEET_PATTERNS) {
     for (const pattern of group) {
-      const regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, "\$&"), "gi");
+      const regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
       result = result.replace(regex, m => "♡".repeat(m.length));
     }
   }
