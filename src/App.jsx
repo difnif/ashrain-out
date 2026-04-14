@@ -1,4 +1,5 @@
 import { useFirestoreSync } from "./hooks/useFirestoreSync";
+import { useWrongNoteSettings } from "./hooks/useWrongNoteSettings";
 import { DEFAULT_PROGRESS } from "./data/curriculum";
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import {
@@ -295,6 +296,9 @@ function AppInner() {
   });
   useFirestoreSync("plaza", "chat", chatLog, setChatLog, []);
   const [chatNotif, setChatNotif] = useState(true);
+
+  // 오답노트 설정: App.jsx에서 한 번만 listener 등록 → ctx로 ProblemScreen/WrongNoteScreen 양쪽에 전달
+  const wrongNoteSettingsHook = useWrongNoteSettings(user);
   const chatEndRef = useRef(null);
   const [editingMemberId, setEditingMemberId] = useState(null);
   const [newMemberForm, setNewMemberForm] = useState({ id: "", name: "", pw: "1234", role: "student" });
@@ -681,6 +685,7 @@ function AppInner() {
     publicArchive: (studentArchive || []).filter(a => a.isPublic && !a.hidden).map(a => ({ ...a, userId: undefined, userName: undefined })),
     tutorial,
     progress, setProgress,
+    wrongNoteSettingsHook,
     analysisModel, setAnalysisModel,
     archiveDefaultPublic, setArchiveDefaultPublic,
     helpPopupData, setHelpPopupData, canvasWidth, setCanvasWidth, svgPanRef,
