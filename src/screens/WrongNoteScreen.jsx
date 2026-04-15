@@ -88,8 +88,8 @@ function WrongNoteRouter({
   // popstate 핸들러: 안드로이드 ◁ / 브라우저 ←
   useEffect(() => {
     const onPop = (e) => {
-      // useBackGuard 인스턴스가 cleanup으로 발화시킨 back이면 무시
-      // (예: Detail의 picker 모달이 코드로 닫힐 때)
+      // useBackGuard 인스턴스가 finish()로 발화시킨 back이면 무시
+      // (예: Detail의 picker 모달이 코드로 닫힐 때 closePicker → finishModalGuard → history.back)
       if (window[ASHRAIN_INTERNAL_BACK_FLAG]) {
         return;
       }
