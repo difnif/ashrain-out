@@ -160,6 +160,11 @@ export default function WrongNoteAnnotator({
     }
   }, [drawing]);
 
+  // 안드로이드 ◁ / 브라우저 ← 가드: 누르면 메인이 아니라 onCancel로.
+  // 정상 종료 경로(저장/취소/ESC)에서는 반드시 finish()를 호출해 더미 history entry를 회수.
+  // (선언 순서 주의: 아래 ESC useEffect가 finishBackGuard를 deps에 참조하므로 먼저 선언)
+  const finishBackGuard = useBackGuard(onCancel, true);
+
   // ESC = 취소, Ctrl/Cmd+Z = undo
   useEffect(() => {
     const onKey = (e) => {
@@ -176,10 +181,6 @@ export default function WrongNoteAnnotator({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel, handleUndo, finishBackGuard]);
-
-  // 안드로이드 ◁ / 브라우저 ← 가드: 누르면 메인이 아니라 onCancel로.
-  // 정상 종료 경로(저장/취소/ESC)에서는 반드시 finish()를 호출해 더미 history entry를 회수.
-  const finishBackGuard = useBackGuard(onCancel, true);
 
   const handleSave = () => {
     playSfx?.("success");
