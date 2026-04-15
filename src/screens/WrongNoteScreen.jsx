@@ -18,6 +18,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWrongNotes } from "../hooks/useWrongNotes";
 import { useWrongNoteSettings } from "../hooks/useWrongNoteSettings";
+import { ASHRAIN_INTERNAL_BACK_FLAG } from "../hooks/useBackGuard";
 import WrongNoteGallery from "./WrongNoteGallery";
 import WrongNoteDetail from "./WrongNoteDetail";
 import WrongNoteSettings from "./WrongNoteSettings";
@@ -87,6 +88,11 @@ function WrongNoteRouter({
   // popstate 핸들러: 안드로이드 ◁ / 브라우저 ←
   useEffect(() => {
     const onPop = (e) => {
+      // useBackGuard 인스턴스가 cleanup으로 발화시킨 back이면 무시
+      // (예: Detail의 picker 모달이 코드로 닫힐 때)
+      if (window[ASHRAIN_INTERNAL_BACK_FLAG]) {
+        return;
+      }
       if (internalPopRef.current) {
         // 우리가 history.back()을 호출해서 발생한 popstate → 무시 (이미 stack pop 됨)
         internalPopRef.current = false;
