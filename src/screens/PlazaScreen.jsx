@@ -698,6 +698,21 @@ function filterProfanity(text) {
 // FEATURE CONSTANTS
 // ============================================================
 
+// Auto-replace keyword map (키워드 → 표시명 자동 변환)
+// 새 항목 추가는 여기에 { from: "키워드", to: "변환결과" } 추가하면 됨
+const AUTO_REPLACE = [
+  { from: "샤갈", to: "Marc Chagall" },
+];
+
+function applyAutoReplace(text) {
+  if (!text) return text;
+  let result = text;
+  for (const { from, to } of AUTO_REPLACE) {
+    result = result.split(from).join(to);
+  }
+  return result;
+}
+
 const QUICK_EMOJIS = ["👍","😂","🤔","💡","👏","❤️","🔥","😮"];
 
 const PRAISE_STICKERS = [
@@ -834,8 +849,9 @@ export function renderPlazaScreen(ctx) {
     }
     if (!chatMsg.trim() && !extraFields.type) return;
     const original = chatMsg.trim();
-    const cleanText = original ? filterProfanity(original) : "";
-    const hadProfanity = cleanText !== original;
+    const filtered = original ? filterProfanity(original) : "";
+    const hadProfanity = filtered !== original;
+    const cleanText = applyAutoReplace(filtered);
 
     const newMsg = {
       user: myName, role: userRole,
