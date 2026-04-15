@@ -17,6 +17,12 @@ import { useEffect, useRef } from "react";
 
 export function useBackGuard(onBack, enabled = true) {
   const consumedRef = useRef(false); // popstate가 이미 발화되었는지
+  // onBack은 매 렌더마다 새 함수일 수 있다.
+  // 마운트 시 클로저로 캡처하면 stale closure 버그가 생기므로 ref로 항상 최신 보관.
+  const onBackRef = useRef(onBack);
+  useEffect(() => {
+    onBackRef.current = onBack;
+  }, [onBack]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -32,10 +38,10 @@ export function useBackGuard(onBack, enabled = true) {
     }
 
     const onPop = (e) => {
-      // popstate 발생 = 사용자가 ◁ 또는 ← 누름 → onBack 호출
+      // popstate 발생 = 사용자가 ◁ 또는 ← 누름 → 최신 onBack 호출
       consumedRef.current = true;
       try {
-        onBack?.();
+        onBackRef.current?.();
       } catch (err) {
         console.error("[useBackGuard] onBack error:", err);
       }
@@ -47,7 +53,6 @@ export function useBackGuard(onBack, enabled = true) {
       // 정상 종료 시 (popstate 없이 컴포넌트가 사라진 경우) 더미 entry를 pop
       if (!consumedRef.current) {
         try {
-          // 가드: 현재 history.state가 우리 더미인지 확인 후에만 back
           if (
             window.history.state &&
             window.history.state.__ashrainBackGuard
@@ -59,8 +64,7 @@ export function useBackGuard(onBack, enabled = true) {
         }
       }
     };
-    // onBack은 매 렌더마다 새 함수일 수 있으므로 ref로 감싸도 되지만
-    // 실용상 enabled 변경에만 재실행되게 한다 (마운트/언마운트 1회만 의도)
+    // enabled 토글 시에만 재마운트. onBack 변경은 ref로 흡수.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 }
