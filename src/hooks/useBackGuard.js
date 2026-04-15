@@ -12,8 +12,17 @@
 //
 // 사용:
 //   useBackGuard(onCancel, true);  // 두 번째 인자: enabled (조건부 가드)
+//
+// === 글로벌 마커 ===
+// 여러 useBackGuard 인스턴스(컨테이너 + 모달)가 같은 history stack을 공유한다.
+// 모달이 코드로 닫힐 때 cleanup이 history.back()을 호출하면, 컨테이너의
+// popstate 리스너가 이를 외부 ◁ 트리거로 오인할 수 있다.
+// → window.__ashrainInternalBack 플래그를 잠깐 세워서, 컨테이너의 popstate
+//   리스너가 이를 보면 무시하도록 한다. 컨테이너 측에서도 동일한 플래그 검사 필요.
 
 import { useEffect, useRef } from "react";
+
+export const ASHRAIN_INTERNAL_BACK_FLAG = "__ashrainInternalBack";
 
 export function useBackGuard(onBack, enabled = true) {
   const consumedRef = useRef(false); // popstate가 이미 발화되었는지
@@ -38,6 +47,8 @@ export function useBackGuard(onBack, enabled = true) {
     }
 
     const onPop = (e) => {
+      // 우리(혹은 다른 useBackGuard)가 의도적으로 발생시킨 back 이벤트면 무시
+      if (window[ASHRAIN_INTERNAL_BACK_FLAG]) return;
       // popstate 발생 = 사용자가 ◁ 또는 ← 누름 → 최신 onBack 호출
       consumedRef.current = true;
       try {
@@ -57,7 +68,14 @@ export function useBackGuard(onBack, enabled = true) {
             window.history.state &&
             window.history.state.__ashrainBackGuard
           ) {
+            // 글로벌 플래그를 세워서, 다른 useBackGuard 인스턴스(예: 컨테이너의
+            // popstate 리스너)가 이 back을 외부 ◁로 오인하지 않게 한다.
+            window[ASHRAIN_INTERNAL_BACK_FLAG] = true;
             window.history.back();
+            // 다음 task에서 플래그 해제 (popstate는 비동기로 발화됨)
+            setTimeout(() => {
+              window[ASHRAIN_INTERNAL_BACK_FLAG] = false;
+            }, 0);
           }
         } catch (err) {
           /* noop */
