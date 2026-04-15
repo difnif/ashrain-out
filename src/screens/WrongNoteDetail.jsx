@@ -74,33 +74,9 @@ export default function WrongNoteDetail({
   const containerRef = useRef(null);
   const pickerRef = useRef(null);
 
-  // ESC 키
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") {
-        if (annotatorOpen) setAnnotatorOpen(false);
-        else if (picker) closePicker();
-        else if (confirmDelete) closeConfirmDelete();
-        else onBack?.();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [annotatorOpen, picker, confirmDelete, onBack, closePicker, closeConfirmDelete]);
-
-  // 통합 뒤로가기 — picker/confirmDelete가 열려 있으면 그것부터 닫고, 아니면 갤러리로
-  // 헤더 ← 버튼에서 사용.
-  const handleBack = useCallback(() => {
-    if (picker) {
-      closePicker();
-      return;
-    }
-    if (confirmDelete) {
-      closeConfirmDelete();
-      return;
-    }
-    onBack?.();
-  }, [picker, confirmDelete, onBack, closePicker, closeConfirmDelete]);
+  // ===== 모달 가드 (선언 순서 주의) =====
+  // ESC useEffect와 handleBack이 closePicker/closeConfirmDelete를 참조하므로
+  // 이 블록은 반드시 그것들보다 먼저 선언되어야 한다 (TDZ 회피).
 
   // 모달용 가드: picker 또는 confirmDelete가 열렸을 때만 활성.
   // (Annotator는 자체 가드를 가지고, sub-view 전환은 컨테이너가 처리하므로
@@ -129,6 +105,34 @@ export default function WrongNoteDetail({
     finishModalGuard();
     setConfirmDelete(false);
   }, [finishModalGuard]);
+
+  // ESC 키
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        if (annotatorOpen) setAnnotatorOpen(false);
+        else if (picker) closePicker();
+        else if (confirmDelete) closeConfirmDelete();
+        else onBack?.();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [annotatorOpen, picker, confirmDelete, onBack, closePicker, closeConfirmDelete]);
+
+  // 통합 뒤로가기 — picker/confirmDelete가 열려 있으면 그것부터 닫고, 아니면 갤러리로
+  // 헤더 ← 버튼에서 사용.
+  const handleBack = useCallback(() => {
+    if (picker) {
+      closePicker();
+      return;
+    }
+    if (confirmDelete) {
+      closeConfirmDelete();
+      return;
+    }
+    onBack?.();
+  }, [picker, confirmDelete, onBack, closePicker, closeConfirmDelete]);
 
   const goPrev = useCallback(() => {
     if (idx > 0) {
