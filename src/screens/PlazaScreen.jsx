@@ -677,18 +677,44 @@ function filterProfanity(text) {
     }
   }
 
-  // 4. Detect spaced-out profanity (e.g., "시 발", "병 신", "씨 발")  
-  const spacedPatterns = [
-    [/시\s*발/g], [/씨\s*발/g], [/씨\s*빨/g], [/시\s*팔/g], [/씨\s*팔/g],
-    [/병\s*신/g], [/지\s*랄/g], [/개\s*새\s*끼/g], [/새\s*끼/g],
-    [/닥\s*쳐/g], [/꺼\s*져/g], [/미\s*친/g], [/느\s*금\s*마/g],
-    [/존\s*나/g], [/졸\s*라/g], [/좆\s*같/g], [/좆\s*까/g],
-    [/따\s*먹/g], [/떡\s*치/g], [/보\s*지/g], [/자\s*지/g],
-    [/f\s*u\s*c\s*k/gi], [/s\s*h\s*i\s*t/gi], [/b\s*i\s*t\s*c\s*h/gi],
-    [/a\s*s\s*s/gi], [/d\s*i\s*c\s*k/gi], [/p\s*u\s*s\s*s\s*y/gi],
+  // 4. Detect separator-inserted profanity (공백, 기호 삽입 우회 차단)
+  // e.g., "시 발", "시+발", "시-발", "시@발", "시.발", "시_발", "f.u.c.k"
+  const SEP = "[\\s.·•_\\-~=+*#@!,;:'\"(){}|/\\\\^`<>\\[\\]]*"; // 0개 이상의 구분자
+  const buildSepRegex = (word, flags) => {
+    try {
+      const pattern = word.split("").map(c =>
+        c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      ).join(SEP);
+      return new RegExp(pattern, flags);
+    } catch { return null; }
+  };
+
+  // 핵심 2글자 이상 한국어 욕설 (기호 삽입 시도가 많은 단어들)
+  const SEPARATOR_TARGETS_KO = [
+    "시발","씨발","씨빨","시팔","씨팔","시벌","씨벌",
+    "병신","지랄","개새끼","새끼","색끼",
+    "닥쳐","꺼져","미친","느금마",
+    "존나","졸라","좆같","좆까","좆나",
+    "따먹","떡치","보지","자지",
+    "섹스","야동","개년","개놈","개자식",
+    "씹새","씹팔","씹창","씹년","씹놈",
+    "뒤져","죽여","죽어","뒈져",
+    "걸레","창녀","등신","또라이","찐따","멍청",
+    "엿먹","시부랄","씨부랄",
   ];
-  for (const [regex] of spacedPatterns) {
-    result = result.replace(regex, m => "♡".repeat(m.replace(/\s/g,"").length));
+  // 영어 (기호 삽입 시도가 많은 단어들)
+  const SEPARATOR_TARGETS_EN = [
+    "fuck","shit","bitch","asshole","dick","pussy","cunt",
+    "nigger","nigga","faggot","whore","slut","retard",
+  ];
+
+  for (const word of SEPARATOR_TARGETS_KO) {
+    const rx = buildSepRegex(word, "g");
+    if (rx) result = result.replace(rx, m => "♡".repeat(m.replace(/[\s.·•_\-~=+*#@!,;:'"(){}|/\\^`<>\[\]]/g, "").length || m.length));
+  }
+  for (const word of SEPARATOR_TARGETS_EN) {
+    const rx = buildSepRegex(word, "gi");
+    if (rx) result = result.replace(rx, m => "♡".repeat(m.replace(/[\s.·•_\-~=+*#@!,;:'"(){}|/\\^`<>\[\]]/g, "").length || m.length));
   }
 
   return result;
@@ -702,6 +728,7 @@ function filterProfanity(text) {
 // 새 항목 추가는 여기에 { from: "키워드", to: "변환결과" } 추가하면 됨
 const AUTO_REPLACE = [
   { from: "샤갈", to: "Marc Chagall" },
+  { from: "쌰갈", to: "Marc Chagall" },
 ];
 
 function applyAutoReplace(text) {
