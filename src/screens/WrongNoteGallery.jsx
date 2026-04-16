@@ -91,16 +91,21 @@ export default function WrongNoteGallery({
   inactiveNotes,
   addNoteFromFile,
   bulkUpdate,
+  deleteNote,
   // settings hook
   findFlag,
   findCircle,
+  activeFlags,
+  activeCircles,
   settings,
 }) {
   const fileRef = useRef(null);
   const [adding, setAdding] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
-  const [syncDialog, setSyncDialog] = useState(false);
+  // actionDialog: null | "menu" | "flag" | "circle" | "sync" | "delete"
+  // null = 닫힘, "menu" = 1단계 메뉴, 나머지는 2단계 세부 패널
+  const [actionDialog, setActionDialog] = useState(null);
   const longPressTimer = useRef(null);
 
   const handleFile = useCallback(
@@ -168,20 +173,25 @@ export default function WrongNoteGallery({
   // finishGalleryGuard ref — 프로그래매틱 close에서 finish 호출하기 위해
   const finishGalleryGuardRef = useRef(null);
 
-  // 안드로이드 ◁ / 브라우저 ← 가드 — selectMode 또는 syncDialog가 열렸을 때 활성.
+  // 안드로이드 ◁ / 브라우저 ← 가드 — selectMode 또는 actionDialog가 열렸을 때 활성.
   // 외부 ◁ 경로에서는 popstate가 이미 entry 소비. 여기서 finish 호출 X.
+  // 다이얼로그 2단계(flag/circle/sync/delete) → 1단계(menu) → selectMode → 해제.
   const onAndroidBack = useCallback(() => {
-    if (syncDialog) {
-      setSyncDialog(false);
+    if (actionDialog && actionDialog !== "menu") {
+      // 2단계 세부 패널 → 1단계 메뉴로 돌아감
+      setActionDialog("menu");
+      return;
+    }
+    if (actionDialog === "menu") {
+      setActionDialog(null);
       return;
     }
     if (selectMode) {
       setSelectMode(false);
       setSelectedIds(new Set());
-      setSyncDialog(false);
     }
-  }, [syncDialog, selectMode]);
-  const galleryModalOpen = selectMode || syncDialog;
+  }, [actionDialog, selectMode]);
+  const galleryModalOpen = selectMode || !!actionDialog;
   const finishGalleryGuard = useBackGuard(onAndroidBack, galleryModalOpen);
   finishGalleryGuardRef.current = finishGalleryGuard;
 
@@ -190,16 +200,18 @@ export default function WrongNoteGallery({
     finishGalleryGuardRef.current?.();
     setSelectMode(false);
     setSelectedIds(new Set());
-    setSyncDialog(false);
+    setActionDialog(null);
   }, []);
 
-  // 통합 뒤로가기 — syncDialog → selectMode → 갤러리 종료(홈) 우선순위
+  // 통합 뒤로가기 — actionDialog → selectMode → 갤러리 종료(홈) 우선순위
   // 헤더 ← 버튼에서 사용.
   const handleBack = useCallback(() => {
-    if (syncDialog) {
-      // syncDialog는 selectMode 안에 있는 내부 상태 — guard는 여전히 활성 유지.
-      // finish 호출 없이 state만 닫음.
-      setSyncDialog(false);
+    if (actionDialog && actionDialog !== "menu") {
+      setActionDialog("menu");
+      return;
+    }
+    if (actionDialog === "menu") {
+      setActionDialog(null);
       return;
     }
     if (selectMode) {
@@ -207,9 +219,12 @@ export default function WrongNoteGallery({
       return;
     }
     onBack?.();
-  }, [syncDialog, selectMode, exitSelectMode, onBack]);
+  }, [actionDialog, selectMode, exitSelectMode, onBack]);
 
   // 일괄 동기화 적용 — 첫 번째 선택 노트가 템플릿
+  // === 일괄 작업 핸들러들 ===
+
+  // 분류 동기화 — 첫 번째 선택 노트가 템플릿이 되어 나머지에 복사
   const applySync = useCallback(
     async (kind) => {
       const ids = Array.from(selectedIds);
@@ -229,7 +244,7 @@ export default function WrongNoteGallery({
       if (kind === "type" || kind === "both") {
         patch.typeLabelId = template.typeLabelId;
       }
-      const targets = ids.slice(1); // 첫 번째 제외
+      const targets = ids.slice(1);
       await bulkUpdate(targets, patch);
       playSfx?.("success");
       showMsg?.(`${targets.length}장 동기화 완료`, 1500);
@@ -237,6 +252,54 @@ export default function WrongNoteGallery({
     },
     [selectedIds, activeNotes, bulkUpdate, playSfx, showMsg, exitSelectMode]
   );
+
+  // 일괄 깃발(시험 범위) 변경 — flagId가 null이면 해제
+  const applyBulkFlag = useCallback(
+    async (flagId) => {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0) return;
+      await bulkUpdate(ids, { rangeLabelId: flagId });
+      playSfx?.("success");
+      const label = flagId ? findFlag?.(flagId)?.label || "" : "";
+      showMsg?.(
+        flagId ? `${ids.length}장 깃발 변경: ${label}` : `${ids.length}장 깃발 해제`,
+        1500
+      );
+      exitSelectMode();
+    },
+    [selectedIds, bulkUpdate, playSfx, showMsg, findFlag, exitSelectMode]
+  );
+
+  // 일괄 동그라미(오답 유형) 변경
+  const applyBulkCircle = useCallback(
+    async (circleId) => {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0) return;
+      await bulkUpdate(ids, { typeLabelId: circleId });
+      playSfx?.("success");
+      const label = circleId ? findCircle?.(circleId)?.label || "" : "";
+      showMsg?.(
+        circleId
+          ? `${ids.length}장 유형 변경: ${label}`
+          : `${ids.length}장 유형 해제`,
+        1500
+      );
+      exitSelectMode();
+    },
+    [selectedIds, bulkUpdate, playSfx, showMsg, findCircle, exitSelectMode]
+  );
+
+  // 일괄 삭제
+  const applyBulkDelete = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    for (const id of ids) {
+      await deleteNote?.(id);
+    }
+    playSfx?.("success");
+    showMsg?.(`${ids.length}장 삭제됨`, 1500);
+    exitSelectMode();
+  }, [selectedIds, deleteNote, playSfx, showMsg, exitSelectMode]);
 
   return (
     <div
@@ -294,11 +357,11 @@ export default function WrongNoteGallery({
         {selectMode ? (
           <button
             onClick={() => {
-              if (selectedIds.size < 2) {
-                showMsg?.("2개 이상 선택해주세요", 1500);
+              if (selectedIds.size === 0) {
+                showMsg?.("1개 이상 선택해주세요", 1500);
                 return;
               }
-              setSyncDialog(true);
+              setActionDialog("menu");
               playSfx?.("click");
             }}
             style={{
@@ -313,7 +376,7 @@ export default function WrongNoteGallery({
               fontWeight: 700,
             }}
           >
-            동기화
+            작업
           </button>
         ) : (
           <>
@@ -571,10 +634,10 @@ export default function WrongNoteGallery({
         </>
       )}
 
-      {/* 동기화 다이얼로그 */}
-      {syncDialog && (
+      {/* 일괄 작업 다이얼로그 — 다단계: menu / flag / circle / sync / delete */}
+      {actionDialog && (
         <div
-          onClick={() => setSyncDialog(false)}
+          onClick={() => setActionDialog(null)}
           style={{
             position: "absolute",
             inset: 0,
@@ -591,83 +654,399 @@ export default function WrongNoteGallery({
             style={{
               maxWidth: 320,
               width: "100%",
+              maxHeight: "80vh",
+              overflowY: "auto",
               background: theme.card,
               borderRadius: 16,
               padding: 20,
               border: `1px solid ${theme.border}`,
             }}
           >
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 700,
-                color: theme.text,
-                marginBottom: 6,
-                fontFamily: "'Noto Serif KR', serif",
-              }}
-            >
-              일괄 동기화
-            </div>
-            <p
-              style={{
-                fontSize: 11,
-                color: theme.textSec,
-                marginBottom: 16,
-                wordBreak: "keep-all",
-              }}
-            >
-              첫 번째 선택한 사진(1번)의 분류를 나머지 {selectedIds.size - 1}장에
-              복사해요.
-            </p>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-              }}
-            >
-              {[
-                { k: "range", label: "🚩 시험 범위만" },
-                { k: "type", label: "● 오답 유형만" },
-                { k: "both", label: "🚩 + ● 둘 다" },
-              ].map((opt) => (
-                <button
-                  key={opt.k}
-                  onClick={() => applySync(opt.k)}
+            {/* === 1단계: 작업 선택 메뉴 === */}
+            {actionDialog === "menu" && (
+              <>
+                <div
                   style={{
-                    padding: "12px",
-                    fontSize: 12,
-                    border: `1.5px solid ${theme.border}`,
-                    borderRadius: 10,
-                    background: theme.bg,
-                    color: theme.text,
-                    cursor: "pointer",
-                    fontFamily: "'Noto Serif KR', serif",
+                    fontSize: 14,
                     fontWeight: 700,
+                    color: theme.text,
+                    marginBottom: 6,
+                    fontFamily: "'Noto Serif KR', serif",
                   }}
                 >
-                  {opt.label}
-                </button>
-              ))}
-              <button
-                onClick={() => setSyncDialog(false)}
-                style={{
-                  padding: "10px",
-                  fontSize: 11,
-                  border: "none",
-                  borderRadius: 10,
-                  background: "transparent",
-                  color: theme.textSec,
-                  cursor: "pointer",
-                  fontFamily: "'Noto Serif KR', serif",
-                }}
-              >
-                취소
-              </button>
-            </div>
+                  일괄 작업
+                </div>
+                <p
+                  style={{
+                    fontSize: 11,
+                    color: theme.textSec,
+                    marginBottom: 16,
+                    wordBreak: "keep-all",
+                  }}
+                >
+                  선택한 {selectedIds.size}장에 적용할 작업을 선택해주세요.
+                </p>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
+                >
+                  <button
+                    onClick={() => setActionDialog("flag")}
+                    style={actionMenuBtnStyle(theme)}
+                  >
+                    🚩 시험 범위(깃발) 변경
+                  </button>
+                  <button
+                    onClick={() => setActionDialog("circle")}
+                    style={actionMenuBtnStyle(theme)}
+                  >
+                    ● 오답 유형(동그라미) 변경
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (selectedIds.size < 2) {
+                        showMsg?.("동기화는 2개 이상 필요해요", 1500);
+                        return;
+                      }
+                      setActionDialog("sync");
+                    }}
+                    style={actionMenuBtnStyle(theme)}
+                  >
+                    🔄 분류 동기화 (1번 → 나머지)
+                  </button>
+                  <button
+                    onClick={() => setActionDialog("delete")}
+                    style={{
+                      ...actionMenuBtnStyle(theme),
+                      borderColor: PASTEL.coral,
+                      color: PASTEL.coral,
+                    }}
+                  >
+                    🗑 삭제
+                  </button>
+                  <button
+                    onClick={() => setActionDialog(null)}
+                    style={{
+                      padding: "10px",
+                      fontSize: 11,
+                      border: "none",
+                      borderRadius: 10,
+                      background: "transparent",
+                      color: theme.textSec,
+                      cursor: "pointer",
+                      fontFamily: "'Noto Serif KR', serif",
+                    }}
+                  >
+                    취소
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* === 2단계: 깃발 선택 === */}
+            {actionDialog === "flag" && (
+              <BulkLabelPicker
+                theme={theme}
+                title="🚩 시험 범위 변경"
+                subtitle={`선택한 ${selectedIds.size}장의 시험 범위를 변경해요.`}
+                items={activeFlags || []}
+                kind="flag"
+                onPick={(id) => applyBulkFlag(id)}
+                onClear={() => applyBulkFlag(null)}
+                onBack={() => setActionDialog("menu")}
+              />
+            )}
+
+            {/* === 2단계: 동그라미 선택 === */}
+            {actionDialog === "circle" && (
+              <BulkLabelPicker
+                theme={theme}
+                title="● 오답 유형 변경"
+                subtitle={`선택한 ${selectedIds.size}장의 오답 유형을 변경해요.`}
+                items={activeCircles || []}
+                kind="circle"
+                onPick={(id) => applyBulkCircle(id)}
+                onClear={() => applyBulkCircle(null)}
+                onBack={() => setActionDialog("menu")}
+              />
+            )}
+
+            {/* === 2단계: 동기화 상세 === */}
+            {actionDialog === "sync" && (
+              <>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: theme.text,
+                    marginBottom: 6,
+                    fontFamily: "'Noto Serif KR', serif",
+                  }}
+                >
+                  🔄 분류 동기화
+                </div>
+                <p
+                  style={{
+                    fontSize: 11,
+                    color: theme.textSec,
+                    marginBottom: 16,
+                    wordBreak: "keep-all",
+                  }}
+                >
+                  첫 번째 선택한 사진(1번)의 분류를 나머지 {Math.max(0, selectedIds.size - 1)}장에 복사해요.
+                </p>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
+                >
+                  {[
+                    { k: "range", label: "🚩 시험 범위만" },
+                    { k: "type", label: "● 오답 유형만" },
+                    { k: "both", label: "🚩 + ● 둘 다" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.k}
+                      onClick={() => applySync(opt.k)}
+                      style={actionMenuBtnStyle(theme)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setActionDialog("menu")}
+                    style={{
+                      padding: "10px",
+                      fontSize: 11,
+                      border: "none",
+                      borderRadius: 10,
+                      background: "transparent",
+                      color: theme.textSec,
+                      cursor: "pointer",
+                      fontFamily: "'Noto Serif KR', serif",
+                    }}
+                  >
+                    ← 돌아가기
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* === 2단계: 삭제 확인 === */}
+            {actionDialog === "delete" && (
+              <>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: theme.text,
+                    marginBottom: 6,
+                    fontFamily: "'Noto Serif KR', serif",
+                  }}
+                >
+                  🗑 일괄 삭제
+                </div>
+                <p
+                  style={{
+                    fontSize: 11,
+                    color: theme.textSec,
+                    marginBottom: 16,
+                    wordBreak: "keep-all",
+                    fontFamily: "'Noto Serif KR', serif",
+                  }}
+                >
+                  선택한 {selectedIds.size}장을 정말 삭제할까요? 되돌릴 수 없어요.
+                </p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => setActionDialog("menu")}
+                    style={{
+                      flex: 1,
+                      padding: "10px",
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 10,
+                      background: theme.bg,
+                      color: theme.text,
+                      cursor: "pointer",
+                      fontFamily: "'Noto Serif KR', serif",
+                    }}
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={() => applyBulkDelete()}
+                    style={{
+                      flex: 1,
+                      padding: "10px",
+                      border: `1px solid ${PASTEL.coral}`,
+                      borderRadius: 10,
+                      background: PASTEL.coral,
+                      color: "#fff",
+                      cursor: "pointer",
+                      fontFamily: "'Noto Serif KR', serif",
+                      fontWeight: 700,
+                    }}
+                  >
+                    삭제
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+// 헬퍼: 액션 메뉴 버튼 공통 스타일
+function actionMenuBtnStyle(theme) {
+  return {
+    padding: "12px",
+    fontSize: 12,
+    border: `1.5px solid ${theme.border}`,
+    borderRadius: 10,
+    background: theme.bg,
+    color: theme.text,
+    cursor: "pointer",
+    fontFamily: "'Noto Serif KR', serif",
+    fontWeight: 700,
+    textAlign: "left",
+  };
+}
+
+// 헬퍼: 깃발/동그라미 일괄 선택 picker (2단계 UI에서 공통 사용)
+function BulkLabelPicker({ theme, title, subtitle, items, kind, onPick, onClear, onBack }) {
+  return (
+    <>
+      <div
+        style={{
+          fontSize: 14,
+          fontWeight: 700,
+          color: theme.text,
+          marginBottom: 6,
+          fontFamily: "'Noto Serif KR', serif",
+        }}
+      >
+        {title}
+      </div>
+      <p
+        style={{
+          fontSize: 11,
+          color: theme.textSec,
+          marginBottom: 14,
+          wordBreak: "keep-all",
+          fontFamily: "'Noto Serif KR', serif",
+        }}
+      >
+        {subtitle}
+      </p>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          marginBottom: 8,
+        }}
+      >
+        {items.length === 0 && (
+          <div
+            style={{
+              padding: 12,
+              fontSize: 11,
+              color: theme.textSec,
+              textAlign: "center",
+              border: `1px dashed ${theme.border}`,
+              borderRadius: 10,
+              fontFamily: "'Noto Serif KR', serif",
+            }}
+          >
+            활성 {kind === "flag" ? "깃발" : "유형"}이 없어요. 설정에서 먼저 활성화해주세요.
+          </div>
+        )}
+        {items.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => onPick(item.id)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "10px 12px",
+              fontSize: 12,
+              border: `1.5px solid ${theme.border}`,
+              borderRadius: 10,
+              background: theme.bg,
+              color: theme.text,
+              cursor: "pointer",
+              fontFamily: "'Noto Serif KR', serif",
+              textAlign: "left",
+            }}
+          >
+            <span
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: kind === "circle" ? "50%" : 3,
+                background: item.color,
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ fontWeight: 700 }}>{item.label}</span>
+            {item.memo && (
+              <span
+                style={{
+                  fontSize: 10,
+                  color: theme.textSec,
+                  marginLeft: "auto",
+                  textAlign: "right",
+                }}
+              >
+                {item.memo}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={onBack}
+          style={{
+            flex: 1,
+            padding: "10px",
+            fontSize: 11,
+            border: "none",
+            borderRadius: 10,
+            background: "transparent",
+            color: theme.textSec,
+            cursor: "pointer",
+            fontFamily: "'Noto Serif KR', serif",
+          }}
+        >
+          ← 돌아가기
+        </button>
+        <button
+          onClick={onClear}
+          style={{
+            flex: 1,
+            padding: "10px",
+            fontSize: 11,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 10,
+            background: theme.bg,
+            color: theme.textSec,
+            cursor: "pointer",
+            fontFamily: "'Noto Serif KR', serif",
+          }}
+        >
+          분류 해제
+        </button>
+      </div>
+    </>
   );
 }
