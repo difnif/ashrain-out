@@ -6,7 +6,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import { PASTEL } from "../config";
-import { useBackGuard } from "../hooks/useBackGuard";
+import { useBackGuard, dbgLog } from "../hooks/useBackGuard";
 
 const LONG_PRESS_MS = 450;
 
@@ -173,6 +173,7 @@ export default function WrongNoteGallery({
   // 안드로이드 ◁ / 브라우저 ← 가드 — selectMode 또는 syncDialog가 열렸을 때 활성.
   // 외부 ◁를 한 단계씩 소모: syncDialog → selectMode → (가드 꺼지면 컨테이너가 홈으로)
   const onAndroidBack = useCallback(() => {
+    dbgLog("[Gal] onAndroidBack", { syncDialog, selectMode });
     if (syncDialog) {
       setSyncDialog(false);
       return;
@@ -190,6 +191,7 @@ export default function WrongNoteGallery({
 
   // 프로그래매틱으로 select/dialog를 닫을 때는 finish() 호출해 entry 회수.
   const exitSelectMode = useCallback(() => {
+    dbgLog("[Gal] exitSelectMode");
     finishGalleryGuardRef.current?.();
     setSelectMode(false);
     setSelectedIds(new Set());
