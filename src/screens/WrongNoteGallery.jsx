@@ -6,7 +6,6 @@
 
 import { useState, useRef, useCallback } from "react";
 import { PASTEL } from "../config";
-import { maybeSaveImageToDevice } from "../lib/saveImageToDevice";
 
 const LONG_PRESS_MS = 450;
 
@@ -110,14 +109,7 @@ export default function WrongNoteGallery({
       setAdding(true);
       try {
         for (const file of files) {
-          const note = await addNoteFromFile(file);
-          // 기기 저장 옵션이 켜져 있으면 다운로드 트리거
-          if (note?.photoBase64) {
-            maybeSaveImageToDevice(
-              note.photoBase64,
-              settings?.autoSaveToDevice
-            );
-          }
+          await addNoteFromFile(file);
         }
         playSfx?.("success");
         showMsg?.(`사진 ${files.length}장 추가됨`, 1500);
@@ -131,7 +123,7 @@ export default function WrongNoteGallery({
         if (fileRef.current) fileRef.current.value = "";
       }
     },
-    [addNoteFromFile, playSfx, showMsg, settings]
+    [addNoteFromFile, playSfx, showMsg]
   );
 
   // 썸네일 long-press → 선택 모드 진입
