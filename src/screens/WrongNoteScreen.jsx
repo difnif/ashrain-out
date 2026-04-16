@@ -49,7 +49,7 @@ function WrongNoteRouter({
     setStack((s) => [...s, view]);
     try {
       window.history.pushState(
-        { __ashrainWN: true, screen: "wrong-note", depth: Date.now() },
+        { __ashrainWN: true, depth: Date.now() },
         ""
       );
     } catch (e) {
