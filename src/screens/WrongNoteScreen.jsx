@@ -59,15 +59,17 @@ function WrongNoteRouter({
 
   // sub-view pop: stack에서 마지막 제거 + history.back (단, 외부 ◁가 트리거한 pop이면 history.back 생략)
   const popView = useCallback((triggeredByPopState) => {
+    console.log("[WN-Container] popView called", { triggeredByPopState });
     setStack((s) => {
+      console.log("[WN-Container] popView setStack: before=", s);
       if (s.length <= 1) {
-        // stack에 gallery만 남음 → 컨테이너 종료(홈으로)
-        // 외부 popstate가 트리거한 경우는 history가 이미 한 단계 뒤로 갔으므로
-        // 추가로 setScreen만 하면 됨
+        console.log("[WN-Container] -> setScreen(student-home)");
         setScreen?.("student-home");
         return s;
       }
-      return s.slice(0, -1);
+      const next = s.slice(0, -1);
+      console.log("[WN-Container] -> stack now=", next);
+      return next;
     });
     if (!triggeredByPopState) {
       // UI에서 호출된 경우(헤더 ←, 갤러리 ← 등) → history도 동기화
@@ -88,29 +90,33 @@ function WrongNoteRouter({
   // popstate 핸들러: 안드로이드 ◁ / 브라우저 ←
   useEffect(() => {
     const onPop = (e) => {
-      // useBackGuard 인스턴스가 finish()로 발화시킨 back이면 무시
-      // (예: Detail의 picker 모달이 코드로 닫힐 때 closePicker → finishModalGuard → history.back)
+      console.log("[WN-Container] popstate (bubble)", {
+        flag: window[ASHRAIN_INTERNAL_BACK_FLAG],
+        internalPop: internalPopRef.current,
+        state: window.history.state,
+        stack,
+      });
       if (window[ASHRAIN_INTERNAL_BACK_FLAG]) {
+        console.log("[WN-Container] -> ignored (internal flag)");
         return;
       }
       if (internalPopRef.current) {
-        // 우리가 history.back()을 호출해서 발생한 popstate → 무시 (이미 stack pop 됨)
+        console.log("[WN-Container] -> ignored (internalPopRef)");
         internalPopRef.current = false;
         return;
       }
-      // 외부 ◁ 트리거 → stack pop
+      console.log("[WN-Container] -> external back, calling popView(true)");
       popView(true);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, [popView]);
+  }, [popView, stack]);
 
   // 갤러리 외 sub-view들은 마운트 시 stack에 push되어 있으므로
   // 종료 시(언마운트) 더미 history entry가 남아 있을 수 있음 → 정리
   useEffect(() => {
     return () => {
-      // 컨테이너 자체가 언마운트될 때 (sub-view 전환과는 무관)
-      // stack에 쌓인 만큼의 history entry를 정리
+      console.log("[WN-Container] container UNMOUNTING, stack.length=", stack.length);
       const extra = stack.length - 1;
       for (let i = 0; i < extra; i++) {
         try {
