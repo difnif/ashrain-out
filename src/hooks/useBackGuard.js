@@ -66,10 +66,19 @@ export function useBackGuard(onBack, enabled = true) {
     }
 
     const onPop = (e) => {
-      // 우리(혹은 다른 useBackGuard)가 의도적으로 발생시킨 back 이벤트면 무시
+      // 우리(혹은 다른 useBackGuard)의 finish()가 발생시킨 back 이벤트면 무시.
+      // (이 인스턴스가 살아 있는 동안 자기 자신의 finish()가 발화한 popstate가
+      //  여기로 도달하는 케이스 — 보통은 finish() 직후 enabled=false로 cleanup이
+      //  먼저 일어나 listener가 제거되지만, 동기 타이밍 차이로 도달할 수 있음)
       if (window[ASHRAIN_INTERNAL_BACK_FLAG]) return;
-      // popstate 발생 = 사용자가 ◁ 또는 ← 누름 → 최신 onBack 호출
-      // 이 경로에서는 더미 entry가 이미 자연 소진되었으므로 finish() 호출 불필요.
+
+      // 외부 ◁ / 브라우저 ← 트리거.
+      // 컨테이너(WrongNoteScreen)도 popstate를 듣고 있어서, 그대로 두면
+      // 컨테이너가 같은 이벤트를 외부 ◁로 인식해 sub-view까지 빠져버린다.
+      // → 같은 EventTarget(window)의 다른 popstate listener를 모두 차단.
+      // (capture phase에서 호출되므로 bubble phase의 컨테이너 listener도 차단됨)
+      e.stopImmediatePropagation();
+
       consumedRef.current = true;
       try {
         onBackRef.current?.();
@@ -77,10 +86,11 @@ export function useBackGuard(onBack, enabled = true) {
         console.error("[useBackGuard] onBack error:", err);
       }
     };
-    window.addEventListener("popstate", onPop);
+    // capture phase 등록 — 컨테이너의 bubble phase listener보다 먼저 받기 위함
+    window.addEventListener("popstate", onPop, true);
 
     return () => {
-      window.removeEventListener("popstate", onPop);
+      window.removeEventListener("popstate", onPop, true);
       // ⚠️ history는 건드리지 않는다. 이전 버전의 auto-back은 제거됨.
       // 정상 종료 경로에서 소비자가 finish()를 호출했어야 한다.
       // (호출 누락 감지를 돕기 위한 dev 경고)
@@ -111,13 +121,26 @@ export function useBackGuard(onBack, enabled = true) {
         window.history.state.__ashrainBackGuard
       ) {
         finishedRef.current = true;
-        // 컨테이너의 popstate 리스너가 이 back을 외부 ◁로 오인하지 않게 플래그를 세움
+        // 컨테이너의 popstate 리스너가 이 back을 외부 ◁로 오인하지 않게 플래그를 세움.
+        // 플래그 reset은 popstate가 발화한 뒤에 일어나야 하는데, setTimeout(0)은
+        // 일부 브라우저에서 popstate task보다 먼저 실행되는 race가 있어,
+        // 대신 popstate 자체에 일회용 listener를 달아서 모든 다른 listener가
+        // 처리된 직후(같은 task 내, bubble phase 마지막)에 reset한다.
         window[ASHRAIN_INTERNAL_BACK_FLAG] = true;
-        window.history.back();
-        // 다음 task에서 플래그 해제 (popstate는 비동기로 발화됨)
-        setTimeout(() => {
+        const resetFlag = () => {
+          window.removeEventListener("popstate", resetFlag);
           window[ASHRAIN_INTERNAL_BACK_FLAG] = false;
-        }, 0);
+        };
+        // bubble phase(default), 가장 마지막에 등록 → 가장 마지막에 호출됨.
+        // 같은 popstate task 내에서 컨테이너의 listener가 flag=true를 본 다음에 reset.
+        window.addEventListener("popstate", resetFlag);
+        // 안전망: 만약 어떤 이유로든 popstate가 발화하지 않으면 (브라우저 버그 등)
+        // listener가 영영 남는 것을 방지. 충분히 긴 시간 후 강제 정리.
+        setTimeout(() => {
+          window.removeEventListener("popstate", resetFlag);
+          window[ASHRAIN_INTERNAL_BACK_FLAG] = false;
+        }, 200);
+        window.history.back();
       } else {
         // history top이 우리 마커가 아니면(예: 더 위에 다른 guard가 push함)
         // 회수를 시도하지 않고 그냥 finished로만 표시한다. 이 경우 더미는
