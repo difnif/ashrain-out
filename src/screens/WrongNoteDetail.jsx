@@ -97,11 +97,13 @@ export default function WrongNoteDetail({
   // (외부 ◁로 닫히는 경로는 useBackGuard가 자체적으로 closeTopModal을 호출하므로
   //  여기를 거치지 않는다 — finish는 hook 내부에서 consumed 처리됨.)
   const closePicker = useCallback(() => {
+    console.log("[Detail] closePicker called");
     finishModalGuard();
     setPicker(null);
     setHoverPickerId(null);
   }, [finishModalGuard]);
   const closeConfirmDelete = useCallback(() => {
+    console.log("[Detail] closeConfirmDelete called");
     finishModalGuard();
     setConfirmDelete(false);
   }, [finishModalGuard]);
@@ -157,6 +159,7 @@ export default function WrongNoteDetail({
   // 분류 적용
   const assignFlag = useCallback(
     (flagId) => {
+      console.log("[Detail] assignFlag", flagId);
       if (!note) return;
       updateNote(note.id, { rangeLabelId: flagId });
       playSfx?.("success");
@@ -167,6 +170,7 @@ export default function WrongNoteDetail({
   );
   const assignCircle = useCallback(
     (circleId) => {
+      console.log("[Detail] assignCircle", circleId);
       if (!note) return;
       updateNote(note.id, { typeLabelId: circleId });
       playSfx?.("success");
