@@ -6,7 +6,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import { PASTEL } from "../config";
-import { useBackGuard, dbgLog } from "../hooks/useBackGuard";
+import { useBackGuard } from "../hooks/useBackGuard";
 
 const LONG_PRESS_MS = 450;
 
@@ -120,7 +120,6 @@ export default function WrongNoteGallery({
         playSfx?.("error");
       } finally {
         setAdding(false);
-        // 같은 파일 다시 선택 가능하도록 input 초기화
         if (fileRef.current) fileRef.current.value = "";
       }
     },
@@ -166,20 +165,17 @@ export default function WrongNoteGallery({
     [selectMode, playSfx, onOpenDetail]
   );
 
-  // finishGalleryGuard를 ref에 저장 — selectMode/syncDialog enabled가 false로 바뀔 때
-  // (프로그래매틱 close) finish 호출해서 더미 history entry 회수해야 함.
+  // finishGalleryGuard ref — 프로그래매틱 close에서 finish 호출하기 위해
   const finishGalleryGuardRef = useRef(null);
 
   // 안드로이드 ◁ / 브라우저 ← 가드 — selectMode 또는 syncDialog가 열렸을 때 활성.
-  // 외부 ◁를 한 단계씩 소모: syncDialog → selectMode → (가드 꺼지면 컨테이너가 홈으로)
+  // 외부 ◁ 경로에서는 popstate가 이미 entry 소비. 여기서 finish 호출 X.
   const onAndroidBack = useCallback(() => {
-    dbgLog("[Gal] onAndroidBack", { syncDialog, selectMode });
     if (syncDialog) {
       setSyncDialog(false);
       return;
     }
     if (selectMode) {
-      // 외부 ◁가 여기 들어옴 — popstate가 이미 entry 소비, finish 호출 불필요
       setSelectMode(false);
       setSelectedIds(new Set());
       setSyncDialog(false);
@@ -189,9 +185,8 @@ export default function WrongNoteGallery({
   const finishGalleryGuard = useBackGuard(onAndroidBack, galleryModalOpen);
   finishGalleryGuardRef.current = finishGalleryGuard;
 
-  // 프로그래매틱으로 select/dialog를 닫을 때는 finish() 호출해 entry 회수.
+  // 프로그래매틱 종료 — finish로 더미 entry 회수 후 state 정리
   const exitSelectMode = useCallback(() => {
-    dbgLog("[Gal] exitSelectMode");
     finishGalleryGuardRef.current?.();
     setSelectMode(false);
     setSelectedIds(new Set());
@@ -202,9 +197,8 @@ export default function WrongNoteGallery({
   // 헤더 ← 버튼에서 사용.
   const handleBack = useCallback(() => {
     if (syncDialog) {
-      // syncDialog만 닫을 때: 아직 selectMode가 남아있으므로 enabled=true 유지,
-      // 하지만 현재 entry는 syncDialog용이라 finish로 회수해야 다음 ◁가 selectMode를 닫을 수 있음.
-      // (enabled가 false로 가지 않으므로 마운트된 pushState entry는 하나뿐 → finish 불필요)
+      // syncDialog는 selectMode 안에 있는 내부 상태 — guard는 여전히 활성 유지.
+      // finish 호출 없이 state만 닫음.
       setSyncDialog(false);
       return;
     }
