@@ -231,8 +231,11 @@ function WrongNoteRouter({
       inactiveNotes={notesHook.inactiveNotes}
       addNoteFromFile={notesHook.addNoteFromFile}
       bulkUpdate={notesHook.bulkUpdate}
+      deleteNote={notesHook.deleteNote}
       findFlag={settingsHook.findFlag}
       findCircle={settingsHook.findCircle}
+      activeFlags={settingsHook.activeFlags}
+      activeCircles={settingsHook.activeCircles}
       settings={settingsHook.settings}
     />
   );
