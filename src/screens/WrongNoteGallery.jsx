@@ -132,14 +132,26 @@ export default function WrongNoteGallery({
   );
 
   // 썸네일 long-press → 선택 모드 진입
+  // 진입 후 손을 떼지 않고 바로 드래그 선택으로 이어갈 수 있도록 dragRef를 세팅해둔다.
   const startLongPress = useCallback(
-    (id) => {
+    (id, clientX, clientY) => {
       if (longPressTimer.current) clearTimeout(longPressTimer.current);
       longPressTimer.current = setTimeout(() => {
         setSelectMode(true);
         setSelectedIds(new Set([id]));
         playSfx?.("click");
         if (navigator.vibrate) navigator.vibrate(20);
+        // long-press로 선택 모드 진입한 직후 그대로 드래그로 이어질 수 있도록
+        // drag 상태를 "활성 + 시작 예정" 상태로 초기화. 첫 타겟은 이미 선택됨 → mode="add".
+        dragRef.current = {
+          active: true,
+          started: false,
+          startX: clientX ?? 0,
+          startY: clientY ?? 0,
+          mode: "add",
+          visited: new Set([id]),  // 시작 썸네일은 이미 선택됐으니 스킵
+          startId: id,
+        };
       }, LONG_PRESS_MS);
     },
     [playSfx]
@@ -168,6 +180,115 @@ export default function WrongNoteGallery({
       }
     },
     [selectMode, playSfx, onOpenDetail]
+  );
+
+  // ===== 드래그 선택 (선택 모드에서만) =====
+  // 한 썸네일을 꾹 누른 후 드래그하면 지나는 썸네일들을 일괄 토글.
+  // 첫 타겟의 선택 상태를 반전시키는 작업(add/remove)이 드래그 내내 유지됨.
+  const DRAG_THRESHOLD = 8; // px — 이보다 많이 움직이면 드래그로 간주
+  const dragRef = useRef({
+    active: false,         // 드래그 중인지
+    started: false,        // 시작 판정 완료 (임계값 넘김)
+    startX: 0,
+    startY: 0,
+    mode: null,            // "add" | "remove" — 첫 타겟의 반전 방향
+    visited: null,         // Set<noteId> — 이번 드래그에서 이미 토글된 id들 (중복 토글 방지)
+    startId: null,         // 시작 시점에 포인터 아래 있던 노트 id
+  });
+
+  const noteIdFromPoint = useCallback((x, y) => {
+    const el = document.elementFromPoint(x, y);
+    if (!el) return null;
+    const target = el.closest?.("[data-note-id]");
+    return target?.getAttribute?.("data-note-id") || null;
+  }, []);
+
+  const onGridPointerDown = useCallback(
+    (e) => {
+      if (!selectMode) return;
+      // 드래그는 primary 버튼(touch 또는 좌클릭)만
+      if (e.button !== undefined && e.button !== 0) return;
+      const id = noteIdFromPoint(e.clientX, e.clientY);
+      if (!id) return;
+      dragRef.current = {
+        active: true,
+        started: false,
+        startX: e.clientX,
+        startY: e.clientY,
+        mode: null,
+        visited: new Set(),
+        startId: id,
+      };
+    },
+    [selectMode, noteIdFromPoint]
+  );
+
+  const onGridPointerMove = useCallback(
+    (e) => {
+      const d = dragRef.current;
+      if (!d.active) return;
+      if (!d.started) {
+        const dx = Math.abs(e.clientX - d.startX);
+        const dy = Math.abs(e.clientY - d.startY);
+        if (dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) return;
+        // 드래그 시작 확정 — 시작 타겟의 현재 선택 상태 반전이 모드
+        d.started = true;
+        const startSelected = selectedIds.has(d.startId);
+        d.mode = startSelected ? "remove" : "add";
+        // 시작 타겟 자체도 토글 (드래그 첫 적용)
+        d.visited.add(d.startId);
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (d.mode === "add") next.add(d.startId);
+          else next.delete(d.startId);
+          return next;
+        });
+        if (navigator.vibrate) navigator.vibrate(10);
+      }
+      // 현재 포인터 아래 썸네일 찾기
+      const id = noteIdFromPoint(e.clientX, e.clientY);
+      if (!id || d.visited.has(id)) return;
+      d.visited.add(id);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (d.mode === "add") next.add(id);
+        else next.delete(id);
+        return next;
+      });
+    },
+    [selectedIds, noteIdFromPoint]
+  );
+
+  const onGridPointerUp = useCallback(() => {
+    const d = dragRef.current;
+    const wasDrag = d.active && d.started;
+    dragRef.current = {
+      active: false,
+      started: false,
+      startX: 0,
+      startY: 0,
+      mode: null,
+      visited: null,
+      startId: null,
+    };
+    // 드래그가 있었다면 이어지는 click 이벤트(탭)를 한 번 무시
+    if (wasDrag) {
+      dragJustEndedRef.current = true;
+      setTimeout(() => {
+        dragJustEndedRef.current = false;
+      }, 0);
+    }
+  }, []);
+
+  const dragJustEndedRef = useRef(false);
+
+  // 썸네일 클릭 — 드래그가 방금 끝난 경우 무시
+  const onThumbClick = useCallback(
+    (id) => {
+      if (dragJustEndedRef.current) return;
+      handleThumbTap(id);
+    },
+    [handleThumbTap]
   );
 
   // finishGalleryGuard ref — 프로그래매틱 close에서 finish 호출하기 위해
@@ -452,10 +573,16 @@ export default function WrongNoteGallery({
         )}
 
         <div
+          onPointerDown={onGridPointerDown}
+          onPointerMove={onGridPointerMove}
+          onPointerUp={onGridPointerUp}
+          onPointerCancel={onGridPointerUp}
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(3, 1fr)",
             gap: 8,
+            // 드래그 선택 중 브라우저 스크롤/제스처 간섭 방지
+            touchAction: selectMode ? "none" : "auto",
           }}
         >
           {activeNotes.map((n) => {
@@ -466,11 +593,15 @@ export default function WrongNoteGallery({
             return (
               <div
                 key={n.id}
-                onClick={() => handleThumbTap(n.id)}
-                onTouchStart={() => startLongPress(n.id)}
+                data-note-id={n.id}
+                onClick={() => onThumbClick(n.id)}
+                onTouchStart={(e) => {
+                  const t = e.touches[0];
+                  startLongPress(n.id, t?.clientX, t?.clientY);
+                }}
                 onTouchEnd={cancelLongPress}
                 onTouchMove={cancelLongPress}
-                onMouseDown={() => startLongPress(n.id)}
+                onMouseDown={(e) => startLongPress(n.id, e.clientX, e.clientY)}
                 onMouseUp={cancelLongPress}
                 onMouseLeave={cancelLongPress}
                 style={{
