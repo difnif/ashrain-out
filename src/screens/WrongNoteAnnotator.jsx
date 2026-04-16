@@ -160,15 +160,10 @@ export default function WrongNoteAnnotator({
     }
   }, [drawing]);
 
-  // 안드로이드 ◁ / 브라우저 ← 가드. 정상 종료 시 반드시 finishBackGuard()로 더미 entry 회수.
-  // (선언 순서: ESC useEffect가 finishBackGuard를 deps에 참조하므로 먼저 선언)
-  const finishBackGuard = useBackGuard(onCancel, true);
-
   // ESC = 취소, Ctrl/Cmd+Z = undo
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") {
-        finishBackGuard();
         onCancel?.();
         return;
       }
@@ -179,11 +174,13 @@ export default function WrongNoteAnnotator({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel, handleUndo, finishBackGuard]);
+  }, [onCancel, handleUndo]);
+
+  // 안드로이드 ◁ / 브라우저 ← 가드: 누르면 메인이 아니라 onCancel로
+  useBackGuard(onCancel, true);
 
   const handleSave = () => {
     playSfx?.("success");
-    finishBackGuard();
     onSave?.(paths);
   };
 
@@ -241,7 +238,6 @@ export default function WrongNoteAnnotator({
         <button
           onClick={() => {
             playSfx?.("click");
-            finishBackGuard();
             onCancel?.();
           }}
           style={{
