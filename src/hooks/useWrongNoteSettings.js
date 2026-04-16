@@ -34,7 +34,7 @@ const DEFAULT_SETTINGS = {
   flags: DEFAULT_FLAGS,
   circles: DEFAULT_CIRCLES,
   longPressMode: "slide",      // "slide" | "tap"
-  autoSaveToDevice: true,      // 사진 촬영 시 기기 다운로드 트리거
+  autoSaveToDevice: false,     // 사진 촬영 시 기기 다운로드 트리거 (기본 OFF — Park 요청)
 };
 
 // 외부에서 import 가능하게 export
