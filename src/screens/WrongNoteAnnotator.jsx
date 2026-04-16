@@ -183,6 +183,7 @@ export default function WrongNoteAnnotator({
   }, [onCancel, handleUndo, finishBackGuard]);
 
   const handleSave = () => {
+    console.log("[Annotator] handleSave");
     playSfx?.("success");
     finishBackGuard();
     onSave?.(paths);
