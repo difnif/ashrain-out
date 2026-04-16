@@ -38,6 +38,112 @@ import { useEffect, useRef, useCallback } from "react";
 
 export const ASHRAIN_INTERNAL_BACK_FLAG = "__ashrainInternalBack";
 
+// ============================================================
+// 진단용 화면 오버레이 (임시 — 디버깅 후 제거 예정)
+// 휴대폰에서 console.log를 못 보기 때문에 화면 우상단에 작은 박스로 로그 표시.
+// 박스 길게 누르면 전체 로그를 클립보드에 복사한다.
+// ============================================================
+function ensureDebugOverlay() {
+  if (typeof document === "undefined") return null;
+  let box = document.getElementById("__ashrain_debug_overlay__");
+  if (box) return box;
+  box = document.createElement("div");
+  box.id = "__ashrain_debug_overlay__";
+  Object.assign(box.style, {
+    position: "fixed",
+    top: "4px",
+    right: "4px",
+    width: "60vw",
+    maxWidth: "320px",
+    maxHeight: "40vh",
+    overflow: "auto",
+    background: "rgba(0,0,0,0.85)",
+    color: "#0f0",
+    fontFamily: "monospace",
+    fontSize: "9px",
+    lineHeight: "1.25",
+    padding: "4px 6px",
+    zIndex: "999999",
+    borderRadius: "4px",
+    pointerEvents: "auto",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-all",
+    border: "1px solid #0f0",
+  });
+  // 길게 누르면 클립보드 복사
+  let pressTimer = null;
+  box.addEventListener("pointerdown", () => {
+    pressTimer = setTimeout(() => {
+      try {
+        const text = box.innerText;
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(text).then(() => {
+            const flash = document.createElement("div");
+            flash.textContent = "✓ COPIED";
+            Object.assign(flash.style, {
+              position: "fixed",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%,-50%)",
+              background: "#0f0",
+              color: "#000",
+              padding: "10px 20px",
+              fontSize: "16px",
+              fontWeight: "bold",
+              zIndex: "9999999",
+              borderRadius: "8px",
+            });
+            document.body.appendChild(flash);
+            setTimeout(() => flash.remove(), 800);
+          });
+        }
+      } catch {}
+    }, 600);
+  });
+  box.addEventListener("pointerup", () => {
+    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+  });
+  box.addEventListener("pointercancel", () => {
+    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+  });
+  // 더블탭으로 클리어
+  let lastTap = 0;
+  box.addEventListener("click", () => {
+    const now = Date.now();
+    if (now - lastTap < 350) {
+      box.innerHTML = "<div style='color:#ff0'>[cleared]</div>";
+    }
+    lastTap = now;
+  });
+  document.body.appendChild(box);
+  return box;
+}
+
+export function dbgLog(...args) {
+  try {
+    const box = ensureDebugOverlay();
+    if (!box) return;
+    const t = new Date();
+    const ts = `${String(t.getSeconds()).padStart(2, "0")}.${String(t.getMilliseconds()).padStart(3, "0")}`;
+    const msg = args.map(a => {
+      if (typeof a === "string") return a;
+      try { return JSON.stringify(a); } catch { return String(a); }
+    }).join(" ");
+    const line = document.createElement("div");
+    line.textContent = `${ts} ${msg}`;
+    box.appendChild(line);
+    box.scrollTop = box.scrollHeight;
+    // 너무 많이 쌓이면 오래된 것 제거
+    while (box.children.length > 200) box.removeChild(box.firstChild);
+  } catch {}
+  // console에도 같이
+  try { console.log(...args); } catch {}
+}
+// 전역 노출 (다른 파일에서도 쉽게 쓰기 위함)
+if (typeof window !== "undefined") {
+  window.__ashrainDbg = dbgLog;
+}
+
 export function useBackGuard(onBack, enabled = true) {
   // popstate가 이미 발화되어 더미 entry가 자연 소진되었는지
   const consumedRef = useRef(false);
@@ -66,16 +172,16 @@ export function useBackGuard(onBack, enabled = true) {
     }
 
     const onPop = (e) => {
-      console.log("[BG] popstate (capture)", {
+      dbgLog("[BG] popstate (capture)", {
         flag: window[ASHRAIN_INTERNAL_BACK_FLAG],
         state: window.history.state,
       });
       if (window[ASHRAIN_INTERNAL_BACK_FLAG]) {
-        console.log("[BG] -> ignored (internal flag)");
+        dbgLog("[BG] -> ignored (internal flag)");
         return;
       }
       e.stopImmediatePropagation();
-      console.log("[BG] -> external back, calling onBack, stopImmediatePropagation");
+      dbgLog("[BG] -> external back, calling onBack, stopImmediatePropagation");
       consumedRef.current = true;
       try {
         onBackRef.current?.();
@@ -84,10 +190,10 @@ export function useBackGuard(onBack, enabled = true) {
       }
     };
     window.addEventListener("popstate", onPop, true);
-    console.log("[BG] mount: pushed dummy + capture listener attached");
+    dbgLog("[BG] mount: pushed dummy + capture listener attached");
 
     return () => {
-      console.log("[BG] cleanup: removing capture listener", {
+      dbgLog("[BG] cleanup: removing capture listener", {
         consumed: consumedRef.current,
         finished: finishedRef.current,
       });
@@ -115,13 +221,13 @@ export function useBackGuard(onBack, enabled = true) {
   // - popstate로 이미 소비됐거나(consumed) 이전에 finish() 호출됐으면 no-op (idempotent)
   // - 현재 history top이 우리 마커가 아니면 안전하게 no-op
   const finish = useCallback(() => {
-    console.log("[BG] finish() called", {
+    dbgLog("[BG] finish() called", {
       consumed: consumedRef.current,
       finished: finishedRef.current,
       state: window.history.state,
     });
     if (consumedRef.current || finishedRef.current) {
-      console.log("[BG] finish() -> no-op");
+      dbgLog("[BG] finish() -> no-op");
       return;
     }
     try {
@@ -134,17 +240,17 @@ export function useBackGuard(onBack, enabled = true) {
         const resetFlag = () => {
           window.removeEventListener("popstate", resetFlag);
           window[ASHRAIN_INTERNAL_BACK_FLAG] = false;
-          console.log("[BG] resetFlag fired -> flag cleared");
+          dbgLog("[BG] resetFlag fired -> flag cleared");
         };
         window.addEventListener("popstate", resetFlag);
         setTimeout(() => {
           window.removeEventListener("popstate", resetFlag);
           window[ASHRAIN_INTERNAL_BACK_FLAG] = false;
         }, 200);
-        console.log("[BG] finish() -> calling history.back(), flag set");
+        dbgLog("[BG] finish() -> calling history.back(), flag set");
         window.history.back();
       } else {
-        console.log("[BG] finish() -> top is NOT our marker, mark finished only");
+        dbgLog("[BG] finish() -> top is NOT our marker, mark finished only");
         finishedRef.current = true;
       }
     } catch {
