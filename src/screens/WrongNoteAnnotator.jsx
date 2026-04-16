@@ -38,8 +38,19 @@ export default function WrongNoteAnnotator({
   const [color, setColor] = useState(HIGHLIGHTER_COLORS[0]);
   const [paths, setPaths] = useState(initialAnnotations);
   const [drawing, setDrawing] = useState(false);
+  // 취소 확인 다이얼로그: 그린 내용이 있을 때 안드로이드 ◁ / 취소 버튼으로 바로 종료 막음
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const currentPathRef = useRef(null);
   const svgRef = useRef(null);
+
+  // 취소 요청 — 그린 내용이 있으면 확인 다이얼로그, 없으면 바로 취소
+  const requestCancel = useCallback(() => {
+    if (paths.length === 0) {
+      onCancel?.();
+      return;
+    }
+    setConfirmCancel(true);
+  }, [paths.length, onCancel]);
 
   // Undo 스택: 매 동작(stroke 완료 / 지우기 / 모두 지우기)마다 직전 paths 상태를 push
   // 메모리 보호를 위해 상한 50
@@ -160,11 +171,16 @@ export default function WrongNoteAnnotator({
     }
   }, [drawing]);
 
-  // ESC = 취소, Ctrl/Cmd+Z = undo
+  // ESC = 취소 요청 (그린 내용 있으면 확인 다이얼로그), Ctrl/Cmd+Z = undo
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") {
-        onCancel?.();
+        // confirmCancel이 떠있으면 먼저 그것부터 닫음
+        if (confirmCancel) {
+          setConfirmCancel(false);
+          return;
+        }
+        requestCancel();
         return;
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")) {
@@ -174,10 +190,19 @@ export default function WrongNoteAnnotator({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel, handleUndo]);
+  }, [requestCancel, handleUndo, confirmCancel]);
 
-  // 안드로이드 ◁ / 브라우저 ← 가드: 누르면 메인이 아니라 onCancel로
-  useBackGuard(onCancel, true);
+  // 안드로이드 ◁ / 브라우저 ← 가드:
+  // - confirmCancel 다이얼로그가 떠있으면 먼저 그것부터 닫음
+  // - 아니면 requestCancel (그린 내용 있으면 다이얼로그 띄움)
+  const onAndroidBack = useCallback(() => {
+    if (confirmCancel) {
+      setConfirmCancel(false);
+      return;
+    }
+    requestCancel();
+  }, [confirmCancel, requestCancel]);
+  useBackGuard(onAndroidBack, true);
 
   const handleSave = () => {
     playSfx?.("success");
@@ -238,7 +263,7 @@ export default function WrongNoteAnnotator({
         <button
           onClick={() => {
             playSfx?.("click");
-            onCancel?.();
+            requestCancel();
           }}
           style={{
             background: "none",
@@ -497,6 +522,97 @@ export default function WrongNoteAnnotator({
           </div>
         )}
       </div>
+
+      {/* 취소 확인 다이얼로그 */}
+      {confirmCancel && (
+        <div
+          onClick={() => setConfirmCancel(false)}
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(0,0,0,0.7)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+            zIndex: 300,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: 280,
+              background: theme.card,
+              borderRadius: 14,
+              padding: 20,
+              border: `1px solid ${theme.border}`,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: theme.text,
+                marginBottom: 6,
+                fontFamily: "'Noto Serif KR', serif",
+              }}
+            >
+              작업을 취소하시겠습니까?
+            </div>
+            <p
+              style={{
+                fontSize: 11,
+                color: theme.textSec,
+                marginBottom: 14,
+                wordBreak: "keep-all",
+                fontFamily: "'Noto Serif KR', serif",
+              }}
+            >
+              지금까지 그린 표시가 모두 사라져요.
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => {
+                  playSfx?.("click");
+                  setConfirmCancel(false);
+                }}
+                style={{
+                  flex: 1,
+                  padding: "10px",
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 10,
+                  background: theme.bg,
+                  color: theme.text,
+                  cursor: "pointer",
+                  fontFamily: "'Noto Serif KR', serif",
+                }}
+              >
+                아니오
+              </button>
+              <button
+                onClick={() => {
+                  playSfx?.("click");
+                  setConfirmCancel(false);
+                  onCancel?.();
+                }}
+                style={{
+                  flex: 1,
+                  padding: "10px",
+                  border: `1px solid ${PASTEL.coral}`,
+                  borderRadius: 10,
+                  background: PASTEL.coral,
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontFamily: "'Noto Serif KR', serif",
+                  fontWeight: 700,
+                }}
+              >
+                예
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
