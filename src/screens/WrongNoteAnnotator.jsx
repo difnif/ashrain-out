@@ -13,7 +13,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { PASTEL } from "../config";
-import { useBackGuard } from "../hooks/useBackGuard";
+import { useBackGuard, dbgLog } from "../hooks/useBackGuard";
 
 const HIGHLIGHTER_COLORS = ["#FFEB3B", "#FFCDD2", "#C8E6C9", "#BBDEFB"];
 const PENCIL_COLORS = ["#212121", "#D32F2F", "#1976D2", "#388E3C"];
@@ -165,6 +165,11 @@ export default function WrongNoteAnnotator({
   // (선언 순서 주의: 아래 ESC useEffect가 finishBackGuard를 deps에 참조하므로 먼저 선언)
   const finishBackGuard = useBackGuard(onCancel, true);
 
+  useEffect(() => {
+    dbgLog("[Ann] MOUNT");
+    return () => dbgLog("[Ann] UNMOUNT");
+  }, []);
+
   // ESC = 취소, Ctrl/Cmd+Z = undo
   useEffect(() => {
     const onKey = (e) => {
@@ -183,7 +188,7 @@ export default function WrongNoteAnnotator({
   }, [onCancel, handleUndo, finishBackGuard]);
 
   const handleSave = () => {
-    console.log("[Annotator] handleSave");
+    dbgLog("[Ann] handleSave");
     playSfx?.("success");
     finishBackGuard();
     onSave?.(paths);
