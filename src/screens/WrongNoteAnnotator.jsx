@@ -13,7 +13,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { PASTEL } from "../config";
-import { useBackGuard } from "../hooks/useBackGuard";
+import { useBackGuard, dbgLog } from "../hooks/useBackGuard";
 
 const HIGHLIGHTER_COLORS = ["#FFEB3B", "#FFCDD2", "#C8E6C9", "#BBDEFB"];
 const PENCIL_COLORS = ["#212121", "#D32F2F", "#1976D2", "#388E3C"];
@@ -47,6 +47,7 @@ export default function WrongNoteAnnotator({
 
   // 취소 요청 — 그린 내용이 있으면 확인 다이얼로그, 없으면 바로 취소
   const requestCancel = useCallback(() => {
+    dbgLog("[Ann] requestCancel", { paths: paths.length });
     if (paths.length === 0) {
       // 정상 종료: 더미 history entry 회수 후 onCancel
       finishBackGuardRef.current?.();
@@ -201,6 +202,7 @@ export default function WrongNoteAnnotator({
   // - 아니면 requestCancel (그린 내용 있으면 다이얼로그 띄움)
   // finish는 정상 종료(저장/취소확정/다이얼로그 "예") 시 호출해서 더미 entry 회수
   const onAndroidBack = useCallback(() => {
+    dbgLog("[Ann] onAndroidBack", { confirmCancel });
     if (confirmCancel) {
       setConfirmCancel(false);
       return;
@@ -211,10 +213,16 @@ export default function WrongNoteAnnotator({
   finishBackGuardRef.current = finishBackGuard;
 
   const handleSave = () => {
+    dbgLog("[Ann] handleSave", { paths: paths.length });
     playSfx?.("success");
     finishBackGuard();
     onSave?.(paths);
   };
+
+  useEffect(() => {
+    dbgLog("[Ann] MOUNT");
+    return () => dbgLog("[Ann] UNMOUNT");
+  }, []);
 
   const handleClear = () => {
     if (paths.length === 0) return;
