@@ -13,7 +13,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { PASTEL } from "../config";
-import { useBackGuard, dbgLog } from "../hooks/useBackGuard";
+import { useBackGuard } from "../hooks/useBackGuard";
 
 const HIGHLIGHTER_COLORS = ["#FFEB3B", "#FFCDD2", "#C8E6C9", "#BBDEFB"];
 const PENCIL_COLORS = ["#212121", "#D32F2F", "#1976D2", "#388E3C"];
@@ -160,15 +160,9 @@ export default function WrongNoteAnnotator({
     }
   }, [drawing]);
 
-  // 안드로이드 ◁ / 브라우저 ← 가드: 누르면 메인이 아니라 onCancel로.
-  // 정상 종료 경로(저장/취소/ESC)에서는 반드시 finish()를 호출해 더미 history entry를 회수.
-  // (선언 순서 주의: 아래 ESC useEffect가 finishBackGuard를 deps에 참조하므로 먼저 선언)
+  // 안드로이드 ◁ / 브라우저 ← 가드. 정상 종료 시 반드시 finishBackGuard()로 더미 entry 회수.
+  // (선언 순서: ESC useEffect가 finishBackGuard를 deps에 참조하므로 먼저 선언)
   const finishBackGuard = useBackGuard(onCancel, true);
-
-  useEffect(() => {
-    dbgLog("[Ann] MOUNT");
-    return () => dbgLog("[Ann] UNMOUNT");
-  }, []);
 
   // ESC = 취소, Ctrl/Cmd+Z = undo
   useEffect(() => {
@@ -188,7 +182,6 @@ export default function WrongNoteAnnotator({
   }, [onCancel, handleUndo, finishBackGuard]);
 
   const handleSave = () => {
-    dbgLog("[Ann] handleSave");
     playSfx?.("success");
     finishBackGuard();
     onSave?.(paths);
