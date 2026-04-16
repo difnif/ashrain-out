@@ -5,110 +5,45 @@
 // 안드로이드 ◁ 뒤로가기 / 브라우저 ← 버튼이 onBack 콜백으로 흘러가게 한다.
 //
 // 동작:
-//   1) 마운트 시 history.pushState(...)로 더미 state 추가
-//   2) popstate 이벤트 핸들러 등록 (capture phase): 발생 시 onBack() 호출
-//      + stopImmediatePropagation으로 다른 popstate listener(App.jsx 등) 차단
-//   3) 언마운트 / enabled=false 시 — 리스너만 제거. history는 건드리지 않는다.
-//      정상 종료 경로(저장/취소 버튼, "예" 확인 등)에서 소비자가 finish()를 호출해
-//      더미 entry를 회수해야 한다.
+//   1) enabled=true 마운트 시 history.pushState(...)로 더미 entry 추가
+//      + 글로벌 activeGuards 카운터 +1
+//   2) popstate 이벤트 핸들러 등록: 발생 시 onBack() 호출
+//   3) 언마운트 / enabled=false 시 — 리스너 제거 + activeGuards -1.
+//      history는 건드리지 않는다. 정상 종료 경로는 finish()를 호출해야 한다.
 //
 // 사용:
 //   const finish = useBackGuard(onCancel, true);
 //   const handleSave = () => { finish(); onSave?.(data); };
 //
+// === 컨테이너 협조 ===
+// WrongNoteScreen 같은 상위 컨테이너의 popstate listener는 isGuardActive()를
+// 체크해서 활성 guard가 있으면 자신의 처리를 skip해야 한다.
+// (useBackGuard의 listener와 컨테이너 listener가 같은 popstate를 둘 다 처리하면
+//  화면이 두 단계 빠지는 버그 발생)
+//
 // === App.jsx 호환 ===
 // App.jsx popstate 핸들러가 screen 없는 state를 "menu"로 fallback 보냄.
-// 따라서 더미 entry에도 현재 screen 값을 보존해서 history.back() 시 의도치 않은 화면 이동 방지.
+// 따라서 더미 entry에도 현재 screen 값을 보존해 화면 이탈 방지.
 //
-// === 글로벌 마커 ===
-// finish()가 발생시킨 history.back()은 같은 stack의 popstate 리스너에서
-// 외부 ◁로 오인될 수 있음 → ASHRAIN_INTERNAL_BACK_FLAG 플래그로 구분.
+// === 내부 back 마커 ===
+// finish()가 발생시킨 history.back()은 activeGuards 체크만으로는 외부 ◁와 구분 불가
+// (finish 호출 시점에 아직 마운트 상태라 activeGuards > 0).
+// → ASHRAIN_INTERNAL_BACK_FLAG 플래그로 한 번의 popstate 동안 "이건 내부 back" 표시.
 
 import { useEffect, useRef, useCallback } from "react";
 
 export const ASHRAIN_INTERNAL_BACK_FLAG = "__ashrainInternalBack";
 
-// ============================================================
-// 진단용 화면 오버레이 (임시)
-// 박스 길게 누르면 클립보드 복사, 더블탭으로 clear
-// ============================================================
-function ensureDebugOverlay() {
-  if (typeof document === "undefined") return null;
-  let box = document.getElementById("__ashrain_debug_overlay__");
-  if (box) return box;
-  box = document.createElement("div");
-  box.id = "__ashrain_debug_overlay__";
-  Object.assign(box.style, {
-    position: "fixed", top: "4px", right: "4px", width: "60vw", maxWidth: "320px",
-    maxHeight: "40vh", overflow: "auto", background: "rgba(0,0,0,0.85)",
-    color: "#0f0", fontFamily: "monospace", fontSize: "9px", lineHeight: "1.25",
-    padding: "4px 6px", zIndex: "999999", borderRadius: "4px",
-    pointerEvents: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all",
-    border: "1px solid #0f0",
-  });
-  let pressTimer = null;
-  box.addEventListener("pointerdown", () => {
-    pressTimer = setTimeout(() => {
-      try {
-        const text = box.innerText;
-        if (navigator.clipboard) {
-          navigator.clipboard.writeText(text).then(() => {
-            const flash = document.createElement("div");
-            flash.textContent = "✓ COPIED";
-            Object.assign(flash.style, {
-              position: "fixed", top: "50%", left: "50%",
-              transform: "translate(-50%,-50%)", background: "#0f0",
-              color: "#000", padding: "10px 20px", fontSize: "16px",
-              fontWeight: "bold", zIndex: "9999999", borderRadius: "8px",
-            });
-            document.body.appendChild(flash);
-            setTimeout(() => flash.remove(), 800);
-          });
-        }
-      } catch {}
-    }, 600);
-  });
-  box.addEventListener("pointerup", () => {
-    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
-  });
-  box.addEventListener("pointercancel", () => {
-    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
-  });
-  let lastTap = 0;
-  box.addEventListener("click", () => {
-    const now = Date.now();
-    if (now - lastTap < 350) box.innerHTML = "<div style='color:#ff0'>[cleared]</div>";
-    lastTap = now;
-  });
-  document.body.appendChild(box);
-  return box;
+// 글로벌 활성 guard 카운터. 컨테이너가 isGuardActive()로 조회해서 popstate 처리를 양보한다.
+let _activeGuards = 0;
+export function isGuardActive() {
+  return _activeGuards > 0;
 }
-
-export function dbgLog(...args) {
-  try {
-    const box = ensureDebugOverlay();
-    if (!box) return;
-    const t = new Date();
-    const ts = `${String(t.getSeconds()).padStart(2, "0")}.${String(t.getMilliseconds()).padStart(3, "0")}`;
-    const msg = args.map(a => {
-      if (typeof a === "string") return a;
-      try { return JSON.stringify(a); } catch { return String(a); }
-    }).join(" ");
-    const line = document.createElement("div");
-    line.textContent = `${ts} ${msg}`;
-    box.appendChild(line);
-    box.scrollTop = box.scrollHeight;
-    while (box.children.length > 200) box.removeChild(box.firstChild);
-  } catch {}
-  try { console.log(...args); } catch {}
-}
-if (typeof window !== "undefined") window.__ashrainDbg = dbgLog;
 
 export function useBackGuard(onBack, enabled = true) {
-  const consumedRef = useRef(false);  // popstate가 이미 발화되었는지
-  const finishedRef = useRef(false);  // finish()가 이미 호출되었는지
+  const consumedRef = useRef(false);
+  const finishedRef = useRef(false);
 
-  // onBack은 매 렌더마다 새 함수일 수 있으므로 ref로 항상 최신 보관 (stale closure 방지)
   const onBackRef = useRef(onBack);
   useEffect(() => {
     onBackRef.current = onBack;
@@ -128,20 +63,18 @@ export function useBackGuard(onBack, enabled = true) {
     };
     try {
       window.history.pushState(marker, "");
-      dbgLog("[BG] MOUNT pushState", { screen: currentScreen });
     } catch (e) {
       console.warn("[useBackGuard] pushState failed:", e);
       return;
     }
 
+    // 활성 guard 카운터 증가 — 컨테이너는 이 상태를 체크해 popstate 처리를 양보
+    _activeGuards += 1;
+
     const onPop = (e) => {
-      dbgLog("[BG] popstate cap", { flag: window[ASHRAIN_INTERNAL_BACK_FLAG], state: window.history.state });
-      if (window[ASHRAIN_INTERNAL_BACK_FLAG]) {
-        dbgLog("[BG] ignored (internal flag)");
-        return;
-      }
-      e.stopImmediatePropagation();
-      dbgLog("[BG] external back -> onBack");
+      // finish()가 발생시킨 내부 back이면 무시
+      if (window[ASHRAIN_INTERNAL_BACK_FLAG]) return;
+      // 외부 ◁ 트리거 → onBack 호출. 컨테이너는 activeGuards > 0 보고 자신의 처리 skip함.
       consumedRef.current = true;
       try {
         onBackRef.current?.();
@@ -149,39 +82,39 @@ export function useBackGuard(onBack, enabled = true) {
         console.error("[useBackGuard] onBack error:", err);
       }
     };
-    window.addEventListener("popstate", onPop, true);
+    window.addEventListener("popstate", onPop);
 
     return () => {
-      dbgLog("[BG] CLEANUP", { consumed: consumedRef.current, finished: finishedRef.current });
-      window.removeEventListener("popstate", onPop, true);
+      window.removeEventListener("popstate", onPop);
+      _activeGuards = Math.max(0, _activeGuards - 1);
+      // history는 건드리지 않는다. 정상 종료는 소비자가 finish()를 먼저 호출.
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 
+  // 정상 종료 시 호출: 더미 history entry를 회수한다.
   const finish = useCallback(() => {
-    dbgLog("[BG] finish()", { consumed: consumedRef.current, finished: finishedRef.current, isMarker: window.history.state?.__ashrainBackGuard });
-    if (consumedRef.current || finishedRef.current) {
-      dbgLog("[BG] finish() -> no-op");
-      return;
-    }
+    if (consumedRef.current || finishedRef.current) return;
     try {
-      if (window.history.state && window.history.state.__ashrainBackGuard) {
+      if (
+        window.history.state &&
+        window.history.state.__ashrainBackGuard
+      ) {
         finishedRef.current = true;
         window[ASHRAIN_INTERNAL_BACK_FLAG] = true;
+        // popstate 발화 후 flag reset (setTimeout race 방지 위해 일회용 listener)
         const resetFlag = () => {
           window.removeEventListener("popstate", resetFlag);
           window[ASHRAIN_INTERNAL_BACK_FLAG] = false;
-          dbgLog("[BG] flag reset");
         };
         window.addEventListener("popstate", resetFlag);
+        // 안전망
         setTimeout(() => {
           window.removeEventListener("popstate", resetFlag);
           window[ASHRAIN_INTERNAL_BACK_FLAG] = false;
         }, 200);
-        dbgLog("[BG] finish -> history.back()");
         window.history.back();
       } else {
-        dbgLog("[BG] finish -> top NOT marker, mark finished only");
         finishedRef.current = true;
       }
     } catch {
