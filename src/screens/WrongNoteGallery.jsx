@@ -522,7 +522,6 @@ export default function WrongNoteGallery({
             ref={fileRef}
             type="file"
             accept="image/*"
-            capture="environment"
             multiple
             onChange={handleFile}
             style={{ display: "none" }}
