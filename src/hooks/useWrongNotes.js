@@ -1,16 +1,18 @@
 // ============================================================
 // ashrain.out — useWrongNotes
 // ============================================================
-// 오답노트 CRUD 훅. IndexedDB(wrongNoteDB)에 영속화.
+// 오답노트 CRUD 훅.
+// - Firestore(per-user doc `wrongNotes_${userId}`.notes): 서버 영속화 (source of truth)
+// - IndexedDB(wrongNoteDB): 로컬 오프라인 캐시 (네트워크 없이도 빠른 초기 로드)
 // 사진 파이프라인은 ProblemScreen.jsx와 동일 (max 1024px, JPEG 0.85).
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   dbPutNote,
   dbGetAllNotes,
   dbDeleteNote,
-  dbBulkUpdate,
 } from "../lib/wrongNoteDB";
+import { useFirestoreSync } from "./useFirestoreSync";
 
 const MAX_DIM = 1024;
 const JPEG_QUALITY = 0.85;
@@ -56,7 +58,8 @@ export function useWrongNotes(user) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // 초기 로드: IndexedDB → state
+  // 1단계: 초기 로드 — IndexedDB에서 빠르게 캐시 로드 (오프라인 대비)
+  // 2단계: useFirestoreSync가 자동으로 Firestore에서 실제 데이터를 받아와 덮어씀
   useEffect(() => {
     let alive = true;
     setLoading(true);
@@ -68,7 +71,7 @@ export function useWrongNotes(user) {
         setLoading(false);
       })
       .catch((e) => {
-        console.error("[useWrongNotes] load error:", e);
+        console.error("[useWrongNotes] IndexedDB load error:", e);
         if (!alive) return;
         setError(e);
         setLoading(false);
@@ -78,7 +81,46 @@ export function useWrongNotes(user) {
     };
   }, [userId]);
 
+  // Firestore sync: per-user 문서 `wrongNotes_${userId}`의 notes 필드에 전체 배열 저장.
+  // useFirestoreSync가 mount 시 원격 데이터를 로드해 local state를 덮어씀.
+  // local state가 바뀌면 자동으로 Firestore에 write.
+  useFirestoreSync(
+    `wrongNotes_${userId}`,
+    "notes",
+    notes,
+    setNotes,
+    []
+  );
+
+  // IndexedDB 오프라인 캐시를 최신 상태로 유지.
+  // Firestore에서 새 데이터가 올 때도, 로컬 mutation이 있을 때도 같이 호출된다.
+  // (중복 호출이 있어도 dbPutNote는 idempotent해서 문제 없음)
+  const prevIdsRef = useRef(null);
+  useEffect(() => {
+    if (loading) return;
+    // 모든 현재 노트를 IDB에 put
+    notes.forEach((n) => {
+      dbPutNote(n).catch((e) =>
+        console.warn("[useWrongNotes] IDB cache put failed:", e)
+      );
+    });
+    // 이전에 있었으나 지금 없는 노트는 IDB에서 삭제
+    const currentIds = new Set(notes.map((n) => n.id));
+    if (prevIdsRef.current) {
+      prevIdsRef.current.forEach((id) => {
+        if (!currentIds.has(id)) {
+          dbDeleteNote(id).catch((e) =>
+            console.warn("[useWrongNotes] IDB cache delete failed:", e)
+          );
+        }
+      });
+    }
+    prevIdsRef.current = currentIds;
+  }, [notes, loading]);
+
   // 새 노트 추가 (파일 업로드 / 카메라 촬영)
+  // state 업데이트만 하면 useFirestoreSync가 Firestore에 자동 동기화하고,
+  // 위의 useEffect가 IDB 캐시도 갱신한다.
   const addNoteFromFile = useCallback(
     async (file) => {
       if (!file) return null;
@@ -90,16 +132,15 @@ export function useWrongNotes(user) {
           photoBase64: dataUrl,
           photoW: width,
           photoH: height,
-          rangeLabelId: null,    // 깃발(시험 범위) ID
-          typeLabelId: null,     // 동그라미(오답 유형) ID
-          annotations: [],       // SVG path 객체 배열 [{tool, color, width, d}]
-          annotationsVisible: true, // 아래 스와이프로 토글
-          studyCount: 0,         // 카운트/디스카운트 누적
-          active: true,          // 활성(학습큐) vs 아카이브
+          rangeLabelId: null,
+          typeLabelId: null,
+          annotations: [],
+          annotationsVisible: true,
+          studyCount: 0,
+          active: true,
           createdAt: Date.now(),
           updatedAt: Date.now(),
         };
-        await dbPutNote(note);
         setNotes((prev) => [note, ...prev]);
         return note;
       } catch (e) {
@@ -111,48 +152,26 @@ export function useWrongNotes(user) {
   );
 
   // 단일 노트 patch
-  const updateNote = useCallback(async (id, patch) => {
-    let updated = null;
-    setNotes((prev) => {
-      const next = prev.map((n) => {
-        if (n.id !== id) return n;
-        updated = { ...n, ...patch, updatedAt: Date.now() };
-        return updated;
-      });
-      return next;
-    });
-    if (updated) {
-      try {
-        await dbPutNote(updated);
-      } catch (e) {
-        console.error("[useWrongNotes] updateNote write:", e);
-      }
-    }
+  const updateNote = useCallback((id, patch) => {
+    setNotes((prev) =>
+      prev.map((n) =>
+        n.id === id ? { ...n, ...patch, updatedAt: Date.now() } : n
+      )
+    );
   }, []);
 
   // 노트 삭제
-  const deleteNote = useCallback(async (id) => {
-    try {
-      await dbDeleteNote(id);
-    } catch (e) {
-      console.error("[useWrongNotes] deleteNote:", e);
-    }
+  const deleteNote = useCallback((id) => {
     setNotes((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
   // 여러 노트 일괄 patch (분류 동기화용)
-  const bulkUpdate = useCallback(async (ids, patch) => {
+  const bulkUpdate = useCallback((ids, patch) => {
     if (!ids || ids.length === 0) return;
-    try {
-      await dbBulkUpdate(ids, patch);
-    } catch (e) {
-      console.error("[useWrongNotes] bulkUpdate:", e);
-    }
+    const idSet = new Set(ids);
     setNotes((prev) =>
       prev.map((n) =>
-        ids.includes(n.id)
-          ? { ...n, ...patch, updatedAt: Date.now() }
-          : n
+        idSet.has(n.id) ? { ...n, ...patch, updatedAt: Date.now() } : n
       )
     );
   }, []);
