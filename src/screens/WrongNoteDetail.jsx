@@ -17,7 +17,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { PASTEL } from "../config";
 import WrongNoteAnnotator from "./WrongNoteAnnotator";
-import { useBackGuard } from "../hooks/useBackGuard";
+import { useBackGuard, dbgLog } from "../hooks/useBackGuard";
 
 const LONG_PRESS_MS = 450;
 const SWIPE_MIN_DIST = 50;
@@ -76,9 +76,15 @@ export default function WrongNoteDetail({
   // finishModalGuard ref — TDZ 회피 (아래 ESC/handleBack에서 참조 필요)
   const finishModalGuardRef = useRef(null);
 
+  useEffect(() => {
+    dbgLog("[Det] MOUNT");
+    return () => dbgLog("[Det] UNMOUNT");
+  }, []);
+
   // 모달용 가드: picker 또는 confirmDelete가 열렸을 때만 활성.
   // 외부 ◁ 트리거 시 closeTopModal이 호출됨. 이 경로에서는 popstate가 이미 entry를 소비했으므로 finish 호출 불필요.
   const closeTopModal = useCallback(() => {
+    dbgLog("[Det] closeTopModal (external back)", { picker, confirmDelete });
     if (picker) {
       setPicker(null);
       setHoverPickerId(null);
@@ -92,11 +98,13 @@ export default function WrongNoteDetail({
 
   // 프로그래매틱 close 헬퍼 — 외부 ◁가 아닌 경로에서 호출. finish()로 더미 entry 회수.
   const closePicker = useCallback(() => {
+    dbgLog("[Det] closePicker");
     finishModalGuardRef.current?.();
     setPicker(null);
     setHoverPickerId(null);
   }, []);
   const closeConfirmDelete = useCallback(() => {
+    dbgLog("[Det] closeConfirmDelete");
     finishModalGuardRef.current?.();
     setConfirmDelete(false);
   }, []);
@@ -152,6 +160,7 @@ export default function WrongNoteDetail({
   // 분류 적용
   const assignFlag = useCallback(
     (flagId) => {
+      dbgLog("[Det] assignFlag", flagId);
       if (!note) return;
       updateNote(note.id, { rangeLabelId: flagId });
       playSfx?.("success");
@@ -162,6 +171,7 @@ export default function WrongNoteDetail({
   );
   const assignCircle = useCallback(
     (circleId) => {
+      dbgLog("[Det] assignCircle", circleId);
       if (!note) return;
       updateNote(note.id, { typeLabelId: circleId });
       playSfx?.("success");
@@ -465,11 +475,15 @@ export default function WrongNoteDetail({
         photoH={note.photoH || 1024}
         initialAnnotations={note.annotations || []}
         onSave={(anns) => {
+          dbgLog("[Det] Annotator.onSave", { len: anns?.length });
           setAnnotations(note.id, anns);
           setAnnotatorOpen(false);
           showMsg?.("표시 저장됨", 1200);
         }}
-        onCancel={() => setAnnotatorOpen(false)}
+        onCancel={() => {
+          dbgLog("[Det] Annotator.onCancel");
+          setAnnotatorOpen(false);
+        }}
       />
     );
   }
