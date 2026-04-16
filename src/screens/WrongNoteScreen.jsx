@@ -18,7 +18,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWrongNotes } from "../hooks/useWrongNotes";
 import { useWrongNoteSettings } from "../hooks/useWrongNoteSettings";
-import { ASHRAIN_INTERNAL_BACK_FLAG } from "../hooks/useBackGuard";
+import { ASHRAIN_INTERNAL_BACK_FLAG, dbgLog } from "../hooks/useBackGuard";
 import WrongNoteGallery from "./WrongNoteGallery";
 import WrongNoteDetail from "./WrongNoteDetail";
 import WrongNoteSettings from "./WrongNoteSettings";
@@ -46,6 +46,7 @@ function WrongNoteRouter({
 
   // sub-view push: stack에 새 view 추가 + history.pushState
   const pushView = useCallback((view) => {
+    dbgLog("[WN] pushView", view);
     setStack((s) => [...s, view]);
     try {
       window.history.pushState(
@@ -59,18 +60,19 @@ function WrongNoteRouter({
 
   // sub-view pop: stack에서 마지막 제거 + history.back (단, 외부 ◁가 트리거한 pop이면 history.back 생략)
   const popView = useCallback((triggeredByPopState) => {
+    dbgLog("[WN] popView", { triggeredByPopState });
     setStack((s) => {
+      dbgLog("[WN] popView setStack before=", s);
       if (s.length <= 1) {
-        // stack에 gallery만 남음 → 컨테이너 종료(홈으로)
-        // 외부 popstate가 트리거한 경우는 history가 이미 한 단계 뒤로 갔으므로
-        // 추가로 setScreen만 하면 됨
+        dbgLog("[WN] -> setScreen(student-home)");
         setScreen?.("student-home");
         return s;
       }
-      return s.slice(0, -1);
+      const next = s.slice(0, -1);
+      dbgLog("[WN] -> stack now=", next);
+      return next;
     });
     if (!triggeredByPopState) {
-      // UI에서 호출된 경우(헤더 ←, 갤러리 ← 등) → history도 동기화
       try {
         if (
           window.history.state &&
@@ -88,17 +90,17 @@ function WrongNoteRouter({
   // popstate 핸들러: 안드로이드 ◁ / 브라우저 ←
   useEffect(() => {
     const onPop = (e) => {
-      // useBackGuard 인스턴스가 cleanup으로 발화시킨 back이면 무시
-      // (예: Detail의 picker 모달이 코드로 닫힐 때)
+      dbgLog("[WN] popstate bubble", { flag: window[ASHRAIN_INTERNAL_BACK_FLAG], internalPop: internalPopRef.current, state: window.history.state });
       if (window[ASHRAIN_INTERNAL_BACK_FLAG]) {
+        dbgLog("[WN] -> ignored (internal flag)");
         return;
       }
       if (internalPopRef.current) {
-        // 우리가 history.back()을 호출해서 발생한 popstate → 무시 (이미 stack pop 됨)
+        dbgLog("[WN] -> ignored (internalPopRef)");
         internalPopRef.current = false;
         return;
       }
-      // 외부 ◁ 트리거 → stack pop
+      dbgLog("[WN] -> external back, popView(true)");
       popView(true);
     };
     window.addEventListener("popstate", onPop);
