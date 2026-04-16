@@ -166,11 +166,9 @@ export default function WrongNoteGallery({
     [selectMode, playSfx, onOpenDetail]
   );
 
-  const exitSelectMode = useCallback(() => {
-    setSelectMode(false);
-    setSelectedIds(new Set());
-    setSyncDialog(false);
-  }, []);
+  // finishGalleryGuard를 ref에 저장 — selectMode/syncDialog enabled가 false로 바뀔 때
+  // (프로그래매틱 close) finish 호출해서 더미 history entry 회수해야 함.
+  const finishGalleryGuardRef = useRef(null);
 
   // 안드로이드 ◁ / 브라우저 ← 가드 — selectMode 또는 syncDialog가 열렸을 때 활성.
   // 외부 ◁를 한 단계씩 소모: syncDialog → selectMode → (가드 꺼지면 컨테이너가 홈으로)
@@ -180,16 +178,31 @@ export default function WrongNoteGallery({
       return;
     }
     if (selectMode) {
-      exitSelectMode();
+      // 외부 ◁가 여기 들어옴 — popstate가 이미 entry 소비, finish 호출 불필요
+      setSelectMode(false);
+      setSelectedIds(new Set());
+      setSyncDialog(false);
     }
-  }, [syncDialog, selectMode, exitSelectMode]);
+  }, [syncDialog, selectMode]);
   const galleryModalOpen = selectMode || syncDialog;
-  useBackGuard(onAndroidBack, galleryModalOpen);
+  const finishGalleryGuard = useBackGuard(onAndroidBack, galleryModalOpen);
+  finishGalleryGuardRef.current = finishGalleryGuard;
+
+  // 프로그래매틱으로 select/dialog를 닫을 때는 finish() 호출해 entry 회수.
+  const exitSelectMode = useCallback(() => {
+    finishGalleryGuardRef.current?.();
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setSyncDialog(false);
+  }, []);
 
   // 통합 뒤로가기 — syncDialog → selectMode → 갤러리 종료(홈) 우선순위
   // 헤더 ← 버튼에서 사용.
   const handleBack = useCallback(() => {
     if (syncDialog) {
+      // syncDialog만 닫을 때: 아직 selectMode가 남아있으므로 enabled=true 유지,
+      // 하지만 현재 entry는 syncDialog용이라 finish로 회수해야 다음 ◁가 selectMode를 닫을 수 있음.
+      // (enabled가 false로 가지 않으므로 마운트된 pushState entry는 하나뿐 → finish 불필요)
       setSyncDialog(false);
       return;
     }
