@@ -6,28 +6,33 @@
 //
 // 동작:
 //   1) 마운트 시 history.pushState(...)로 더미 state 추가
-//   2) popstate 이벤트 핸들러 등록: 발생 시 onBack() 호출
-//   3) 언마운트 시 — 아직 더미 state가 살아 있으면 history.back()으로 정리
-//      (정상 종료(onBack 호출 후 언마운트) 시에는 popstate가 이미 처리됐으므로 skip)
+//   2) popstate 이벤트 핸들러 등록 (capture phase): 발생 시 onBack() 호출
+//      + stopImmediatePropagation으로 다른 popstate listener(App.jsx 등) 차단
+//   3) 언마운트 / enabled=false 시 — 리스너만 제거. history는 건드리지 않는다.
+//      정상 종료 경로(저장/취소 버튼, "예" 확인 등)에서 소비자가 finish()를 호출해
+//      더미 entry를 회수해야 한다.
 //
 // 사용:
-//   useBackGuard(onCancel, true);  // 두 번째 인자: enabled (조건부 가드)
+//   const finish = useBackGuard(onCancel, true);
+//   const handleSave = () => { finish(); onSave?.(data); };
+//
+// === App.jsx 호환 ===
+// App.jsx popstate 핸들러가 screen 없는 state를 "menu"로 fallback 보냄.
+// 따라서 더미 entry에도 현재 screen 값을 보존해서 history.back() 시 의도치 않은 화면 이동 방지.
 //
 // === 글로벌 마커 ===
-// 여러 useBackGuard 인스턴스(컨테이너 + 모달)가 같은 history stack을 공유한다.
-// 모달이 코드로 닫힐 때 cleanup이 history.back()을 호출하면, 컨테이너의
-// popstate 리스너가 이를 외부 ◁ 트리거로 오인할 수 있다.
-// → window.__ashrainInternalBack 플래그를 잠깐 세워서, 컨테이너의 popstate
-//   리스너가 이를 보면 무시하도록 한다. 컨테이너 측에서도 동일한 플래그 검사 필요.
+// finish()가 발생시킨 history.back()은 같은 stack의 popstate 리스너에서
+// 외부 ◁로 오인될 수 있음 → ASHRAIN_INTERNAL_BACK_FLAG 플래그로 구분.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 
 export const ASHRAIN_INTERNAL_BACK_FLAG = "__ashrainInternalBack";
 
 export function useBackGuard(onBack, enabled = true) {
-  const consumedRef = useRef(false); // popstate가 이미 발화되었는지
-  // onBack은 매 렌더마다 새 함수일 수 있다.
-  // 마운트 시 클로저로 캡처하면 stale closure 버그가 생기므로 ref로 항상 최신 보관.
+  const consumedRef = useRef(false);  // popstate가 이미 발화되었는지
+  const finishedRef = useRef(false);  // finish()가 이미 호출되었는지
+
+  // onBack은 매 렌더마다 새 함수일 수 있으므로 ref로 항상 최신 보관 (stale closure 방지)
   const onBackRef = useRef(onBack);
   useEffect(() => {
     onBackRef.current = onBack;
@@ -36,10 +41,9 @@ export function useBackGuard(onBack, enabled = true) {
   useEffect(() => {
     if (!enabled) return;
     consumedRef.current = false;
+    finishedRef.current = false;
 
-    // 더미 state push — 같은 URL로 새 history entry 추가
-    // App.jsx popstate 핸들러가 screen 없는 state를 "menu"로 보내므로,
-    // 현재 state의 screen 값을 보존해 history.back() 시 화면 이탈을 방지.
+    // 현재 state의 screen 값을 보존 (App.jsx popstate fallback 방지)
     const currentScreen = window.history.state?.screen;
     const marker = {
       __ashrainBackGuard: true,
@@ -54,9 +58,10 @@ export function useBackGuard(onBack, enabled = true) {
     }
 
     const onPop = (e) => {
-      // 우리(혹은 다른 useBackGuard)가 의도적으로 발생시킨 back 이벤트면 무시
+      // 우리(혹은 다른 useBackGuard)의 finish()가 발생시킨 back 이벤트면 무시
       if (window[ASHRAIN_INTERNAL_BACK_FLAG]) return;
-      // popstate 발생 = 사용자가 ◁ 또는 ← 누름 → 최신 onBack 호출
+      // 외부 ◁ 트리거 → 다른 popstate listener(App.jsx 등) 전파 차단 + onBack 호출
+      e.stopImmediatePropagation();
       consumedRef.current = true;
       try {
         onBackRef.current?.();
@@ -64,32 +69,49 @@ export function useBackGuard(onBack, enabled = true) {
         console.error("[useBackGuard] onBack error:", err);
       }
     };
-    window.addEventListener("popstate", onPop);
+    // capture phase 등록 — App.jsx의 bubble phase listener보다 먼저 받기 위함
+    window.addEventListener("popstate", onPop, true);
 
     return () => {
-      window.removeEventListener("popstate", onPop);
-      // 정상 종료 시 (popstate 없이 컴포넌트가 사라진 경우) 더미 entry를 pop
-      if (!consumedRef.current) {
-        try {
-          if (
-            window.history.state &&
-            window.history.state.__ashrainBackGuard
-          ) {
-            // 글로벌 플래그를 세워서, 다른 useBackGuard 인스턴스(예: 컨테이너의
-            // popstate 리스너)가 이 back을 외부 ◁로 오인하지 않게 한다.
-            window[ASHRAIN_INTERNAL_BACK_FLAG] = true;
-            window.history.back();
-            // 다음 task에서 플래그 해제 (popstate는 비동기로 발화됨)
-            setTimeout(() => {
-              window[ASHRAIN_INTERNAL_BACK_FLAG] = false;
-            }, 0);
-          }
-        } catch (err) {
-          /* noop */
-        }
-      }
+      window.removeEventListener("popstate", onPop, true);
+      // ⚠️ history는 건드리지 않는다. 이전 auto-back은 컨테이너 popstate 리스너가
+      // 외부 ◁로 오인하는 문제가 있었고, enabled=false 전환이 정상 종료인지
+      // 비정상인지 hook 내부에서 알 수 없어서 잘못된 back을 발사함.
+      // 정상 종료 경로는 소비자가 finish()를 호출해야 한다.
     };
-    // enabled 토글 시에만 재마운트. onBack 변경은 ref로 흡수.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
+
+  // 정상 종료 시 호출: 더미 history entry를 회수한다.
+  // - popstate로 이미 소비됐거나(consumed) 이전에 finish() 호출됐으면 no-op (idempotent)
+  const finish = useCallback(() => {
+    if (consumedRef.current || finishedRef.current) return;
+    try {
+      if (
+        window.history.state &&
+        window.history.state.__ashrainBackGuard
+      ) {
+        finishedRef.current = true;
+        window[ASHRAIN_INTERNAL_BACK_FLAG] = true;
+        // popstate 발화 후 flag reset — setTimeout(0) race 방지를 위해 일회용 listener로 처리
+        const resetFlag = () => {
+          window.removeEventListener("popstate", resetFlag);
+          window[ASHRAIN_INTERNAL_BACK_FLAG] = false;
+        };
+        window.addEventListener("popstate", resetFlag);
+        // 안전망: popstate 미발화 시 listener 누수 방지
+        setTimeout(() => {
+          window.removeEventListener("popstate", resetFlag);
+          window[ASHRAIN_INTERNAL_BACK_FLAG] = false;
+        }, 200);
+        window.history.back();
+      } else {
+        finishedRef.current = true;
+      }
+    } catch {
+      /* noop */
+    }
+  }, []);
+
+  return finish;
 }
