@@ -38,14 +38,7 @@ export function useBackGuard(onBack, enabled = true) {
     consumedRef.current = false;
 
     // 더미 state push — 같은 URL로 새 history entry 추가
-    // App.jsx popstate 핸들러가 screen 없는 state를 "menu"로 보내므로,
-    // 현재 state의 screen 값을 보존해 history.back() 시 화면 이탈을 방지.
-    const currentScreen = window.history.state?.screen;
-    const marker = {
-      __ashrainBackGuard: true,
-      t: Date.now(),
-      ...(currentScreen ? { screen: currentScreen } : {}),
-    };
+    const marker = { __ashrainBackGuard: true, t: Date.now() };
     try {
       window.history.pushState(marker, "");
     } catch (e) {
