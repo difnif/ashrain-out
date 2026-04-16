@@ -73,39 +73,11 @@ export default function WrongNoteDetail({
   });
   const containerRef = useRef(null);
   const pickerRef = useRef(null);
-
-  // ESC 키
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") {
-        if (annotatorOpen) setAnnotatorOpen(false);
-        else if (picker) setPicker(null);
-        else if (confirmDelete) setConfirmDelete(false);
-        else onBack?.();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [annotatorOpen, picker, confirmDelete, onBack]);
-
-  // 통합 뒤로가기 — picker/confirmDelete가 열려 있으면 그것부터 닫고, 아니면 갤러리로
-  // 헤더 ← 버튼에서 사용.
-  const handleBack = useCallback(() => {
-    if (picker) {
-      setPicker(null);
-      setHoverPickerId(null);
-      return;
-    }
-    if (confirmDelete) {
-      setConfirmDelete(false);
-      return;
-    }
-    onBack?.();
-  }, [picker, confirmDelete, onBack]);
+  // finishModalGuard ref — TDZ 회피 (아래 ESC/handleBack에서 참조 필요)
+  const finishModalGuardRef = useRef(null);
 
   // 모달용 가드: picker 또는 confirmDelete가 열렸을 때만 활성.
-  // (Annotator는 자체 가드를 가지고, sub-view 전환은 컨테이너가 처리하므로
-  //  여기서는 "Detail 화면 안에서 열린 모달"만 책임짐.)
+  // 외부 ◁ 트리거 시 closeTopModal이 호출됨. 이 경로에서는 popstate가 이미 entry를 소비했으므로 finish 호출 불필요.
   const closeTopModal = useCallback(() => {
     if (picker) {
       setPicker(null);
@@ -115,7 +87,47 @@ export default function WrongNoteDetail({
     }
   }, [picker, confirmDelete]);
   const modalOpen = (!!picker || confirmDelete) && !annotatorOpen;
-  useBackGuard(closeTopModal, modalOpen);
+  const finishModalGuard = useBackGuard(closeTopModal, modalOpen);
+  finishModalGuardRef.current = finishModalGuard;
+
+  // 프로그래매틱 close 헬퍼 — 외부 ◁가 아닌 경로에서 호출. finish()로 더미 entry 회수.
+  const closePicker = useCallback(() => {
+    finishModalGuardRef.current?.();
+    setPicker(null);
+    setHoverPickerId(null);
+  }, []);
+  const closeConfirmDelete = useCallback(() => {
+    finishModalGuardRef.current?.();
+    setConfirmDelete(false);
+  }, []);
+
+  // ESC 키
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        if (annotatorOpen) setAnnotatorOpen(false);
+        else if (picker) closePicker();
+        else if (confirmDelete) closeConfirmDelete();
+        else onBack?.();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [annotatorOpen, picker, confirmDelete, onBack, closePicker, closeConfirmDelete]);
+
+  // 통합 뒤로가기 — picker/confirmDelete가 열려 있으면 그것부터 닫고, 아니면 갤러리로
+  // 헤더 ← 버튼에서 사용.
+  const handleBack = useCallback(() => {
+    if (picker) {
+      closePicker();
+      return;
+    }
+    if (confirmDelete) {
+      closeConfirmDelete();
+      return;
+    }
+    onBack?.();
+  }, [picker, confirmDelete, onBack, closePicker, closeConfirmDelete]);
 
   const goPrev = useCallback(() => {
     if (idx > 0) {
@@ -318,8 +330,7 @@ export default function WrongNoteDetail({
         } else if (z === "pick-circle" && id) {
           assignCircle(id);
         }
-        setPicker(null);
-        setHoverPickerId(null);
+        closePicker();
         return;
       }
       // tap 모드: long-press 후 release만 한 상태 → picker 유지
@@ -337,8 +348,7 @@ export default function WrongNoteDetail({
         if (dx < 0) goNext();
         else goPrev();
         if (picker) {
-          setPicker(null);
-          setHoverPickerId(null);
+          closePicker();
         }
         return;
       }
@@ -352,8 +362,7 @@ export default function WrongNoteDetail({
           toggleAnnVisible();
         }
         if (picker) {
-          setPicker(null);
-          setHoverPickerId(null);
+          closePicker();
         }
         return;
       }
@@ -365,8 +374,7 @@ export default function WrongNoteDetail({
       const el = document.elementFromPoint(e.clientX, e.clientY);
       const z = el?.dataset?.zone;
       if (z !== "pick-flag" && z !== "pick-circle") {
-        setPicker(null);
-        setHoverPickerId(null);
+        closePicker();
       }
     }
   };
@@ -385,8 +393,7 @@ export default function WrongNoteDetail({
   const onPickItemClick = (kind, id) => {
     if (kind === "flag") assignFlag(id);
     else assignCircle(id);
-    setPicker(null);
-    setHoverPickerId(null);
+    closePicker();
   };
 
   // 어노테이션 path → SVG d
@@ -947,7 +954,7 @@ export default function WrongNoteDetail({
       {/* 삭제 확인 */}
       {confirmDelete && (
         <div
-          onClick={() => setConfirmDelete(false)}
+          onClick={() => closeConfirmDelete()}
           style={{
             position: "absolute",
             inset: 0,
@@ -992,7 +999,7 @@ export default function WrongNoteDetail({
             </p>
             <div style={{ display: "flex", gap: 8 }}>
               <button
-                onClick={() => setConfirmDelete(false)}
+                onClick={() => closeConfirmDelete()}
                 style={{
                   flex: 1,
                   padding: "10px",
@@ -1009,7 +1016,7 @@ export default function WrongNoteDetail({
               <button
                 onClick={async () => {
                   const id = note.id;
-                  setConfirmDelete(false);
+                  closeConfirmDelete();
                   await deleteNote(id);
                   playSfx?.("click");
                   showMsg?.("사진이 삭제됐어요", 1500);
