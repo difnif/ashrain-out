@@ -17,7 +17,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { PASTEL } from "../config";
 import WrongNoteAnnotator from "./WrongNoteAnnotator";
-import { useBackGuard, dbgLog } from "../hooks/useBackGuard";
+import { useBackGuard } from "../hooks/useBackGuard";
 
 const LONG_PRESS_MS = 450;
 const SWIPE_MIN_DIST = 50;
@@ -74,18 +74,9 @@ export default function WrongNoteDetail({
   const containerRef = useRef(null);
   const pickerRef = useRef(null);
 
-  useEffect(() => {
-    dbgLog("[Det] MOUNT");
-    return () => dbgLog("[Det] UNMOUNT");
-  }, []);
-
   // ===== 모달 가드 (선언 순서 주의) =====
   // ESC useEffect와 handleBack이 closePicker/closeConfirmDelete를 참조하므로
   // 이 블록은 반드시 그것들보다 먼저 선언되어야 한다 (TDZ 회피).
-
-  // 모달용 가드: picker 또는 confirmDelete가 열렸을 때만 활성.
-  // (Annotator는 자체 가드를 가지고, sub-view 전환은 컨테이너가 처리하므로
-  //  여기서는 "Detail 화면 안에서 열린 모달"만 책임짐.)
   const closeTopModal = useCallback(() => {
     if (picker) {
       setPicker(null);
@@ -98,17 +89,12 @@ export default function WrongNoteDetail({
   const finishModalGuard = useBackGuard(closeTopModal, modalOpen);
 
   // 정상 종료 헬퍼: 프로그래매틱하게 모달을 닫을 때는 반드시 이 헬퍼를 통해 닫는다.
-  // finishModalGuard()가 더미 history entry를 회수한 뒤 state를 비운다.
-  // (외부 ◁로 닫히는 경로는 useBackGuard가 자체적으로 closeTopModal을 호출하므로
-  //  여기를 거치지 않는다 — finish는 hook 내부에서 consumed 처리됨.)
   const closePicker = useCallback(() => {
-    dbgLog("[Det] closePicker called");
     finishModalGuard();
     setPicker(null);
     setHoverPickerId(null);
   }, [finishModalGuard]);
   const closeConfirmDelete = useCallback(() => {
-    dbgLog("[Det] closeConfirmDelete called");
     finishModalGuard();
     setConfirmDelete(false);
   }, [finishModalGuard]);
@@ -128,7 +114,6 @@ export default function WrongNoteDetail({
   }, [annotatorOpen, picker, confirmDelete, onBack, closePicker, closeConfirmDelete]);
 
   // 통합 뒤로가기 — picker/confirmDelete가 열려 있으면 그것부터 닫고, 아니면 갤러리로
-  // 헤더 ← 버튼에서 사용.
   const handleBack = useCallback(() => {
     if (picker) {
       closePicker();
@@ -164,7 +149,6 @@ export default function WrongNoteDetail({
   // 분류 적용
   const assignFlag = useCallback(
     (flagId) => {
-      dbgLog("[Det] assignFlag", flagId);
       if (!note) return;
       updateNote(note.id, { rangeLabelId: flagId });
       playSfx?.("success");
@@ -175,7 +159,6 @@ export default function WrongNoteDetail({
   );
   const assignCircle = useCallback(
     (circleId) => {
-      dbgLog("[Det] assignCircle", circleId);
       if (!note) return;
       updateNote(note.id, { typeLabelId: circleId });
       playSfx?.("success");
@@ -479,15 +462,11 @@ export default function WrongNoteDetail({
         photoH={note.photoH || 1024}
         initialAnnotations={note.annotations || []}
         onSave={(anns) => {
-          dbgLog("[Det] Annotator.onSave", { len: anns?.length });
           setAnnotations(note.id, anns);
           setAnnotatorOpen(false);
           showMsg?.("표시 저장됨", 1200);
         }}
-        onCancel={() => {
-          dbgLog("[Det] Annotator.onCancel");
-          setAnnotatorOpen(false);
-        }}
+        onCancel={() => setAnnotatorOpen(false)}
       />
     );
   }
