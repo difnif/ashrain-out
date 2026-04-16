@@ -42,10 +42,14 @@ export default function WrongNoteAnnotator({
   const [confirmCancel, setConfirmCancel] = useState(false);
   const currentPathRef = useRef(null);
   const svgRef = useRef(null);
+  // finishBackGuard를 ref로 저장 (선언 순서상 아래에 있어 TDZ 회피 필요)
+  const finishBackGuardRef = useRef(null);
 
   // 취소 요청 — 그린 내용이 있으면 확인 다이얼로그, 없으면 바로 취소
   const requestCancel = useCallback(() => {
     if (paths.length === 0) {
+      // 정상 종료: 더미 history entry 회수 후 onCancel
+      finishBackGuardRef.current?.();
       onCancel?.();
       return;
     }
@@ -195,6 +199,7 @@ export default function WrongNoteAnnotator({
   // 안드로이드 ◁ / 브라우저 ← 가드:
   // - confirmCancel 다이얼로그가 떠있으면 먼저 그것부터 닫음
   // - 아니면 requestCancel (그린 내용 있으면 다이얼로그 띄움)
+  // finish는 정상 종료(저장/취소확정/다이얼로그 "예") 시 호출해서 더미 entry 회수
   const onAndroidBack = useCallback(() => {
     if (confirmCancel) {
       setConfirmCancel(false);
@@ -202,10 +207,12 @@ export default function WrongNoteAnnotator({
     }
     requestCancel();
   }, [confirmCancel, requestCancel]);
-  useBackGuard(onAndroidBack, true);
+  const finishBackGuard = useBackGuard(onAndroidBack, true);
+  finishBackGuardRef.current = finishBackGuard;
 
   const handleSave = () => {
     playSfx?.("success");
+    finishBackGuard();
     onSave?.(paths);
   };
 
@@ -593,6 +600,7 @@ export default function WrongNoteAnnotator({
                 onClick={() => {
                   playSfx?.("click");
                   setConfirmCancel(false);
+                  finishBackGuard();
                   onCancel?.();
                 }}
                 style={{
