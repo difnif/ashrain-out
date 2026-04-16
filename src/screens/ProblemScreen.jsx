@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback } from "react";
 import { PASTEL } from "../config";
-import { maybeSaveImageToDevice } from "../lib/saveImageToDevice";
 
 const CMAP = { coral: PASTEL.coral, sky: PASTEL.sky, mint: PASTEL.mint, lavender: PASTEL.lavender };
 
@@ -132,7 +131,7 @@ function FigureCanvas({ figure, theme, highlights = [] }) {
 
 const CAT_ICON = { "조건": "📌", "관계": "🔗", "구하는것": "🎯", "공식힌트": "💡" };
 
-export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests, archive, setArchive, archiveDefaultPublic, analysisModel, progress, wrongNoteSettingsHook }) {
+export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests, archive, setArchive, archiveDefaultPublic, analysisModel, progress }) {
   const [input, setInput] = useState("");
   const [imageData, setImageData] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -155,11 +154,9 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
       c.getContext("2d").drawImage(img, 0, 0, w, h);
       const full = c.toDataURL("image/jpeg", 0.85);
       setImagePreview(full); setImageData(full.split(",")[1]);
-      // 기기 저장 옵션이 켜져 있으면 다운로드 트리거 (오답노트 설정과 공유)
-      maybeSaveImageToDevice(full, wrongNoteSettingsHook?.settings?.autoSaveToDevice);
     };
     img.src = URL.createObjectURL(file);
-  }, [wrongNoteSettingsHook]);
+  }, []);
 
   const [loadingStage, setLoadingStage] = useState("");
   const [excludeUnits, setExcludeUnits] = useState([]);
@@ -684,5 +681,5 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
 
 export function renderProblemScreen(ctx) {
   const { archive, setArchive, theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests } = ctx;
-  return <ProblemScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} user={user} helpRequests={helpRequests} setHelpRequests={setHelpRequests} archive={archive} setArchive={setArchive} archiveDefaultPublic={ctx.archiveDefaultPublic} analysisModel={ctx.analysisModel} progress={ctx.progress} wrongNoteSettingsHook={ctx.wrongNoteSettingsHook} />;
+  return <ProblemScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} user={user} helpRequests={helpRequests} setHelpRequests={setHelpRequests} archive={archive} setArchive={setArchive} archiveDefaultPublic={ctx.archiveDefaultPublic} analysisModel={ctx.analysisModel} progress={ctx.progress} />;
 }
