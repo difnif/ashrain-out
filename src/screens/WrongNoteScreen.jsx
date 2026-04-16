@@ -18,7 +18,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWrongNotes } from "../hooks/useWrongNotes";
 import { useWrongNoteSettings } from "../hooks/useWrongNoteSettings";
-import { ASHRAIN_INTERNAL_BACK_FLAG } from "../hooks/useBackGuard";
+import { ASHRAIN_INTERNAL_BACK_FLAG, dbgLog } from "../hooks/useBackGuard";
 import WrongNoteGallery from "./WrongNoteGallery";
 import WrongNoteDetail from "./WrongNoteDetail";
 import WrongNoteSettings from "./WrongNoteSettings";
@@ -59,16 +59,16 @@ function WrongNoteRouter({
 
   // sub-view pop: stack에서 마지막 제거 + history.back (단, 외부 ◁가 트리거한 pop이면 history.back 생략)
   const popView = useCallback((triggeredByPopState) => {
-    console.log("[WN-Container] popView called", { triggeredByPopState });
+    dbgLog("[WN] popView called", { triggeredByPopState });
     setStack((s) => {
-      console.log("[WN-Container] popView setStack: before=", s);
+      dbgLog("[WN] popView setStack: before=", s);
       if (s.length <= 1) {
-        console.log("[WN-Container] -> setScreen(student-home)");
+        dbgLog("[WN] -> setScreen(student-home)");
         setScreen?.("student-home");
         return s;
       }
       const next = s.slice(0, -1);
-      console.log("[WN-Container] -> stack now=", next);
+      dbgLog("[WN] -> stack now=", next);
       return next;
     });
     if (!triggeredByPopState) {
@@ -90,22 +90,22 @@ function WrongNoteRouter({
   // popstate 핸들러: 안드로이드 ◁ / 브라우저 ←
   useEffect(() => {
     const onPop = (e) => {
-      console.log("[WN-Container] popstate (bubble)", {
+      dbgLog("[WN] popstate (bubble)", {
         flag: window[ASHRAIN_INTERNAL_BACK_FLAG],
         internalPop: internalPopRef.current,
         state: window.history.state,
         stack,
       });
       if (window[ASHRAIN_INTERNAL_BACK_FLAG]) {
-        console.log("[WN-Container] -> ignored (internal flag)");
+        dbgLog("[WN] -> ignored (internal flag)");
         return;
       }
       if (internalPopRef.current) {
-        console.log("[WN-Container] -> ignored (internalPopRef)");
+        dbgLog("[WN] -> ignored (internalPopRef)");
         internalPopRef.current = false;
         return;
       }
-      console.log("[WN-Container] -> external back, calling popView(true)");
+      dbgLog("[WN] -> external back, calling popView(true)");
       popView(true);
     };
     window.addEventListener("popstate", onPop);
@@ -116,7 +116,7 @@ function WrongNoteRouter({
   // 종료 시(언마운트) 더미 history entry가 남아 있을 수 있음 → 정리
   useEffect(() => {
     return () => {
-      console.log("[WN-Container] container UNMOUNTING, stack.length=", stack.length);
+      dbgLog("[WN] container UNMOUNTING, stack.length=", stack.length);
       const extra = stack.length - 1;
       for (let i = 0; i < extra; i++) {
         try {
