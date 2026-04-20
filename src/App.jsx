@@ -125,6 +125,19 @@ function AppInner() {
   useEffect(() => { localStorage.setItem("ar_theme", themeKey); }, [themeKey]);
   useEffect(() => { localStorage.setItem("ar_tone", toneKey); }, [toneKey]);
 
+  // Force browser color-scheme to match app theme (prevents Android dark/light mode interference)
+  useEffect(() => {
+    const scheme = themeKey === "dark" ? "dark" : "light";
+    document.documentElement.style.colorScheme = scheme;
+    let meta = document.querySelector('meta[name="color-scheme"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "color-scheme";
+      document.head.appendChild(meta);
+    }
+    meta.content = scheme;
+  }, [themeKey]);
+
   // Audio state
   const [bgmOn, setBgmOn] = useState(true);
   const [sfxOn, setSfxOn] = useState(true);
