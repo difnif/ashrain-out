@@ -9,64 +9,8 @@ import {
   getActiveTimeQuiz, loadReviewQueue, saveReviewItem,
   loadQuizHistory, saveQuizResult, createDefaultXPData,
 } from "../XPSystem";
+import { SAMPLE_PROBLEMS } from "../data/quizProblems";
 
-// ── 샘플 문제 풀 (나중에 Firestore에서 로드) ──
-const SAMPLE_PROBLEMS = [
-  {
-    id: "q1", type: "ox", question: "삼각형의 외심은 항상 삼각형 내부에 있다.", answer: false,
-    explain: "둔각삼각형에서는 외심이 삼각형 외부에 있습니다.",
-  },
-  {
-    id: "q2", type: "ox", question: "삼각형의 내심은 세 내각의 이등분선의 교점이다.", answer: true,
-    explain: "내심은 세 내각의 이등분선이 만나는 점입니다.",
-  },
-  {
-    id: "q3", type: "ox", question: "SSS 합동 조건에서 세 변의 길이가 같으면 두 삼각형은 합동이다.", answer: true,
-    explain: "세 변의 길이가 각각 같으면 SSS 합동입니다.",
-  },
-  {
-    id: "q4", type: "ox", question: "SAS 합동에서 S는 변(Side), A는 각(Angle)을 의미한다.", answer: true,
-    explain: "SAS는 두 변과 그 끼인각이 같을 때의 합동 조건입니다.",
-  },
-  {
-    id: "q5", type: "ox", question: "이등변삼각형의 꼭지각의 이등분선은 밑변을 수직이등분한다.", answer: true,
-    explain: "이등변삼각형에서 꼭지각의 이등분선은 밑변의 수직이등분선이 됩니다.",
-  },
-  {
-    id: "q6", type: "ox", question: "삼각형의 외심에서 세 꼭짓점까지의 거리는 모두 같다.", answer: true,
-    explain: "외심은 외접원의 중심이므로 세 꼭짓점까지의 거리(반지름)가 같습니다.",
-  },
-  {
-    id: "q7", type: "ox", question: "내접원의 반지름이 클수록 삼각형의 넓이가 크다.", answer: false,
-    explain: "넓이 = 내접원 반지름 × 둘레 ÷ 2이므로, 둘레도 함께 고려해야 합니다.",
-  },
-  {
-    id: "q8", type: "ox", question: "직각삼각형에서 외심은 빗변의 중점이다.", answer: true,
-    explain: "직각삼각형의 외심은 빗변의 중점에 위치합니다.",
-  },
-  {
-    id: "q9", type: "choice", question: "삼각형의 내심에서 세 변까지의 거리가 모두 같은 이유는?",
-    choices: ["외접원의 중심이므로", "내접원의 중심이므로", "무게중심이므로", "수심이므로"],
-    answer: 1, explain: "내심은 내접원의 중심이고, 내접원은 세 변에 모두 접하므로 세 변까지의 거리가 같습니다.",
-  },
-  {
-    id: "q10", type: "choice", question: "두 삼각형이 합동이 아닌 조건은?",
-    choices: ["SSS", "SAS", "ASA", "SSA"],
-    answer: 3, explain: "SSA(두 변과 끼인각이 아닌 각)는 합동 조건이 아닙니다.",
-  },
-  {
-    id: "q11", type: "fill_blank",
-    question: "삼각형 ABC에서 AB=DE, BC=EF, AC=DF이면\n△ABC ≅ △DEF ( [___] 합동)",
-    answer: "SSS",
-    explain: "세 변의 길이가 각각 같으므로 SSS 합동입니다.",
-  },
-  {
-    id: "q12", type: "fill_blank",
-    question: "삼각형의 외심은 세 변의 [___]의 교점이다.",
-    answer: "수직이등분선",
-    explain: "외심은 세 변의 수직이등분선이 만나는 점입니다.",
-  },
-];
 
 // ── 퀴즈 모드 정의 ──
 const QUIZ_MODES = [
