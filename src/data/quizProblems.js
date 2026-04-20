@@ -820,4 +820,111 @@ export const SAMPLE_PROBLEMS = [
     answer: "11",
     explain: "2 × [exp]2|10[/exp] = [exp]2|1[/exp] × [exp]2|10[/exp] = [exp]2|11[/exp]. n = 11.",
   },
+
+  // ═══════════════════════════════════════════════════════════
+  // [R] 초고난도 — 내심 + 평행선 → 삼각형 ADE 둘레
+  // 핵심: 내심 I를 지나 BC와 평행한 DE가 AB, AC와 만남
+  //       각 이등분선 BI → ∠IBD = ∠IBC (이등분) = ∠BID (엇각, DE∥BC)
+  //       → △DBI 이등변 → BD = DI, 마찬가지로 CE = EI
+  //       → △ADE 둘레 = AD + DE + EA = AD + DI + IE + EA = AD + DB + CE + EA = AB + AC
+  // ═══════════════════════════════════════════════════════════
+  {
+    id: "b1", type: "fill_blank", difficulty: "hard",
+    question: "삼각형 ABC의 내심 I를 지나 [seg]BC[/seg]에 평행한 직선이 [seg]AB[/seg], [seg]AC[/seg]와 각각 D, E에서 만난다. [seg]AB[/seg]=9, [seg]AC[/seg]=8일 때, △ADE의 둘레 = [___]",
+    answer: "17",
+    explain: "DE∥BC이므로 ∠BID=∠IBC(엇각), ∠IBD=∠IBC(BI가 각 이등분선) → ∠BID=∠IBD → △DBI 이등변 → BD=DI. 같은 방법 CE=EI. △ADE 둘레 = AD + DE + EA = AD + (DI+IE) + EA = (AD+DB) + (CE+EA) = AB + AC = 9 + 8 = 17.",
+    figure: "incircle-parallel",
+  },
+  {
+    id: "b2", type: "fill_blank", difficulty: "hard",
+    question: "삼각형 ABC의 내심 I를 지나 [seg]BC[/seg]에 평행한 직선이 [seg]AB[/seg], [seg]AC[/seg]와 각각 D, E에서 만난다. △ADE의 둘레가 14, [seg]AB[/seg]=[seg]AC[/seg]일 때, [seg]AB[/seg] = [___]",
+    answer: "7",
+    explain: "△ADE 둘레 = AB + AC (내심+평행선 성질). AB=AC이므로 2·AB = 14 → AB = 7.",
+    figure: "incircle-parallel",
+  },
+  {
+    id: "b3", type: "fill_blank", difficulty: "hard",
+    question: "삼각형 ABC에서 [seg]AB[/seg]=12, [seg]AC[/seg]=10, [seg]BC[/seg]=8. 내심 I를 지나 [seg]BC[/seg]에 평행한 직선이 AB, AC와 D, E에서 만날 때, [seg]DE[/seg]의 길이는 △ADE 둘레에서 [seg]AD[/seg]+[seg]AE[/seg]를 뺀 값이다. 먼저 △ADE 둘레 = [___]",
+    answer: "22",
+    explain: "△ADE 둘레 = AB + AC = 12 + 10 = 22. (BC 길이는 trap! 안 쓰임)",
+    figure: "incircle-parallel",
+  },
+  {
+    id: "b4", type: "fill_blank", difficulty: "hard",
+    question: "이등변삼각형 ABC ([seg]AB[/seg]=[seg]AC[/seg]=13, [seg]BC[/seg]=10)의 내심 I를 지나 [seg]BC[/seg]에 평행한 직선이 AB, AC와 D, E에서 만난다. △ADE의 둘레 = [___]",
+    answer: "26",
+    explain: "△ADE 둘레 = AB + AC = 13 + 13 = 26.",
+    figure: "incircle-parallel",
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // [S] 초고난도 — 직각삼각형 + 내접원 + 접선 합동
+  // 핵심: 직각 B, 두 직각변 a, b, 빗변 c. 내접원 반지름 r.
+  //   공식: r = (a + b − c) / 2
+  //   접선 합동: 한 점에서 그은 두 접선 길이 같음
+  //     A에서: AP = AR = b − r
+  //     C에서: CQ = CR = a − r
+  //     B에서: BP = BQ = r
+  //   검증: (b-r) + (a-r) = c → a+b-c = 2r ✓
+  // ═══════════════════════════════════════════════════════════
+  {
+    id: "b5", type: "fill_blank", difficulty: "hard",
+    question: "직각 B인 직각삼각형 ABC에서 [seg]BC[/seg]=3, [seg]AB[/seg]=4, [seg]AC[/seg]=5. 내접원의 반지름 r = [___]",
+    answer: "1",
+    explain: "직각삼각형 내접원 반지름 공식: r = [frac](a+b-c)|2[/frac] = [frac](3+4-5)|2[/frac] = [frac]2|2[/frac] = 1.",
+    figure: "right-incircle-tangent",
+  },
+  {
+    id: "b6", type: "fill_blank", difficulty: "hard",
+    question: "직각 B인 직각삼각형 ABC, [seg]BC[/seg]=6, [seg]AB[/seg]=8, [seg]AC[/seg]=10. 내접원과 [seg]AC[/seg]의 접점 R에 대해 [seg]AR[/seg] = [___]",
+    answer: "6",
+    explain: "r = [frac](6+8-10)|2[/frac] = 2. AR = AB − BP = AB − r = 8 − 2 = 6. (한 점 A에서 그은 두 접선 AP, AR은 길이 같음, BP=r)",
+    figure: "right-incircle-tangent",
+  },
+  {
+    id: "b7", type: "fill_blank", difficulty: "hard",
+    question: "직각 B인 직각삼각형, [seg]BC[/seg]=5, [seg]AB[/seg]=12, [seg]AC[/seg]=13. 내접원 중심 I, 반지름 r. 사각형 IPBQ(P는 AB의 접점, Q는 BC의 접점)의 넓이 = [___]",
+    answer: "4",
+    explain: "r = [frac](5+12-13)|2[/frac] = 2. 직각 B + I에서 AB, BC에 수직 → IPBQ는 한 변 r인 정사각형. 넓이 = [exp]r|2[/exp] = [exp]2|2[/exp] = 4.",
+    figure: "right-incircle-tangent",
+  },
+  {
+    id: "b8", type: "fill_blank", difficulty: "hard",
+    question: "직각 B인 직각삼각형 ABC, [seg]BC[/seg]=6, [seg]AB[/seg]=8, [seg]AC[/seg]=10. 내접원 반지름 r, 한 점 A에서 그은 두 접선 [seg]AP[/seg]=[seg]AR[/seg]의 길이 = [___]",
+    answer: "6",
+    explain: "r = [frac](6+8-10)|2[/frac] = 2. BP=r=2(직각 B, 접선⊥반지름). AP = AB-BP = 8-2 = 6. AR=AP=6.",
+    figure: "right-incircle-tangent",
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // [T] 초고난도 — 외각정리 + 이등변 연쇄
+  // ═══════════════════════════════════════════════════════════
+  {
+    id: "b9", type: "fill_blank", difficulty: "hard",
+    question: "이등변삼각형 ABC ([seg]AB[/seg]=[seg]AC[/seg]), ∠A=20°. [seg]AC[/seg] 위 점 D를 [seg]BD[/seg]=[seg]BC[/seg]가 되도록 잡는다. ∠DBC = [___]°",
+    answer: "20",
+    explain: "∠ABC=∠ACB=[frac]180°-20°|2[/frac]=80°. BD=BC → △BDC 이등변, 밑각 ∠BDC=∠BCD=80°. △BDC에서 ∠DBC=180°-80°-80°=20°.",
+    figure: "star-isosceles",
+  },
+  {
+    id: "b10", type: "fill_blank", difficulty: "hard",
+    question: "이등변삼각형 ABC ([seg]AB[/seg]=[seg]AC[/seg]). [seg]BD[/seg]가 ∠B의 이등분선이고 D는 [seg]AC[/seg] 위의 점이며 [seg]BD[/seg]=[seg]BC[/seg]. ∠A = [___]°",
+    answer: "36",
+    explain: "∠B=∠C (이등변). BD가 ∠B 이등분 → ∠DBC=∠B/2. BD=BC → △BDC 이등변 → ∠BDC=∠BCD=∠C=∠B. △BDC 각 합: ∠B/2+∠B+∠B=180°가 아니라 ∠BDC=(180°-∠DBC-∠BCD)=180°-∠B/2-∠B. △ABD에서 ∠A+∠ABD+∠ADB=180°, ∠ABD=∠B/2, ∠ADB=180°-∠BDC=∠B/2+∠B. 정리: ∠A+∠B/2+∠B/2+∠B=180° → ∠A+2∠B=180°. 또 ∠A=∠B/2 (조건 풀이). ∠B/2+2∠B=180° → 5∠B=360° → ∠B=72° → ∠A=36°.",
+    figure: "star-isosceles",
+  },
+  {
+    id: "b11", type: "fill_blank", difficulty: "hard",
+    question: "이등변삼각형 ABC ([seg]AB[/seg]=[seg]AC[/seg]), ∠A=80°. [seg]BC[/seg] 위에 점 D, [seg]AC[/seg] 위에 점 E가 있고 [seg]AD[/seg]=[seg]AE[/seg], ∠DAE=20°. ∠EDC = [___]°",
+    answer: "30",
+    explain: "∠C = [frac]180°-80°|2[/frac] = 50°. AD=AE이고 꼭지각 20° → △ADE의 밑각 ∠AED = 80°. E가 [seg]AC[/seg] 위라 ∠DEC는 ∠AED의 보각 = 180°-80° = 100°. △DEC에서 ∠EDC = 180° − 100° − 50° = 30°.",
+    figure: "star-isosceles",
+  },
+  {
+    id: "b12", type: "fill_blank", difficulty: "hard",
+    question: "이등변삼각형 ABC ([seg]AB[/seg]=[seg]AC[/seg]), ∠A=40°. [seg]AC[/seg] 위의 점 D를 [seg]AD[/seg]=[seg]BD[/seg]가 되도록 잡는다. ∠BDC = [___]°",
+    answer: "80",
+    explain: "AD=BD → △ABD 이등변, 밑각 ∠ABD=∠BAD=∠A=40°. 외각정리: ∠BDC는 △ABD의 외각(D에서 AC 방향) = ∠BAD + ∠ABD = 40° + 40° = 80°.",
+    figure: "star-isosceles",
+  },
 ];
