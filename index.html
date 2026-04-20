@@ -8,9 +8,16 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="ashrain.out" />
+    <meta name="color-scheme" content="light" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>ashrain.out</title>
     <style>
+      html {
+        color-scheme: light; /* overridden by React useEffect based on themeKey */
+      }
+      :root {
+        forced-color-adjust: none;
+      }
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { 
         font-family: -apple-system, BlinkMacSystemFont, 'Noto Serif KR', serif;
