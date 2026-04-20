@@ -27,7 +27,7 @@ import QuizFigure from "../components/QuizFigure";
 // ── 퀴즈 모드 정의 ──
 const QUIZ_MODES = [
   { id: "daily", label: "오늘의 문제", icon: "📅", desc: "매일 1문제, 도전하면 XP!", color: "#F59E0B" },
-  { id: "speed", label: "스피드 퀴즈", icon: "⚡", desc: "시간 싸움! 정답 시 +30초", color: "#8B5CF6" },
+  { id: "speed", label: "스피드 퀴즈", icon: "⚡", desc: "정답 +30초 / 오답 −40초", color: "#8B5CF6" },
   { id: "review", label: "복습 큐", icon: "🔄", desc: "틀린 문제 다시 풀기", color: "#10B981" },
   { id: "ox", label: "OX 퀴즈", icon: "⭕", desc: "참/거짓 빠른 판단", color: "#3B82F6" },
   { id: "time", label: "타임 퀴즈", icon: "🔥", desc: "XP 폭탄! 한정 시간", color: "#EF4444" },
@@ -36,6 +36,7 @@ const QUIZ_MODES = [
 // 스피드 퀴즈 타이머 설정
 const SPEED_INITIAL_SEC = 30;
 const SPEED_BONUS_SEC = 30;
+const SPEED_PENALTY_SEC = 40; // 오답 시 차감. 시간이 0 이하 도달 시 즉시 종료.
 // 3단계 난이도 구간 (남은 시간 기준)
 //   < SLOW_THRESHOLD         → fast 풀
 //   SLOW_THRESHOLD ~ HARD_THRESHOLD → slow 풀
@@ -308,6 +309,7 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
   const [results, setResults] = useState([]); // {problemId, correct}[]
   const [timeLeft, setTimeLeft] = useState(SPEED_INITIAL_SEC);
   const [finished, setFinished] = useState(false);
+  const [pendingFinish, setPendingFinish] = useState(false); // 오답 페널티로 시간 소진, 해설 본 뒤 종료 예정
   const [streak, setStreak] = useState(0);
 
   // timeLeft 동기화 → ref
@@ -350,9 +352,10 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
     }
   }, [currentProblem, finished, pullNextProblem]);
 
-  // 타이머
+  // 타이머: 제출 전(!revealed)이고 종료 안 됐을 때만 카운트다운.
+  // 해설 읽는 동안엔 시간 멈춤 (공정한 학습 시간).
   useEffect(() => {
-    if (finished) return;
+    if (finished || revealed) return;
     const iv = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
@@ -363,7 +366,7 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
       });
     }, 1000);
     return () => clearInterval(iv);
-  }, [finished]);
+  }, [finished, revealed]);
 
   // 시간 0 → 종료
   useEffect(() => {
@@ -391,12 +394,25 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
       setTimeLeft(t => t + SPEED_BONUS_SEC);
       playSfx("success");
     } else {
+      // 오답 페널티: -40초. 결과 0 이하면 해설 본 후 종료 예정으로 표시.
       playSfx("click");
+      setTimeLeft(t => {
+        const next = t - SPEED_PENALTY_SEC;
+        if (next <= 0) {
+          setPendingFinish(true); // 다음 버튼이 '종료'로 변경됨
+          return 0;
+        }
+        return next;
+      });
     }
   };
 
-  // 다음 문제로
+  // 다음 문제로 (또는 페널티로 종료 예정이면 종료)
   const handleNext = () => {
+    if (pendingFinish) {
+      setFinished(true);
+      return;
+    }
     const next = pullNextProblem();
     if (!next) {
       setFinished(true);
@@ -476,7 +492,11 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
         <div style={{ flex: 1, fontSize: 11, color: theme.textSec, lineHeight: 1.4 }}>
           <span style={{ color: zoneColor, fontWeight: 700 }}>{zoneLabel}</span>
           <br />
-          <span style={{ fontSize: 10 }}>정답 시 +{SPEED_BONUS_SEC}초</span>
+          <span style={{ fontSize: 10 }}>
+            정답 <span style={{ color: "#10B981", fontWeight: 700 }}>+{SPEED_BONUS_SEC}초</span>
+            {"  "}
+            오답 <span style={{ color: "#EF4444", fontWeight: 700 }}>−{SPEED_PENALTY_SEC}초</span>
+          </span>
         </div>
         <div style={{
           fontSize: 13, fontWeight: 700, color: "#10B981",
@@ -520,16 +540,17 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
         />
       )}
 
-      {/* 다음 버튼 (제출 후에만 노출) */}
+      {/* 다음 버튼 (제출 후에만 노출) — 페널티로 종료 예정이면 '결과 보기'로 전환 */}
       {revealed && (
         <button onClick={handleNext}
           style={{
             width: "100%", padding: "14px 0", borderRadius: 12,
-            background: theme.text, color: theme.bg,
+            background: pendingFinish ? "#EF4444" : theme.text,
+            color: pendingFinish ? "#fff" : theme.bg,
             fontSize: 14, fontWeight: 700, border: "none", cursor: "pointer",
             fontFamily: "'Noto Serif KR', serif",
           }}>
-          다음 문제 →
+          {pendingFinish ? "시간 소진 — 결과 보기" : "다음 문제 →"}
         </button>
       )}
     </div>
