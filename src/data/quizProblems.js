@@ -5,9 +5,10 @@
 // 스키마:
 //   id         : 고유 ID (q1, q2, ...)
 //   type       : "ox" | "choice" | "fill_blank"
-//   difficulty : "fast" | "slow"
+//   difficulty : "fast" | "slow" | "hard"
 //      - fast : 암산 5초 이내 가능 (OX, 공식 값, 용어)
 //      - slow : 계산 10~30초 필요 (주기·자릿수·역산)
+//      - hard : 고난도 암산 30~60초 (복합 자릿수·단항식·꺾은선 평행선·내심 복합)
 //   question   : 문제 본문. 수식 태그 사용:
 //      [seg]AB[/seg]       선분 AB (윗줄)
 //      [exp]2|5[/exp]      2의 5제곱 (윗첨자)
@@ -612,5 +613,211 @@ export const SAMPLE_PROBLEMS = [
     question: "칠각형의 대각선 개수 = [___]개",
     answer: "14",
     explain: "[frac]7×(7-3)|2[/frac] = [frac]28|2[/frac] = 14.",
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // [L] 고난도 — 자릿수 복합 (10의 거듭제곱 못 만드는 항 섞임)
+  // ═══════════════════════════════════════════════════════════
+  {
+    id: "h1", type: "fill_blank", difficulty: "hard",
+    question: "[exp]2|3[/exp] × 3 × [exp]5|5[/exp] 은 [___]자리 수",
+    answer: "5",
+    explain: "([exp]2|3[/exp] × [exp]5|3[/exp]) × 3 × [exp]5|2[/exp] = [exp]10|3[/exp] × 3 × 25 = 1000 × 75 = 75000 → 5자리.",
+  },
+  {
+    id: "h1b", type: "fill_blank", difficulty: "hard",
+    question: "9 × [exp]2|4[/exp] × [exp]5|4[/exp] 은 [___]자리 수",
+    answer: "5",
+    explain: "9 × ([exp]2|4[/exp] × [exp]5|4[/exp]) = 9 × [exp]10|4[/exp] = 90000 → 5자리.",
+  },
+  {
+    id: "h2", type: "fill_blank", difficulty: "hard",
+    question: "[exp]2|5[/exp] × [exp]5|3[/exp] × 7 은 [___]자리 수",
+    answer: "5",
+    explain: "[exp]2|2[/exp] × ([exp]2|3[/exp] × [exp]5|3[/exp]) × 7 = 4 × [exp]10|3[/exp] × 7 = 28 × 1000 = 28000 → 5자리.",
+  },
+  {
+    id: "h3", type: "fill_blank", difficulty: "hard",
+    question: "[exp]2|6[/exp] × [exp]3|2[/exp] × [exp]5|6[/exp] 은 [___]자리 수",
+    answer: "7",
+    explain: "([exp]2|6[/exp] × [exp]5|6[/exp]) × [exp]3|2[/exp] = [exp]10|6[/exp] × 9 = 9000000 → 7자리.",
+  },
+  {
+    id: "h4", type: "fill_blank", difficulty: "hard",
+    question: "15 × [exp]2|7[/exp] × [exp]5|5[/exp] 은 [___]자리 수",
+    answer: "7",
+    explain: "15 = 3×5. 3 × [exp]2|2[/exp] × ([exp]2|5[/exp] × [exp]5|5[/exp]) × 5 = 3 × 4 × [exp]10|5[/exp] × 5 = 60 × [exp]10|5[/exp] = 6,000,000 → 7자리.",
+  },
+  {
+    id: "h5", type: "fill_blank", difficulty: "hard",
+    question: "[exp]2|10[/exp] × [exp]5|7[/exp] 은 [___]자리 수",
+    answer: "8",
+    explain: "[exp]2|3[/exp] × ([exp]2|7[/exp] × [exp]5|7[/exp]) = 8 × [exp]10|7[/exp] = 80,000,000 → 8자리.",
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // [M] 고난도 — 단항식의 곱셈·나눗셈
+  // 계수·부호·지수를 한 번에 처리해야 함
+  // ═══════════════════════════════════════════════════════════
+  {
+    id: "h6", type: "fill_blank", difficulty: "hard",
+    question: "(2a)[exp] |3[/exp] × 3[exp]a|2[/exp] 의 계수 = [___]",
+    answer: "24",
+    explain: "(2a)[exp] |3[/exp] = 8[exp]a|3[/exp]. 8[exp]a|3[/exp] × 3[exp]a|2[/exp] = 24[exp]a|5[/exp]. 계수는 24.",
+  },
+  {
+    id: "h7", type: "fill_blank", difficulty: "hard",
+    question: "(−2[exp]a|2[/exp]b)[exp] |3[/exp] 의 계수 = [___]",
+    answer: "-8",
+    explain: "(−2)[exp] |3[/exp] × ([exp]a|2[/exp])[exp] |3[/exp] × [exp]b|3[/exp] = −8[exp]a|6[/exp][exp]b|3[/exp]. 계수는 −8. 홀수 제곱이라 부호 유지.",
+  },
+  {
+    id: "h8", type: "fill_blank", difficulty: "hard",
+    question: "(−3[exp]x|2[/exp]y)[exp] |2[/exp] 의 계수 = [___]",
+    answer: "9",
+    explain: "(−3)[exp] |2[/exp] = 9. 짝수 제곱이라 부호 +.",
+  },
+  {
+    id: "h9", type: "fill_blank", difficulty: "hard",
+    question: "12[exp]a|5[/exp] ÷ 4[exp]a|2[/exp] = n[exp]a|m[/exp]. n × m = [___]",
+    answer: "9",
+    explain: "12÷4 = 3, [exp]a|5[/exp]÷[exp]a|2[/exp] = [exp]a|3[/exp]. 결과 3[exp]a|3[/exp]. n=3, m=3 → 3×3=9.",
+  },
+  {
+    id: "h10", type: "fill_blank", difficulty: "hard",
+    question: "6[exp]x|3[/exp] × 5[exp]x|2[/exp] ÷ 10[exp]x|4[/exp] = n[exp]x|m[/exp]. n × m = [___]",
+    answer: "3",
+    explain: "계수: 6×5÷10 = 3. 지수: 3+2-4 = 1. 결과 3x. n=3, m=1 → 3×1=3.",
+  },
+  {
+    id: "h11", type: "fill_blank", difficulty: "hard",
+    question: "(−[exp]a|2[/exp]b)[exp] |3[/exp] × (−2a[exp]b|2[/exp])[exp] |2[/exp] 의 계수 = [___]",
+    answer: "-4",
+    explain: "(−1)[exp] |3[/exp] × (−2)[exp] |2[/exp] = (−1) × 4 = −4. a와 b 지수 정리는 별개, 계수만 보면 −4.",
+  },
+  {
+    id: "h12", type: "fill_blank", difficulty: "hard",
+    question: "8[exp]a|4[/exp][exp]b|3[/exp] ÷ 2[exp]a|2[/exp]b × 3b 의 계수 = [___]",
+    answer: "12",
+    explain: "8 ÷ 2 × 3 = 12. a: [exp]a|4[/exp]÷[exp]a|2[/exp] = [exp]a|2[/exp]. b: [exp]b|3[/exp]÷b × b = [exp]b|3[/exp]. 결과 12[exp]a|2[/exp][exp]b|3[/exp]. 계수 12.",
+  },
+  {
+    id: "h13", type: "fill_blank", difficulty: "hard",
+    question: "(−2a)[exp] |4[/exp] ÷ (−4[exp]a|2[/exp]) 의 계수 = [___]",
+    answer: "-4",
+    explain: "(−2)[exp] |4[/exp] = 16. 16 ÷ (−4) = −4. 부호 주의: 짝수 제곱은 +, 그다음 나누기의 음수 그대로.",
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // [N] 고난도 — 내심 + 외각정리 복합
+  // ∠A 직접 주어지지 않고 다른 각에서 유도해야 함
+  // ═══════════════════════════════════════════════════════════
+  {
+    id: "h14", type: "fill_blank", difficulty: "hard",
+    question: "삼각형 ABC에서 ∠B=70°, ∠C=50° 이다. 내심 I에 대해 ∠BIC = [___]°",
+    answer: "120",
+    explain: "∠A = 180° − 70° − 50° = 60°. ∠BIC = 90° + [frac]∠A|2[/frac] = 90° + 30° = 120°.",
+    figure: "incircle",
+  },
+  {
+    id: "h15", type: "fill_blank", difficulty: "hard",
+    question: "∠A의 외각이 110°인 삼각형 ABC의 내심 I에 대해 ∠BIC = [___]°",
+    answer: "125",
+    explain: "∠A = 180° − 110° = 70°. ∠BIC = 90° + [frac]70|2[/frac] = 90° + 35° = 125°.",
+    figure: "incircle",
+  },
+  {
+    id: "h16", type: "fill_blank", difficulty: "hard",
+    question: "삼각형 ABC에서 ∠B + ∠C = 140°이다. 내심 I에 대해 ∠BIC = [___]°",
+    answer: "110",
+    explain: "∠A = 180° − 140° = 40°. ∠BIC = 90° + [frac]40|2[/frac] = 90° + 20° = 110°.",
+    figure: "incircle",
+  },
+  {
+    id: "h17", type: "fill_blank", difficulty: "hard",
+    question: "외심 O에 대해 ∠BOC = 140°이다. 같은 삼각형의 내심 I에 대해 ∠BIC = [___]°",
+    answer: "125",
+    explain: "∠A = [frac]∠BOC|2[/frac] = 70°. ∠BIC = 90° + [frac]70|2[/frac] = 90° + 35° = 125°.",
+  },
+  {
+    id: "h18", type: "fill_blank", difficulty: "hard",
+    question: "삼각형 ABC에서 ∠A = 80°이다. 내심 I에 대해 ∠IBC + ∠ICB = [___]°",
+    answer: "50",
+    explain: "∠IBC = [frac]∠B|2[/frac], ∠ICB = [frac]∠C|2[/frac]. 합 = [frac]∠B+∠C|2[/frac] = [frac]180°-80°|2[/frac] = [frac]100|2[/frac] = 50°.",
+    figure: "incircle",
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // [O] 고난도 — 외심 + 이등변 복합
+  // ═══════════════════════════════════════════════════════════
+  {
+    id: "h19", type: "fill_blank", difficulty: "hard",
+    question: "삼각형 ABC에서 ∠B=40°, ∠C=60°. 외심 O에 대해 ∠BOC = [___]°",
+    answer: "160",
+    explain: "∠A = 180° − 40° − 60° = 80°. ∠BOC = 2∠A = 160°.",
+    figure: "circum-acute",
+  },
+  {
+    id: "h20", type: "fill_blank", difficulty: "hard",
+    question: "예각삼각형 ABC의 외심 O에서 ∠OAB = 25°일 때, [seg]OA[/seg] = [seg]OB[/seg] 이므로 ∠OBA = [___]°",
+    answer: "25",
+    explain: "외심에서 각 꼭짓점까지 거리가 같으므로(OA=OB) 삼각형 OAB는 이등변. 두 밑각 같음 → ∠OBA = 25°.",
+    figure: "circum-acute",
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // [P] 고난도 — 평행선 꺾은선 (보조선)
+  // ═══════════════════════════════════════════════════════════
+  {
+    id: "h21", type: "fill_blank", difficulty: "hard",
+    question: "평행한 두 직선 ℓ, m 사이에 꺾은 점 P가 있다. ℓ 쪽 각이 35°, m 쪽 각이 50°일 때, 꺾인 각 ∠P = [___]°",
+    answer: "85",
+    explain: "점 P에서 ℓ, m에 평행한 보조선을 그으면 엇각으로 나뉨. ∠P = 35° + 50° = 85°.",
+  },
+  {
+    id: "h22", type: "fill_blank", difficulty: "hard",
+    question: "평행한 두 직선 사이 꺾은 점에서 한쪽 엇각이 x+20°, 다른 쪽 엇각이 2x+10°, 꺾인 각이 120°일 때, x = [___]",
+    answer: "30",
+    explain: "보조선 긋고 엇각 합산: (x+20) + (2x+10) = 120 → 3x + 30 = 120 → 3x = 90 → x = 30.",
+  },
+  {
+    id: "h23", type: "fill_blank", difficulty: "hard",
+    question: "평행한 ℓ∥m 사이에 꺾은 점 P. ℓ 쪽 각이 40°, 꺾인 각 ∠P = 115°일 때, m 쪽 각 = [___]°",
+    answer: "75",
+    explain: "보조선 → 엇각 분해: 40° + (m 쪽 각) = 115° → m 쪽 각 = 75°.",
+  },
+  {
+    id: "h24", type: "fill_blank", difficulty: "hard",
+    question: "평행선 ℓ∥m, 사이에 꺾은 점이 있고 ℓ 쪽 각 40°, m 쪽 각 x°, 꺾인 각 110°. x = [___]°",
+    answer: "70",
+    explain: "보조선 → 40° + x = 110° → x = 70°.",
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // [Q] 고난도 — 지수법칙 복합
+  // ═══════════════════════════════════════════════════════════
+  {
+    id: "h25", type: "fill_blank", difficulty: "hard",
+    question: "[exp]2|x+3[/exp] = 32 일 때, x = [___]",
+    answer: "2",
+    explain: "32 = [exp]2|5[/exp]. [exp]2|x+3[/exp] = [exp]2|5[/exp] → x + 3 = 5 → x = 2.",
+  },
+  {
+    id: "h26", type: "fill_blank", difficulty: "hard",
+    question: "[exp]3|x[/exp] × [exp]9|2[/exp] = [exp]3|8[/exp] 일 때, x = [___]",
+    answer: "4",
+    explain: "[exp]9|2[/exp] = [exp]3|4[/exp]. [exp]3|x[/exp] × [exp]3|4[/exp] = [exp]3|x+4[/exp] = [exp]3|8[/exp] → x + 4 = 8 → x = 4.",
+  },
+  {
+    id: "h27", type: "fill_blank", difficulty: "hard",
+    question: "[exp]4|3[/exp] + [exp]4|3[/exp] + [exp]4|3[/exp] + [exp]4|3[/exp] = [exp]4|n[/exp]. n = [___]",
+    answer: "4",
+    explain: "같은 항 4개 더하기 = 4 × [exp]4|3[/exp] = [exp]4|1[/exp] × [exp]4|3[/exp] = [exp]4|4[/exp]. n = 4. (×와 +를 구분!)",
+  },
+  {
+    id: "h28", type: "fill_blank", difficulty: "hard",
+    question: "[exp]2|10[/exp] + [exp]2|10[/exp] = [exp]2|n[/exp]. n = [___]",
+    answer: "11",
+    explain: "2 × [exp]2|10[/exp] = [exp]2|1[/exp] × [exp]2|10[/exp] = [exp]2|11[/exp]. n = 11.",
   },
 ];
