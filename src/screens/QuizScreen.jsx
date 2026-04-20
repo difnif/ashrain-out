@@ -481,6 +481,7 @@ function QuizPlayer({ problems, theme, playSfx, onFinish, multiplier = 1, timeLi
 // ══════════════════════════════════════════
 function QuizScreenInner({ theme, user, setScreen, playSfx, showMsg, members }) {
   const [mode, setMode] = useState(null); // null = hub
+  const [quizSession, setQuizSession] = useState(0);
   const [allXP, setAllXP] = useState(null);
   const [activeTimeQuiz, setActiveTimeQuiz] = useState(null);
   const [reviewQueue, setReviewQueue] = useState([]);
@@ -612,13 +613,13 @@ function QuizScreenInner({ theme, user, setScreen, playSfx, showMsg, members }) 
           <QuizHub
             theme={theme}
             playSfx={playSfx}
-            setMode={setMode}
+            setMode={(m) => { setMode(m); setQuizSession(Date.now()); }}
             activeTimeQuiz={activeTimeQuiz}
             reviewDueCount={reviewDue.length}
           />
         ) : (
           <QuizPlayer
-            key={mode + Date.now()} // 새 모드마다 리셋
+            key={quizSession} // 모드 선택 시점에만 리셋 (Date.now()는 리렌더마다 바뀌어 위험)
             problems={getProblems(mode)}
             theme={theme}
             playSfx={playSfx}
