@@ -36,7 +36,12 @@ const QUIZ_MODES = [
 // 스피드 퀴즈 타이머 설정
 const SPEED_INITIAL_SEC = 30;
 const SPEED_BONUS_SEC = 30;
+// 3단계 난이도 구간 (남은 시간 기준)
+//   < SLOW_THRESHOLD         → fast 풀
+//   SLOW_THRESHOLD ~ HARD_THRESHOLD → slow 풀
+//   ≥ HARD_THRESHOLD         → hard 풀
 const SLOW_THRESHOLD_SEC = 120;
+const HARD_THRESHOLD_SEC = 240;
 
 // ── 유틸 ──
 function shuffle(arr) {
@@ -285,13 +290,15 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
   const pools = useMemo(() => {
     const fast = SAMPLE_PROBLEMS.filter(p => p.difficulty === "fast");
     const slow = SAMPLE_PROBLEMS.filter(p => p.difficulty === "slow");
-    return { fast: shuffle(fast), slow: shuffle(slow) };
+    const hard = SAMPLE_PROBLEMS.filter(p => p.difficulty === "hard");
+    return { fast: shuffle(fast), slow: shuffle(slow), hard: shuffle(hard) };
   }, []);
 
   // 풀 인덱스는 ref로 관리 (리렌더 영향 없이 소모)
   const fastIdxRef = useRef(0);
   const slowIdxRef = useRef(0);
-  const timeLeftRef = useRef(SPEED_INITIAL_SEC); // 문제 선택 시 참조
+  const hardIdxRef = useRef(0);
+  const timeLeftRef = useRef(SPEED_INITIAL_SEC);
 
   // 상태
   const [currentProblem, setCurrentProblem] = useState(null);
@@ -307,22 +314,29 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
 
   // 다음 문제 pull (남은 시간 기준)
+  // 1순위: 현재 구간에 맞는 풀
+  // 2순위: 한 단계 낮은 풀 (예: hard 소진 시 slow)
+  // 3순위: 그 아래 풀 (fast)
   const pullNextProblem = useCallback(() => {
-    const canSlow = timeLeftRef.current >= SLOW_THRESHOLD_SEC;
-    // 1순위: 조건에 맞는 풀
-    if (canSlow && slowIdxRef.current < pools.slow.length) {
-      const p = pools.slow[slowIdxRef.current++];
-      return p;
+    const t = timeLeftRef.current;
+
+    // 구간별 우선순위 배열 [풀 이름 순서]
+    let priority;
+    if (t >= HARD_THRESHOLD_SEC) {
+      priority = ["hard", "slow", "fast"];
+    } else if (t >= SLOW_THRESHOLD_SEC) {
+      priority = ["slow", "fast", "hard"];
+    } else {
+      priority = ["fast", "slow", "hard"];
     }
-    // 2순위: fast 풀 (기본)
-    if (fastIdxRef.current < pools.fast.length) {
-      const p = pools.fast[fastIdxRef.current++];
-      return p;
-    }
-    // 3순위: slow 풀 fallback (fast 소진)
-    if (slowIdxRef.current < pools.slow.length) {
-      const p = pools.slow[slowIdxRef.current++];
-      return p;
+
+    const refMap = { fast: fastIdxRef, slow: slowIdxRef, hard: hardIdxRef };
+    for (const kind of priority) {
+      const ref = refMap[kind];
+      const pool = pools[kind];
+      if (ref.current < pool.length) {
+        return pool[ref.current++];
+      }
     }
     return null; // 모든 풀 소진
   }, [pools]);
@@ -434,7 +448,12 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
 
   const correctCount = results.filter(r => r.correct).length;
   const isUrgent = timeLeft < 10;
-  const isSlowZone = timeLeft >= SLOW_THRESHOLD_SEC;
+  const isHardZone = timeLeft >= HARD_THRESHOLD_SEC;
+  const isSlowZone = !isHardZone && timeLeft >= SLOW_THRESHOLD_SEC;
+
+  // 구간별 색상 & 라벨
+  const zoneColor = isHardZone ? "#F97316" : isSlowZone ? "#8B5CF6" : "#3B82F6";
+  const zoneLabel = isHardZone ? "🔥 극한 구간" : isSlowZone ? "🧠 계산 구간" : "⚡ 스피드 구간";
 
   return (
     <div style={{ padding: "0 16px 20px" }}>
@@ -442,8 +461,9 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
       <div style={{
         display: "flex", alignItems: "center", gap: 10, marginBottom: 14,
         padding: "10px 14px", borderRadius: 12,
-        background: isUrgent ? "#EF444418" : isSlowZone ? "#8B5CF612" : `${theme.text}08`,
-        border: `1px solid ${isUrgent ? "#EF444440" : isSlowZone ? "#8B5CF630" : theme.border}`,
+        background: isUrgent ? "#EF444418" : `${zoneColor}12`,
+        border: `1px solid ${isUrgent ? "#EF444440" : `${zoneColor}30`}`,
+        transition: "background .3s, border-color .3s",
       }}>
         <div style={{
           fontSize: 22, fontWeight: 900,
@@ -454,7 +474,7 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
           {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
         </div>
         <div style={{ flex: 1, fontSize: 11, color: theme.textSec, lineHeight: 1.4 }}>
-          {isSlowZone ? "🧠 계산 구간" : "⚡ 스피드 구간"}
+          <span style={{ color: zoneColor, fontWeight: 700 }}>{zoneLabel}</span>
           <br />
           <span style={{ fontSize: 10 }}>정답 시 +{SPEED_BONUS_SEC}초</span>
         </div>
