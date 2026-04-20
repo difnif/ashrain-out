@@ -8,6 +8,7 @@ export function renderAdminScreen(ctx) {
     { icon: "📚", label: "진도 관리", desc: "학원 진도 단원 체크", action: () => setScreen("admin-progress") },
     { icon: "👁️", label: "학생 모드 입장", desc: "학생 화면 미리보기", action: () => setScreen("student-mode") },
     { icon: "📊", label: "학습 현황", desc: "학생별 학습 열람 · 숙제 출제", action: () => setScreen("learning-dashboard") },
+    { icon: "🔬", label: "해부실", desc: "문제 5축 검토 (AI)", action: () => setScreen("admin-dissect") },
     { icon: "📬", label: "질문함", desc: (ctx.helpRequests||[]).filter(r=>r.status!=="answered").length > 0 ? `🔔 ${(ctx.helpRequests||[]).filter(r=>r.status!=="answered").length}건 대기` : "학생 질문 · 답변", action: () => setScreen("question-inbox") },
     { icon: "👤", label: "회원 관리", desc: signupRequests.length > 0 ? `🔔 가입 신청 ${signupRequests.length}건` : "권한 · 계정 · 비밀번호", action: () => setScreen("admin-students") },
     { icon: "⚙️", label: "시스템 설정", section: true },
