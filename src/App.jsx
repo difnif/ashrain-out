@@ -19,6 +19,7 @@ import {
   renderAdminScreen, renderAdminStudentsScreen, renderAdminProgressScreen, renderAdminPermsScreen,
   renderAdminSignupsScreen, renderAdminScriptsScreen,
 } from "./screens/AdminScreens";
+import { renderAdminDissectScreen } from "./screens/AdminDissectScreen";
 import { renderProblemScreen } from "./screens/ProblemScreen";
 import { renderStudentHomeScreen } from "./screens/StudentHomeScreen";
 import { renderQuestionInboxScreen } from "./screens/QuestionInboxScreen";
@@ -996,6 +997,12 @@ function AppInner() {
     );
   }
   if (screen === "admin-scripts") return renderAdminScriptsScreen(ctx);
+
+  // --- Admin Dissect (해부실: 문제 5축 AI 검토) ---
+  if (screen === "admin-dissect") {
+    if (userRole !== "admin") { setScreen("menu"); return null; }
+    return renderAdminDissectScreen(ctx);
+  }
 
 
   // --- Settings Screen ---
