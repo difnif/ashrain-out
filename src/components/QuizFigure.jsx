@@ -210,49 +210,67 @@ function IncircleParallel({ stroke, fill, accent }) {
 }
 
 // ─── 9. 직각삼각형 + 내접원 + 접선 길이 ──────────────────
-// 직각이 B, 두 직각변 a=BC, b=AB, 빗변 c=AC
-// 내접원 중심 I, 반지름 r
-// 접점 P(AB), Q(BC), R(AC) — BP=BQ=r (B가 직각이라 정사각형)
-function RightIncircleTangent({ stroke, fill, accent }) {
-  // 큰 사이즈로 배치
-  const B = [50, 130];
-  const A = [50, 30];   // 수직 위
-  const C = [220, 130]; // 수평 오른쪽
-  // 내접원 대략: r ≈ (a + b - c)/2, 여기선 시각용으로
-  const r = 22;
-  const I = [B[0] + r, B[1] - r];
-  // 접점
-  const P = [B[0], I[1]];       // AB 위
-  const Q = [I[0], B[1]];       // BC 위
-  // AC 위 접점 R은 시각적으로만
-  const R = [130, 80];
-  return (
-    <>
-      {/* 삼각형 */}
-      <polygon points={`${A} ${B} ${C}`} fill={fill} fillOpacity={0.1} stroke={stroke} strokeWidth={1.5} />
-      {/* 직각 표시 */}
-      <polyline points={`${B[0] + 10},${B[1]} ${B[0] + 10},${B[1] - 10} ${B[0]},${B[1] - 10}`}
-        fill="none" stroke={stroke} strokeWidth={1} />
-      {/* 내접원 */}
-      <circle cx={I[0]} cy={I[1]} r={r} fill={accent} fillOpacity={0.1} stroke={accent} strokeWidth={1.2} />
-      <circle cx={I[0]} cy={I[1]} r={2.5} fill={accent} />
-      {/* 반지름 표시 (I→P 수직, I→Q 수평) */}
-      <line x1={I[0]} y1={I[1]} x2={P[0]} y2={P[1]} stroke={accent} strokeWidth={1} strokeDasharray="2,2" />
-      <line x1={I[0]} y1={I[1]} x2={Q[0]} y2={Q[1]} stroke={accent} strokeWidth={1} strokeDasharray="2,2" />
-      {/* 접점 마커 */}
-      <circle cx={P[0]} cy={P[1]} r={2} fill={accent} />
-      <circle cx={Q[0]} cy={Q[1]} r={2} fill={accent} />
-      <circle cx={R[0]} cy={R[1]} r={2} fill={accent} />
-      {/* 라벨 */}
-      <Label x={A[0] - 10} y={A[1]} color={stroke}>A</Label>
-      <Label x={B[0] - 10} y={B[1] + 5} color={stroke}>B</Label>
-      <Label x={C[0] + 10} y={C[1] + 5} color={stroke}>C</Label>
-      <Label x={P[0] - 12} y={P[1]} color={accent} size={10}>P</Label>
-      <Label x={Q[0]} y={Q[1] + 12} color={accent} size={10}>Q</Label>
-      <Label x={R[0] + 12} y={R[1] - 4} color={accent} size={10}>R</Label>
-      <Label x={I[0] + 8} y={I[1] - 8} color={accent} size={10}>I</Label>
-    </>
-  );
+// 직각이 B (좌하단), 두 직각변 a=BC(수평), b=AB(수직), 빗변 c=AC
+// 실제 비례에 맞춰 배치하고 내접원이 삼각형에 정확히 내접하도록 계산
+// r = (a + b - c) / 2, I = (r, r) (B 기준), 접점 P(AB), Q(BC), R(AC)
+function makeRightIncircle(a, b, c) {
+  return function RightIncircleFigure({ stroke, fill, accent }) {
+    // 뷰박스 260×170 에 삼각형 맞추기 (여백 고려)
+    const pad = 30;
+    const W = 260 - pad * 2; // 200
+    const H = 170 - pad * 2; // 110
+    // 실제 비율 a:b 를 W:H에 피팅하되, 한쪽 축이 채워지도록
+    const scale = Math.min(W / a, H / b);
+    const pxA = a * scale;
+    const pxB = b * scale;
+    // 실좌표 → 화면좌표 변환 (화면은 y 아래로 양수)
+    const originX = pad;
+    const originY = pad + pxB; // B의 y
+    const toPx = (x, y) => [originX + x * scale, originY - y * scale];
+
+    const B = toPx(0, 0);
+    const A = toPx(0, b);
+    const C = toPx(a, 0);
+
+    const r = (a + b - c) / 2;
+    const I = toPx(r, r);
+    const P = toPx(0, r);       // AB 위
+    const Q = toPx(r, 0);       // BC 위
+    // R (AC 위 접점): I에서 직선 AC로의 수선의 발
+    const dVal = (a * b - r * (a + b)) / c;
+    const Rx = r + dVal * (b / c);
+    const Ry = r + dVal * (a / c);
+    const R = toPx(Rx, Ry);
+    const rPx = r * scale;
+
+    return (
+      <>
+        {/* 삼각형 */}
+        <polygon points={`${A} ${B} ${C}`} fill={fill} fillOpacity={0.1} stroke={stroke} strokeWidth={1.5} />
+        {/* 직각 표시 */}
+        <polyline points={`${B[0] + 8},${B[1]} ${B[0] + 8},${B[1] - 8} ${B[0]},${B[1] - 8}`}
+          fill="none" stroke={stroke} strokeWidth={1} />
+        {/* 내접원 */}
+        <circle cx={I[0]} cy={I[1]} r={rPx} fill={accent} fillOpacity={0.1} stroke={accent} strokeWidth={1.2} />
+        <circle cx={I[0]} cy={I[1]} r={2} fill={accent} />
+        {/* 반지름 점선 표시 I→P, I→Q */}
+        <line x1={I[0]} y1={I[1]} x2={P[0]} y2={P[1]} stroke={accent} strokeWidth={1} strokeDasharray="2,2" />
+        <line x1={I[0]} y1={I[1]} x2={Q[0]} y2={Q[1]} stroke={accent} strokeWidth={1} strokeDasharray="2,2" />
+        {/* 접점 마커 */}
+        <circle cx={P[0]} cy={P[1]} r={2} fill={accent} />
+        <circle cx={Q[0]} cy={Q[1]} r={2} fill={accent} />
+        <circle cx={R[0]} cy={R[1]} r={2} fill={accent} />
+        {/* 라벨 */}
+        <Label x={A[0] - 10} y={A[1]} color={stroke}>A</Label>
+        <Label x={B[0] - 10} y={B[1] + 5} color={stroke}>B</Label>
+        <Label x={C[0] + 10} y={C[1] + 5} color={stroke}>C</Label>
+        <Label x={P[0] - 10} y={P[1]} color={accent} size={10}>P</Label>
+        <Label x={Q[0]} y={Q[1] + 10} color={accent} size={10}>Q</Label>
+        <Label x={R[0] + 10} y={R[1] - 3} color={accent} size={10}>R</Label>
+        <Label x={I[0] + 8} y={I[1] - 6} color={accent} size={10}>I</Label>
+      </>
+    );
+  };
 }
 
 // ─── 10. 별·이등변 복합 (외각 연쇄) ──────────────────
@@ -293,6 +311,134 @@ function StarIsosceles({ stroke, fill, accent }) {
   );
 }
 
+// ─── 11. 합동 비교 — 직각삼각형 두 개 (변·각에 틱 표시) ──────────────────
+// marks: { tick1: [...], tick2: [...], arc: [...], right: [...] }
+// 변·각에 합동 표시를 달아 학생이 합동조건 판단
+// 간단히 프리셋 2종류만 제공: 같은 것들이 어디인지 시각적으로 보여주기
+//
+// Two right triangles side by side.
+// Left: △ABC, 직각 B. Right: △DEF, 직각 E.
+// marks 옵션으로 어떤 변/각이 같다고 표시할지 지정.
+
+function RightPairTwoSidesSame({ stroke, fill, accent }) {
+  // 두 직각삼각형: BC와 EF 같음 (single tick), AC와 DF 같음 (double tick)
+  // → RHS (빗변 + 다른 한 변)
+  return <RightPair stroke={stroke} fill={fill} accent={accent}
+    ticks={[{ side: "BC", count: 1 }, { side: "EF", count: 1 },
+            { side: "AC", count: 2 }, { side: "DF", count: 2 }]}
+    rightAngles={["B", "E"]} />;
+}
+
+function RightPairHypAndAngle({ stroke, fill, accent }) {
+  // 빗변 AC=DF (tick), 예각 A=D (호 표시)
+  // → RHA
+  return <RightPair stroke={stroke} fill={fill} accent={accent}
+    ticks={[{ side: "AC", count: 1 }, { side: "DF", count: 1 }]}
+    arcs={["A", "D"]}
+    rightAngles={["B", "E"]} />;
+}
+
+function RightPairTwoLegs({ stroke, fill, accent }) {
+  // 두 직각변 BC=EF (tick1), AB=DE (tick2)
+  // → 이건 사실 SAS(두 변과 끼인각=직각) → 합동, 하지만 특수 명칭은 없음
+  return <RightPair stroke={stroke} fill={fill} accent={accent}
+    ticks={[{ side: "BC", count: 1 }, { side: "EF", count: 1 },
+            { side: "AB", count: 2 }, { side: "DE", count: 2 }]}
+    rightAngles={["B", "E"]} />;
+}
+
+function RightPairNeedHyp({ stroke, fill, accent }) {
+  // 한 직각변 BC=EF만 표시 (tick) — 합동 조건 부족
+  // 추가로 무엇이 필요한지 묻는 문제용
+  return <RightPair stroke={stroke} fill={fill} accent={accent}
+    ticks={[{ side: "BC", count: 1 }, { side: "EF", count: 1 }]}
+    rightAngles={["B", "E"]} />;
+}
+
+// RightPair 공통 렌더
+function RightPair({ stroke, fill, accent, ticks = [], arcs = [], rightAngles = [] }) {
+  // 왼쪽 △ABC
+  const A1 = [45, 30], B1 = [45, 130], C1 = [120, 130];
+  // 오른쪽 △DEF
+  const D1 = [160, 30], E1 = [160, 130], F1 = [235, 130];
+
+  const SIDES = {
+    AB: { p1: A1, p2: B1, tri: 1 },
+    BC: { p1: B1, p2: C1, tri: 1 },
+    AC: { p1: A1, p2: C1, tri: 1 },
+    DE: { p1: D1, p2: E1, tri: 2 },
+    EF: { p1: E1, p2: F1, tri: 2 },
+    DF: { p1: D1, p2: F1, tri: 2 },
+  };
+  const CORNERS = { A: A1, B: B1, C: C1, D: D1, E: E1, F: F1 };
+
+  // 변 중점에 tick 표시
+  const drawTick = (side, count, idx) => {
+    const s = SIDES[side]; if (!s) return null;
+    const mx = (s.p1[0] + s.p2[0]) / 2;
+    const my = (s.p1[1] + s.p2[1]) / 2;
+    const dx = s.p2[0] - s.p1[0], dy = s.p2[1] - s.p1[1];
+    const len = Math.hypot(dx, dy);
+    const tx = -dy / len, ty = dx / len; // 수직
+    const color = count === 1 ? accent : "#8B5CF6";
+    const marks = [];
+    for (let i = 0; i < count; i++) {
+      const off = (i - (count - 1) / 2) * 4;
+      const cx = mx + (dx / len) * off;
+      const cy = my + (dy / len) * off;
+      marks.push(
+        <line key={`${idx}-${i}`}
+          x1={cx - tx * 4} y1={cy - ty * 4}
+          x2={cx + tx * 4} y2={cy + ty * 4}
+          stroke={color} strokeWidth={1.5} />
+      );
+    }
+    return marks;
+  };
+
+  // 꼭짓점에 호(arc) 표시
+  const drawArc = (corner, idx) => {
+    const p = CORNERS[corner]; if (!p) return null;
+    return (
+      <circle key={`arc-${idx}`} cx={p[0]} cy={p[1]} r={10}
+        fill="none" stroke={accent} strokeWidth={1.2}
+        strokeDasharray="2,2" opacity={0.7} />
+    );
+  };
+
+  // 직각 표시 (B, E는 각각 좌하단)
+  const drawRight = (corner) => {
+    const p = CORNERS[corner]; if (!p) return null;
+    return (
+      <polyline key={`right-${corner}`}
+        points={`${p[0] + 8},${p[1]} ${p[0] + 8},${p[1] - 8} ${p[0]},${p[1] - 8}`}
+        fill="none" stroke={stroke} strokeWidth={1} />
+    );
+  };
+
+  return (
+    <>
+      {/* 왼쪽 */}
+      <polygon points={`${A1} ${B1} ${C1}`} fill={fill} fillOpacity={0.1} stroke={stroke} strokeWidth={1.5} />
+      {/* 오른쪽 */}
+      <polygon points={`${D1} ${E1} ${F1}`} fill={fill} fillOpacity={0.1} stroke={stroke} strokeWidth={1.5} />
+      {/* 직각 표시 */}
+      {rightAngles.map(c => drawRight(c))}
+      {/* tick 표시 (변) */}
+      {ticks.map((t, i) => drawTick(t.side, t.count, i))}
+      {/* 호 표시 (각) */}
+      {arcs.map((c, i) => drawArc(c, i))}
+      {/* 라벨 */}
+      <Label x={A1[0] - 10} y={A1[1]} color={stroke}>A</Label>
+      <Label x={B1[0] - 10} y={B1[1] + 5} color={stroke}>B</Label>
+      <Label x={C1[0] + 10} y={C1[1] + 5} color={stroke}>C</Label>
+      <Label x={D1[0] - 10} y={D1[1]} color={stroke}>D</Label>
+      <Label x={E1[0] - 10} y={E1[1] + 5} color={stroke}>E</Label>
+      <Label x={F1[0] + 10} y={F1[1] + 5} color={stroke}>F</Label>
+    </>
+  );
+}
+
 const REGISTRY = {
   "circum-acute": CircumAcute,
   "circum-right": CircumRight,
@@ -302,8 +448,19 @@ const REGISTRY = {
   "right-triangle": RightTriangle,
   "exterior-angle": ExteriorAngle,
   "incircle-parallel": IncircleParallel,
-  "right-incircle-tangent": RightIncircleTangent,
   "star-isosceles": StarIsosceles,
+  // 직각삼각형 내접원 — 실제 비례 4종
+  "right-incircle-3-4-5": makeRightIncircle(3, 4, 5),
+  "right-incircle-5-12-13": makeRightIncircle(5, 12, 13),
+  "right-incircle-6-8-10": makeRightIncircle(6, 8, 10),
+  "right-incircle-8-15-17": makeRightIncircle(8, 15, 17),
+  // 하위 호환용 기본값 (5-12-13)
+  "right-incircle-tangent": makeRightIncircle(5, 12, 13),
+  // 합동 쌍 — 4가지 케이스
+  "right-pair-rhs": RightPairTwoSidesSame,       // 빗변 + 다른 한 변 같음 (RHS)
+  "right-pair-rha": RightPairHypAndAngle,        // 빗변 + 한 예각 같음 (RHA)
+  "right-pair-two-legs": RightPairTwoLegs,       // 두 직각변 같음 (SAS)
+  "right-pair-need-hyp": RightPairNeedHyp,       // 한 직각변만 같음 (조건 부족)
 };
 
 export default function QuizFigure({ name, theme }) {
