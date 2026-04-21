@@ -872,28 +872,28 @@ export const SAMPLE_PROBLEMS = [
     question: "직각 B인 직각삼각형 ABC에서 [seg]BC[/seg]=3, [seg]AB[/seg]=4, [seg]AC[/seg]=5. 내접원의 반지름 r = [___]",
     answer: "1",
     explain: "직각삼각형 내접원 반지름 공식: r = [frac](a+b-c)|2[/frac] = [frac](3+4-5)|2[/frac] = [frac]2|2[/frac] = 1.",
-    figure: "right-incircle-tangent",
+    figure: "right-incircle-3-4-5",
   },
   {
     id: "b6", type: "fill_blank", difficulty: "hard",
     question: "직각 B인 직각삼각형 ABC, [seg]BC[/seg]=6, [seg]AB[/seg]=8, [seg]AC[/seg]=10. 내접원과 [seg]AC[/seg]의 접점 R에 대해 [seg]AR[/seg] = [___]",
     answer: "6",
     explain: "r = [frac](6+8-10)|2[/frac] = 2. AR = AB − BP = AB − r = 8 − 2 = 6. (한 점 A에서 그은 두 접선 AP, AR은 길이 같음, BP=r)",
-    figure: "right-incircle-tangent",
+    figure: "right-incircle-6-8-10",
   },
   {
     id: "b7", type: "fill_blank", difficulty: "hard",
     question: "직각 B인 직각삼각형, [seg]BC[/seg]=5, [seg]AB[/seg]=12, [seg]AC[/seg]=13. 내접원 중심 I, 반지름 r. 사각형 IPBQ(P는 AB의 접점, Q는 BC의 접점)의 넓이 = [___]",
     answer: "4",
     explain: "r = [frac](5+12-13)|2[/frac] = 2. 직각 B + I에서 AB, BC에 수직 → IPBQ는 한 변 r인 정사각형. 넓이 = [exp]r|2[/exp] = [exp]2|2[/exp] = 4.",
-    figure: "right-incircle-tangent",
+    figure: "right-incircle-5-12-13",
   },
   {
     id: "b8", type: "fill_blank", difficulty: "hard",
-    question: "직각 B인 직각삼각형 ABC, [seg]BC[/seg]=6, [seg]AB[/seg]=8, [seg]AC[/seg]=10. 내접원 반지름 r, 한 점 A에서 그은 두 접선 [seg]AP[/seg]=[seg]AR[/seg]의 길이 = [___]",
-    answer: "6",
-    explain: "r = [frac](6+8-10)|2[/frac] = 2. BP=r=2(직각 B, 접선⊥반지름). AP = AB-BP = 8-2 = 6. AR=AP=6.",
-    figure: "right-incircle-tangent",
+    question: "직각 B인 직각삼각형 ABC, [seg]BC[/seg]=8, [seg]AB[/seg]=15, [seg]AC[/seg]=17. 내접원 반지름 r, 한 점 C에서 그은 두 접선 [seg]CQ[/seg]=[seg]CR[/seg]의 길이 = [___]",
+    answer: "5",
+    explain: "r = [frac](8+15-17)|2[/frac] = 3. CQ = BC − BQ = BC − r = 8 − 3 = 5. CR = CQ = 5 (한 점에서 그은 두 접선 길이 같음).",
+    figure: "right-incircle-8-15-17",
   },
 
   // ═══════════════════════════════════════════════════════════
@@ -926,5 +926,86 @@ export const SAMPLE_PROBLEMS = [
     answer: "80",
     explain: "AD=BD → △ABD 이등변, 밑각 ∠ABD=∠BAD=∠A=40°. 외각정리: ∠BDC는 △ABD의 외각(D에서 AC 방향) = ∠BAD + ∠ABD = 40° + 40° = 80°.",
     figure: "star-isosceles",
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // [U] 직각삼각형 합동조건 판단 (두 그림 비교)
+  // 빨간 틱(●) = 한 번, 보라 틱(●●) = 두 번 표시된 변끼리 같음
+  // 호(점선 원) = 표시된 각끼리 같음
+  // 양쪽 작은 사각 = 직각 표시
+  // ═══════════════════════════════════════════════════════════
+  {
+    id: "b13", type: "choice", difficulty: "hard",
+    question: "그림에서 두 직각삼각형 △ABC, △DEF의 합동조건은?\n(빨간 틱: 한 번 표시된 변끼리 같음 / 보라 틱: 두 번 표시된 변끼리 같음)",
+    choices: ["SSS", "SAS", "RHA", "RHS"],
+    answer: 3,
+    explain: "직각 B=E, 빗변 [seg]AC[/seg]=[seg]DF[/seg] (보라), 다른 한 변 [seg]BC[/seg]=[seg]EF[/seg] (빨강) → Right+Hypotenuse+Side = RHS.",
+    figure: "right-pair-rhs",
+  },
+  {
+    id: "b14", type: "choice", difficulty: "hard",
+    question: "그림에서 두 직각삼각형의 합동조건은?\n(빨간 틱: 같은 변 / 점선 호: 같은 각)",
+    choices: ["SSS", "SAS", "RHA", "RHS"],
+    answer: 2,
+    explain: "직각 B=E, 빗변 [seg]AC[/seg]=[seg]DF[/seg], 한 예각 ∠A=∠D → Right+Hypotenuse+Acute angle = RHA.",
+    figure: "right-pair-rha",
+  },
+  {
+    id: "b15", type: "choice", difficulty: "hard",
+    question: "그림에서 두 직각삼각형의 두 직각변이 각각 같다: [seg]BC[/seg]=[seg]EF[/seg], [seg]AB[/seg]=[seg]DE[/seg]. 이 합동은?",
+    choices: ["RHA", "RHS", "SAS (직각이 끼인각)", "합동 아님"],
+    answer: 2,
+    explain: "두 변이 같고 그 끼인각이 직각으로 같음. 이는 RHA/RHS 특수명 말고도 일반 SAS 합동.",
+    figure: "right-pair-two-legs",
+  },
+  {
+    id: "b16", type: "choice", difficulty: "hard",
+    question: "그림에서 직각 B=E, 한 직각변 [seg]BC[/seg]=[seg]EF[/seg]만 같다. RHS로 합동이 되려면 추가로 필요한 조건은?",
+    choices: [
+      "빗변 [seg]AC[/seg] = [seg]DF[/seg]",
+      "∠A = ∠D",
+      "∠C = ∠F",
+      "추가 조건 없이도 합동",
+    ],
+    answer: 0,
+    explain: "RHS = Right + Hypotenuse + Side. 직각·한 변은 주어졌으므로 빗변이 더 필요함. ∠A=∠D는 RHA 조건. ∠C=∠F도 RHA(다른 예각).",
+    figure: "right-pair-need-hyp",
+  },
+  {
+    id: "b17", type: "choice", difficulty: "hard",
+    question: "그림에서 직각 B=E, [seg]BC[/seg]=[seg]EF[/seg]. RHA로 합동이 되려면 추가로 필요한 조건은?",
+    choices: [
+      "∠A = ∠D",
+      "[seg]AC[/seg] = [seg]DF[/seg]",
+      "[seg]AB[/seg] = [seg]DE[/seg]",
+      "∠B = ∠E",
+    ],
+    answer: 0,
+    explain: "RHA = Right + Hypotenuse + Acute angle. 빗변 정보가 주어지지 않았으므로 '예각 같음'(∠A=∠D)으로 RHA 조건 충족. (보기 2·3은 다른 합동조건이고, 보기 4는 이미 주어진 조건)",
+    figure: "right-pair-need-hyp",
+  },
+  {
+    id: "b18", type: "choice", difficulty: "hard",
+    question: "다음 중 두 직각삼각형이 합동이 될 수 없는 조건은? (두 삼각형 모두 한 각이 직각)",
+    choices: [
+      "두 직각변이 각각 같다",
+      "빗변과 한 예각이 같다",
+      "빗변과 다른 한 변이 같다",
+      "두 예각이 각각 같다",
+    ],
+    answer: 3,
+    explain: "두 예각이 같으면 AA(각만 같음)는 닮음 조건일 뿐. 크기가 달라도 두 예각은 같을 수 있음. 다른 세 조건은 각각 SAS, RHA, RHS로 합동.",
+  },
+  {
+    id: "b19", type: "choice", difficulty: "hard",
+    question: "직각삼각형의 합동조건 중 '일반 삼각형에는 없고 직각삼각형에만 있는' 조건은?",
+    choices: [
+      "SSS, SAS",
+      "RHA, RHS",
+      "ASA, SAS",
+      "AAA, AAS",
+    ],
+    answer: 1,
+    explain: "RHA(빗변+예각)와 RHS(빗변+한 변)는 '직각'이라는 조건이 있기에 성립하는 특수 합동조건. 일반 삼각형에서 SSA는 합동조건이 아니지만, 직각삼각형에서는 그게 통한다는 게 핵심.",
   },
 ];
