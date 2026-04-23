@@ -192,7 +192,8 @@ function HomeTab({ theme, user, setScreen, playSfx, homework, notifications, arc
         </div>
       </button>
 
-      {/* Learning graph */}
+      {/* Learning graph — 임시 비활성 (복구하려면 false → true로 변경) */}
+      {false && (
       <div style={{ padding: "14px", borderRadius: 14, background: theme.card, border: `1px solid ${theme.border}`, marginBottom: 16 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginBottom: 10 }}>📈 이번 주 학습량</div>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 80 }}>
@@ -210,6 +211,7 @@ function HomeTab({ theme, user, setScreen, playSfx, homework, notifications, arc
           ))}
         </div>
       </div>
+      )}
 
       {/* Speed Quiz Leaderboard */}
       <SpeedQuizLeaderboard theme={theme} currentUser={user} />
