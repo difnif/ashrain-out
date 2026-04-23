@@ -19,6 +19,7 @@ import {
   getActiveTimeQuiz, loadReviewQueue, saveReviewItem,
   loadQuizHistory, saveQuizResult, createDefaultXPData,
 } from "../XPSystem";
+import { fbGet, fbSet, fbListen } from "../firebase";
 import { SAMPLE_PROBLEMS } from "../data/quizProblems";
 import QuizMathText from "../components/QuizMathText";
 import QuizFigure from "../components/QuizFigure";
@@ -37,6 +38,7 @@ const QUIZ_MODES = [
 const SPEED_INITIAL_SEC = 30;
 const SPEED_BONUS_SEC = 30;
 const SPEED_PENALTY_SEC = 40; // 오답 시 차감. 시간이 0 이하 도달 시 즉시 종료.
+const CLEAR_THRESHOLD_SEC = 440; // 7분 20초 초과 시 자동 클리어
 // 3단계 난이도 구간 (남은 시간 기준)
 //   < SLOW_THRESHOLD         → fast 풀
 //   SLOW_THRESHOLD ~ HARD_THRESHOLD → slow 풀
@@ -64,9 +66,12 @@ function matchesFillBlank(input, answer) {
 // ══════════════════════════════════════════
 // ── 퀴즈 허브 (모드 선택) ──
 // ══════════════════════════════════════════
-function QuizHub({ theme, playSfx, setMode, activeTimeQuiz, reviewDueCount }) {
+function QuizHub({ theme, playSfx, setMode, activeTimeQuiz, reviewDueCount, currentUser }) {
   return (
     <div style={{ padding: "0 16px 20px" }}>
+      {/* 스피드 퀴즈 명예의 전당 */}
+      <ClearLeaderboard theme={theme} currentUser={currentUser} />
+
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {QUIZ_MODES.map(m => {
           const isTime = m.id === "time";
@@ -121,6 +126,112 @@ function QuizHub({ theme, playSfx, setMode, activeTimeQuiz, reviewDueCount }) {
                 <TimeCountdown expiresAt={activeTimeQuiz.expiresAt} theme={theme} />
               )}
             </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════
+// ── 스피드 퀴즈 명예의 전당 (클리어 랭킹) ──
+// Firestore "quiz-clears" 문서 실시간 구독
+// 정렬: clearCount 내림차순 → bestCorrect 내림차순
+// ══════════════════════════════════════════
+function ClearLeaderboard({ theme, currentUser }) {
+  const [entries, setEntries] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const unsub = fbListen("quiz-clears", (data) => {
+      const list = data
+        ? Object.values(data).filter(e => e && e.userId)
+        : [];
+      list.sort((a, b) => {
+        if (b.clearCount !== a.clearCount) return b.clearCount - a.clearCount;
+        return b.bestCorrect - a.bestCorrect;
+      });
+      setEntries(list);
+      setLoaded(true);
+    });
+    return () => { if (typeof unsub === "function") unsub(); };
+  }, []);
+
+  // 클리어 0인 사람은 랭킹에서 제외, 전체 0이면 초대 문구
+  const ranked = entries.filter(e => e.clearCount > 0);
+  const topN = ranked.slice(0, 5);
+
+  if (!loaded) return null;
+  if (ranked.length === 0) {
+    return (
+      <div style={{
+        padding: "14px 16px", borderRadius: 14, marginBottom: 14,
+        background: "linear-gradient(135deg, #FEF3C712, #FDE68A10)",
+        border: `1px dashed #EAB30840`,
+        textAlign: "center",
+      }}>
+        <div style={{ fontSize: 20, marginBottom: 4 }}>🏆</div>
+        <div style={{ fontSize: 12, color: theme.textSec, lineHeight: 1.6 }}>
+          스피드 퀴즈 7분 20초 돌파!
+          <br />
+          첫 클리어의 주인공이 되어 보세요
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      padding: "12px 14px", borderRadius: 14, marginBottom: 14,
+      background: "linear-gradient(135deg, #FEF3C715, #FDE68A08)",
+      border: `1px solid #EAB30830`,
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6, marginBottom: 10,
+      }}>
+        <span style={{ fontSize: 14 }}>🏆</span>
+        <span style={{ fontSize: 13, fontWeight: 800, color: theme.text }}>
+          스피드 퀴즈 명예의 전당
+        </span>
+        <span style={{ fontSize: 10, color: theme.textSec, marginLeft: "auto" }}>
+          TOP {topN.length}
+        </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {topN.map((e, i) => {
+          const isMe = currentUser && e.userId === currentUser.id;
+          const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`;
+          return (
+            <div key={e.userId}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "6px 8px", borderRadius: 8,
+                background: isMe ? "#EAB30818" : "transparent",
+                border: isMe ? "1px solid #EAB30840" : "1px solid transparent",
+              }}>
+              <div style={{
+                width: 22, textAlign: "center",
+                fontSize: i < 3 ? 14 : 11,
+                fontWeight: 700,
+                color: i < 3 ? undefined : theme.textSec,
+              }}>{medal}</div>
+              <div style={{
+                flex: 1, fontSize: 12, fontWeight: isMe ? 800 : 600,
+                color: theme.text,
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              }}>
+                {e.name}{isMe && <span style={{ fontSize: 10, color: "#EAB308", marginLeft: 4 }}>· 나</span>}
+              </div>
+              <div style={{ fontSize: 11, color: theme.textSec, fontVariantNumeric: "tabular-nums" }}>
+                {e.clearCount}회
+              </div>
+              <div style={{
+                fontSize: 10, color: "#10B981", fontWeight: 700,
+                minWidth: 42, textAlign: "right",
+              }}>
+                ✓{e.bestCorrect}
+              </div>
+            </div>
           );
         })}
       </div>
@@ -283,6 +394,20 @@ function Explanation({ problem, selected, fillInput, theme }) {
   );
 }
 
+// 결과 화면용 통계 카드
+function StatCard({ label, value, color, bg }) {
+  return (
+    <div style={{
+      flex: 1, padding: "14px 8px", borderRadius: 12,
+      background: bg,
+      display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+    }}>
+      <div style={{ fontSize: 11, color: "#6B7280", fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 900, color }}>{value}</div>
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════
 // ── [1] SpeedQuizPlayer — 스피드 퀴즈 전용 ──
 // ══════════════════════════════════════════
@@ -309,8 +434,11 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
   const [results, setResults] = useState([]); // {problemId, correct}[]
   const [timeLeft, setTimeLeft] = useState(SPEED_INITIAL_SEC);
   const [finished, setFinished] = useState(false);
+  const [cleared, setCleared] = useState(false); // 440초 초과 달성
   const [pendingFinish, setPendingFinish] = useState(false); // 오답 페널티로 시간 소진, 해설 본 뒤 종료 예정
   const [streak, setStreak] = useState(0);
+  // 시각 이펙트용 펄스 상태
+  const [pulse, setPulse] = useState(null); // { kind: "correct" | "wrong", ts }
 
   // timeLeft 동기화 → ref
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
@@ -390,12 +518,22 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
     setStreak(s => correct ? s + 1 : 0);
 
     if (correct) {
-      // 정답 보너스: +30초
-      setTimeLeft(t => t + SPEED_BONUS_SEC);
+      // 정답 보너스: +30초. 440초 초과 시 자동 클리어.
+      setTimeLeft(t => {
+        const next = t + SPEED_BONUS_SEC;
+        if (next > CLEAR_THRESHOLD_SEC) {
+          // 해설 보고 '클리어!' 버튼 누르면 종료
+          setCleared(true);
+          setPendingFinish(true);
+        }
+        return next;
+      });
+      setPulse({ kind: "correct", ts: Date.now() });
       playSfx("success");
     } else {
       // 오답 페널티: -40초. 결과 0 이하면 해설 본 후 종료 예정으로 표시.
       playSfx("click");
+      setPulse({ kind: "wrong", ts: Date.now() });
       setTimeLeft(t => {
         const next = t - SPEED_PENALTY_SEC;
         if (next <= 0) {
@@ -429,27 +567,75 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
     const correct = results.filter(r => r.correct).length;
     const total = results.length;
     const rate = total > 0 ? Math.round((correct / total) * 100) : 0;
+
+    // cleared: 440초 돌파한 클리어 케이스
+    // !cleared: 시간 소진 (0초 도달)
+
     return (
-      <div style={{ padding: "40px 20px", textAlign: "center" }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>
-          {rate >= 80 ? "🎉" : rate >= 50 ? "👍" : "💪"}
+      <div style={{
+        padding: "40px 20px", textAlign: "center",
+        background: cleared
+          ? "linear-gradient(180deg, #FEF3C7 0%, #FDE68A 50%, #F59E0B 100%)"
+          : "transparent",
+        borderRadius: cleared ? 24 : 0,
+        margin: cleared ? "20px 12px" : 0,
+        animation: cleared ? "clearFlash 0.6s ease-out" : undefined,
+      }}>
+        {/* 아이콘 & 제목 */}
+        <div style={{ fontSize: cleared ? 72 : 48, marginBottom: 16 }}>
+          {cleared ? "🏆" : rate >= 80 ? "🎉" : rate >= 50 ? "👍" : "💪"}
         </div>
-        <div style={{ fontSize: 20, fontWeight: 800, color: theme.text, marginBottom: 8 }}>
-          스피드 퀴즈 종료!
+        <div style={{
+          fontSize: cleared ? 26 : 20,
+          fontWeight: 900,
+          color: cleared ? "#7C2D12" : theme.text,
+          marginBottom: 8,
+          letterSpacing: cleared ? "0.05em" : 0,
+        }}>
+          {cleared ? "CLEAR!" : "스피드 퀴즈 종료"}
         </div>
-        <div style={{ fontSize: 14, color: theme.textSec, marginBottom: 24, lineHeight: 1.8 }}>
-          {total}문제 도전 · <b style={{ color: "#10B981" }}>{correct}문제 정답</b>
-          {total > 0 && <><br />정답률 {rate}%</>}
+        {cleared && (
+          <div style={{ fontSize: 13, color: "#92400E", fontWeight: 700, marginBottom: 20 }}>
+            7분 20초 돌파 · 명예의 전당 등록
+          </div>
+        )}
+
+        {/* 통계 카드 3개 */}
+        <div style={{
+          display: "flex", gap: 8, margin: "16px auto 24px", maxWidth: 360,
+          justifyContent: "center",
+        }}>
+          <StatCard label="풀이 수" value={total}
+            color={cleared ? "#7C2D12" : theme.text}
+            bg={cleared ? "#FFFFFF80" : `${theme.text}08`} />
+          <StatCard label="정답 수" value={correct}
+            color="#10B981"
+            bg={cleared ? "#FFFFFFB0" : "#10B98110"} />
+          <StatCard label="정답률" value={`${rate}%`}
+            color={rate >= 80 ? "#10B981" : rate >= 50 ? "#F59E0B" : "#EF4444"}
+            bg={cleared ? "#FFFFFFB0" : `${theme.text}08`} />
         </div>
-        <button onClick={() => onFinish(results)}
+
+        <button onClick={() => onFinish({ results, cleared })}
           style={{
             padding: "12px 32px", borderRadius: 12,
-            background: theme.text, color: theme.bg,
+            background: cleared ? "#7C2D12" : theme.text,
+            color: cleared ? "#FDE68A" : theme.bg,
             fontSize: 14, fontWeight: 700, border: "none", cursor: "pointer",
             fontFamily: "'Noto Serif KR', serif",
+            boxShadow: cleared ? "0 4px 12px rgba(124,45,18,0.3)" : undefined,
           }}>
           돌아가기
         </button>
+
+        {/* 클리어 애니메이션용 CSS */}
+        <style>{`
+          @keyframes clearFlash {
+            0% { transform: scale(0.9); opacity: 0; }
+            50% { transform: scale(1.03); }
+            100% { transform: scale(1); opacity: 1; }
+          }
+        `}</style>
       </div>
     );
   }
@@ -466,26 +652,67 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
   const isUrgent = timeLeft < 10;
   const isHardZone = timeLeft >= HARD_THRESHOLD_SEC;
   const isSlowZone = !isHardZone && timeLeft >= SLOW_THRESHOLD_SEC;
+  // 클리어 근접: 400초(클리어 40초 전)부터 반짝임
+  const isNearClear = timeLeft >= CLEAR_THRESHOLD_SEC - 40;
 
   // 구간별 색상 & 라벨
-  const zoneColor = isHardZone ? "#F97316" : isSlowZone ? "#8B5CF6" : "#3B82F6";
-  const zoneLabel = isHardZone ? "🔥 극한 구간" : isSlowZone ? "🧠 계산 구간" : "⚡ 스피드 구간";
+  const zoneColor = isNearClear ? "#EAB308" : isHardZone ? "#F97316" : isSlowZone ? "#8B5CF6" : "#3B82F6";
+  const zoneLabel = isNearClear ? "👑 클리어 임박!" : isHardZone ? "🔥 극한 구간" : isSlowZone ? "🧠 계산 구간" : "⚡ 스피드 구간";
+
+  // 펄스 이펙트: 최근 답변에 따라 잠시 배경 점멸 (0.8초)
+  const pulseActive = pulse && (Date.now() - pulse.ts < 800);
+  const pulseBg = pulseActive
+    ? (pulse.kind === "correct" ? "#10B98118" : "#EF444418")
+    : null;
 
   return (
-    <div style={{ padding: "0 16px 20px" }}>
+    <div style={{
+      padding: "0 16px 20px",
+      background: pulseBg || undefined,
+      transition: "background 0.3s ease",
+    }}>
       {/* 상단: 타이머 + 정답 수 */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 10, marginBottom: 14,
-        padding: "10px 14px", borderRadius: 12,
-        background: isUrgent ? "#EF444418" : `${zoneColor}12`,
-        border: `1px solid ${isUrgent ? "#EF444440" : `${zoneColor}30`}`,
-        transition: "background .3s, border-color .3s",
-      }}>
+      <div
+        key={pulse?.ts /* 펄스마다 재마운트로 애니메이션 재실행 */}
+        style={{
+          display: "flex", alignItems: "center", gap: 10, marginBottom: 14,
+          padding: "10px 14px", borderRadius: 12,
+          background: isUrgent
+            ? "#EF444418"
+            : pulseActive
+              ? (pulse.kind === "correct" ? "#10B98122" : "#EF444422")
+              : `${zoneColor}12`,
+          border: `1.5px solid ${
+            isUrgent ? "#EF444460"
+              : pulseActive
+                ? (pulse.kind === "correct" ? "#10B981" : "#EF4444")
+                : `${zoneColor}30`
+          }`,
+          transition: "background .3s, border-color .3s",
+          animation: pulseActive
+            ? (pulse.kind === "correct" ? "quizBounce 0.5s ease-out" : "quizShake 0.4s ease-out")
+            : (isNearClear ? "quizGlow 1.2s ease-in-out infinite" : undefined),
+          position: "relative", overflow: "visible",
+        }}>
+        {/* 정답/오답 플로팅 텍스트 */}
+        {pulseActive && (
+          <div style={{
+            position: "absolute",
+            top: -12, right: 20,
+            fontSize: 14, fontWeight: 900,
+            color: pulse.kind === "correct" ? "#10B981" : "#EF4444",
+            animation: "quizFloat 0.8s ease-out forwards",
+            pointerEvents: "none",
+          }}>
+            {pulse.kind === "correct" ? `+${SPEED_BONUS_SEC}초` : `−${SPEED_PENALTY_SEC}초`}
+          </div>
+        )}
         <div style={{
           fontSize: 22, fontWeight: 900,
           color: isUrgent ? "#EF4444" : theme.text,
           fontVariantNumeric: "tabular-nums",
           minWidth: 52,
+          animation: isUrgent ? "quizHeartbeat 1s ease-in-out infinite" : undefined,
         }}>
           {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
         </div>
@@ -505,6 +732,34 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
           ✓ {correctCount}
         </div>
       </div>
+
+      {/* CSS 애니메이션 정의 */}
+      <style>{`
+        @keyframes quizBounce {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.03) translateY(-2px); }
+          100% { transform: scale(1); }
+        }
+        @keyframes quizShake {
+          0%, 100% { transform: translateX(0); }
+          20% { transform: translateX(-4px); }
+          40% { transform: translateX(4px); }
+          60% { transform: translateX(-3px); }
+          80% { transform: translateX(3px); }
+        }
+        @keyframes quizGlow {
+          0%, 100% { box-shadow: 0 0 0 rgba(234,179,8,0); }
+          50% { box-shadow: 0 0 16px rgba(234,179,8,0.5); }
+        }
+        @keyframes quizHeartbeat {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.08); }
+        }
+        @keyframes quizFloat {
+          0% { transform: translateY(0); opacity: 1; }
+          100% { transform: translateY(-20px); opacity: 0; }
+        }
+      `}</style>
 
       {/* 연속 정답 표시 */}
       {streak >= 3 && (
@@ -540,17 +795,29 @@ function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
         />
       )}
 
-      {/* 다음 버튼 (제출 후에만 노출) — 페널티로 종료 예정이면 '결과 보기'로 전환 */}
+      {/* 다음 버튼 (제출 후에만 노출) — 3가지 상태
+          · cleared: 클리어 달성! 골드 버튼
+          · pendingFinish (not cleared): 시간 소진 → 결과
+          · normal: 다음 문제
+      */}
       {revealed && (
         <button onClick={handleNext}
           style={{
             width: "100%", padding: "14px 0", borderRadius: 12,
-            background: pendingFinish ? "#EF4444" : theme.text,
-            color: pendingFinish ? "#fff" : theme.bg,
-            fontSize: 14, fontWeight: 700, border: "none", cursor: "pointer",
+            background: cleared ? "#EAB308"
+              : pendingFinish ? "#EF4444"
+              : theme.text,
+            color: cleared ? "#422006"
+              : pendingFinish ? "#fff"
+              : theme.bg,
+            fontSize: 14, fontWeight: 800, border: "none", cursor: "pointer",
             fontFamily: "'Noto Serif KR', serif",
+            boxShadow: cleared ? "0 4px 12px rgba(234,179,8,0.4)" : undefined,
+            animation: cleared ? "quizGlow 1.2s ease-in-out infinite" : undefined,
           }}>
-          {pendingFinish ? "시간 소진 — 결과 보기" : "다음 문제 →"}
+          {cleared ? "👑 클리어! 결과 보기"
+            : pendingFinish ? "시간 소진 — 결과 보기"
+            : "다음 문제 →"}
         </button>
       )}
     </div>
@@ -768,15 +1035,51 @@ function QuizScreenInner({ theme, user, setScreen, playSfx, showMsg, members }) 
 
   const reviewDue = useMemo(() => getDueReviews(reviewQueue), [reviewQueue]);
 
-  // 스피드 퀴즈 종료 — XP 미적용, 단순 귀환
-  const handleSpeedFinish = useCallback((results) => {
-    const correct = results.filter(r => r.correct).length;
-    const total = results.length;
-    if (total > 0) {
+  // 스피드 퀴즈 종료 — XP 미적용, 클리어 시 Firestore 기록
+  // payload: { results: [{problemId, correct}], cleared: boolean }
+  const handleSpeedFinish = useCallback(async (payload) => {
+    const { results, cleared } = payload || {};
+    const correct = (results || []).filter(r => r.correct).length;
+    const total = (results || []).length;
+    const rate = total > 0 ? correct / total : 0;
+
+    // 사용자에게 결과 토스트
+    if (cleared) {
+      showMsg(`🏆 클리어! ${correct}/${total} 정답`, 2500);
+    } else if (total > 0) {
       showMsg(`${total}문제 중 ${correct}문제 정답!`, 1500);
     }
+
+    // Firestore 기록 — 로그인한 사용자에 한해
+    if (user && total > 0) {
+      try {
+        const doc = await fbGet("quiz-clears") || {};
+        const prev = doc[user.id] || {
+          userId: user.id,
+          name: user.name || user.nickname || "익명",
+          clearCount: 0,
+          bestCorrect: 0,
+          bestRate: 0,
+          totalAttempts: 0,
+          lastClearAt: null,
+        };
+        const updated = {
+          ...prev,
+          name: user.name || user.nickname || prev.name,
+          clearCount: prev.clearCount + (cleared ? 1 : 0),
+          bestCorrect: Math.max(prev.bestCorrect, correct),
+          bestRate: Math.max(prev.bestRate, rate),
+          totalAttempts: prev.totalAttempts + 1,
+          lastClearAt: cleared ? Date.now() : prev.lastClearAt,
+        };
+        await fbSet("quiz-clears", { [user.id]: updated });
+      } catch (e) {
+        console.warn("quiz-clears save failed:", e);
+      }
+    }
+
     setMode(null);
-  }, [showMsg]);
+  }, [user, showMsg]);
 
   // 그 외 모드 — 기존 XP 처리 유지
   const handleQuizFinish = useCallback(async (results) => {
@@ -881,6 +1184,7 @@ function QuizScreenInner({ theme, user, setScreen, playSfx, showMsg, members }) 
             setMode={(m) => { setMode(m); setQuizSession(Date.now()); }}
             activeTimeQuiz={activeTimeQuiz}
             reviewDueCount={reviewDue.length}
+            currentUser={user}
           />
         ) : mode === "speed" ? (
           <SpeedQuizPlayer
