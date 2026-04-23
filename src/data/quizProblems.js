@@ -52,6 +52,7 @@ export const SAMPLE_PROBLEMS = [
     question: "삼각형의 외심은 세 변의 [___]의 교점이다.",
     answer: "수직이등분선",
     explain: "외심은 세 변의 수직이등분선이 만나는 점.",
+    figure: "perpendicular-bisector",
   },
   {
     id: "q5", type: "fill_blank", difficulty: "fast",
@@ -104,7 +105,7 @@ export const SAMPLE_PROBLEMS = [
     question: "삼각형의 내심은 세 내각의 이등분선의 교점이다.",
     answer: true,
     explain: "내심은 세 내각의 이등분선이 만나는 점.",
-    figure: "incircle",
+    figure: "angle-bisector",
   },
   {
     id: "q12", type: "ox", difficulty: "fast",
@@ -468,6 +469,7 @@ export const SAMPLE_PROBLEMS = [
     question: "삼각형의 세 내각의 합 = [___]°",
     answer: "180",
     explain: "모든 삼각형에서 세 내각의 합은 180°.",
+    figure: "triangle-angles",
   },
   {
     id: "q62", type: "fill_blank", difficulty: "fast",
@@ -519,12 +521,14 @@ export const SAMPLE_PROBLEMS = [
     question: "오각형의 내각의 합 = [___]°",
     answer: "540",
     explain: "180° × (5 - 2) = 540°.",
+    figure: "polygon-pentagon",
   },
   {
     id: "q69", type: "fill_blank", difficulty: "fast",
     question: "육각형의 내각의 합 = [___]°",
     answer: "720",
     explain: "180° × (6 - 2) = 720°.",
+    figure: "polygon-hexagon",
   },
   {
     id: "q70", type: "fill_blank", difficulty: "slow",
@@ -543,6 +547,7 @@ export const SAMPLE_PROBLEMS = [
     question: "정육각형의 한 내각의 크기 = [___]°",
     answer: "120",
     explain: "한 외각 = 360° ÷ 6 = 60° → 한 내각 = 180° - 60° = 120°.",
+    figure: "polygon-hexagon",
   },
   {
     id: "q73", type: "fill_blank", difficulty: "fast",
@@ -571,12 +576,14 @@ export const SAMPLE_PROBLEMS = [
     question: "평행한 두 직선에서 엇각의 크기는 같다.",
     answer: true,
     explain: "평행 ↔ 엇각 같음 (역도 성립).",
+    figure: "parallel-cut",
   },
   {
     id: "q77", type: "ox", difficulty: "fast",
     question: "평행한 두 직선에서 동위각의 크기는 같다.",
     answer: true,
     explain: "평행 ↔ 동위각 같음.",
+    figure: "parallel-cut",
   },
   {
     id: "q78", type: "ox", difficulty: "fast",
@@ -773,24 +780,28 @@ export const SAMPLE_PROBLEMS = [
     question: "평행한 두 직선 ℓ, m 사이에 꺾은 점 P가 있다. ℓ 쪽 각이 35°, m 쪽 각이 50°일 때, 꺾인 각 ∠P = [___]°",
     answer: "85",
     explain: "점 P에서 ℓ, m에 평행한 보조선을 그으면 엇각으로 나뉨. ∠P = 35° + 50° = 85°.",
+    figure: "parallel-zigzag",
   },
   {
     id: "h22", type: "fill_blank", difficulty: "hard",
     question: "평행한 두 직선 사이 꺾은 점에서 한쪽 엇각이 x+20°, 다른 쪽 엇각이 2x+10°, 꺾인 각이 120°일 때, x = [___]",
     answer: "30",
     explain: "보조선 긋고 엇각 합산: (x+20) + (2x+10) = 120 → 3x + 30 = 120 → 3x = 90 → x = 30.",
+    figure: "parallel-zigzag",
   },
   {
     id: "h23", type: "fill_blank", difficulty: "hard",
     question: "평행한 ℓ∥m 사이에 꺾은 점 P. ℓ 쪽 각이 40°, 꺾인 각 ∠P = 115°일 때, m 쪽 각 = [___]°",
     answer: "75",
     explain: "보조선 → 엇각 분해: 40° + (m 쪽 각) = 115° → m 쪽 각 = 75°.",
+    figure: "parallel-zigzag",
   },
   {
     id: "h24", type: "fill_blank", difficulty: "hard",
     question: "평행선 ℓ∥m, 사이에 꺾은 점이 있고 ℓ 쪽 각 40°, m 쪽 각 x°, 꺾인 각 110°. x = [___]°",
     answer: "70",
     explain: "보조선 → 40° + x = 110° → x = 70°.",
+    figure: "parallel-zigzag",
   },
 
   // ═══════════════════════════════════════════════════════════
