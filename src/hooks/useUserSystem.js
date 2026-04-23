@@ -151,16 +151,43 @@ export function useUserSystem(deps) {
 
   const callUser = useCallback((targetName) => {
     const myName = user?.nickname || user?.name || "익명";
+
+    // 10분 쿨다운 체크 (admin/assistant는 제한 없음)
+    if (user?.role !== "admin" && user?.role !== "assistant") {
+      try {
+        const lastCallTime = parseInt(localStorage.getItem("ar_call_cooldown") || "0", 10);
+        const elapsed = Date.now() - lastCallTime;
+        if (elapsed < 10 * 60 * 1000) {
+          const remaining = Math.ceil((10 * 60 * 1000 - elapsed) / 60000);
+          return { blocked: true, remaining };
+        }
+      } catch {}
+    }
+
+    // 쿨다운 타임스탬프 저장
+    try { localStorage.setItem("ar_call_cooldown", String(Date.now())); } catch {}
+
     const call = { from: myName, to: targetName, time: Date.now() };
     setPlazaCalls(prev => [...prev.slice(-9), call]); // max 10
     playSfx("click");
 
-    // Teacher call: trigger notification
+    // Teacher call: FCM 푸시 알림 발송
     if (targetName === "선생님" || members.find(m => m.role === "admin" && (m.nickname || m.name) === targetName)) {
       try {
         localStorage.setItem("ar_teacher_call", JSON.stringify({ from: myName, time: Date.now() }));
+        // 서버에 푸시 알림 요청 (앱이 닫혀 있어도 admin 기기에 알림)
+        fetch("/api/push", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: "📢 학생 호출",
+            body: `${myName} 학생이 선생님을 호출했어요!`,
+          }),
+        }).catch(() => {}); // 네트워크 실패 시 무시 (호출 자체는 성공)
       } catch {}
     }
+
+    return { blocked: false };
   }, [user, members, playSfx]);
 
   const handleLogin = useCallback(() => {
