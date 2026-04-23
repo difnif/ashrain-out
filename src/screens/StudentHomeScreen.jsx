@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { PASTEL } from "../config";
+import { fbListen } from "../firebase";
 import DiaryTab from "./DiaryScreen";
 
 const TABS = [
@@ -15,6 +16,88 @@ function dateStr(d) { return d ? new Date(d).toLocaleDateString("ko-KR", { month
 function todayKey() { return new Date().toISOString().slice(0, 10); }
 
 // ===== Home Tab =====
+// ===== Speed Quiz Leaderboard (TOP 10, 가로 막대그래프) =====
+function SpeedQuizLeaderboard({ theme, currentUser }) {
+  const [entries, setEntries] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const unsub = fbListen("quiz-clears", (data) => {
+      const list = data
+        ? Object.values(data).filter((e) => e && e.userId && e.clearCount > 0)
+        : [];
+      list.sort((a, b) => {
+        if (b.clearCount !== a.clearCount) return b.clearCount - a.clearCount;
+        return (b.bestCorrect || 0) - (a.bestCorrect || 0);
+      });
+      setEntries(list);
+      setLoaded(true);
+    });
+    return () => { if (typeof unsub === "function") unsub(); };
+  }, []);
+
+  const top10 = entries.slice(0, 10);
+  const maxCount = top10.length > 0 ? top10[0].clearCount : 1;
+
+  if (!loaded) return null;
+
+  return (
+    <div style={{
+      padding: "14px 16px", borderRadius: 16,
+      background: "linear-gradient(135deg, #FEF3C712, #FDE68A08)",
+      border: "1px solid #EAB30830",
+      marginBottom: 16,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <span style={{ fontSize: 18 }}>🏆</span>
+        <span style={{ fontSize: 14, fontWeight: 800, color: theme.text }}>스피드 퀴즈 명예의 전당</span>
+        <span style={{ fontSize: 10, color: theme.textSec, marginLeft: "auto", padding: "2px 6px", borderRadius: 6, background: `${theme.text}08` }}>
+          7분 20초 돌파 TOP 10
+        </span>
+      </div>
+
+      {top10.length === 0 && (
+        <div style={{ textAlign: "center", padding: "20px 0", fontSize: 12, color: theme.textSec, lineHeight: 1.6 }}>
+          아직 클리어한 학생이 없어요.<br />첫 클리어의 주인공이 되어 보세요!
+        </div>
+      )}
+
+      {top10.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {top10.map((e, i) => {
+            const isMe = currentUser && e.userId === currentUser.id;
+            const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`;
+            const barPct = Math.max(8, (e.clearCount / maxCount) * 100);
+            const barColor = i === 0 ? "#EAB308" : i === 1 ? "#9CA3AF" : i === 2 ? "#D97706" : "#8B5CF6";
+            return (
+              <div key={e.userId} style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "6px 8px", borderRadius: 10,
+                background: isMe ? "#EAB30815" : "transparent",
+                border: isMe ? "1px solid #EAB30840" : "1px solid transparent",
+              }}>
+                <div style={{ width: 24, flexShrink: 0, textAlign: "center", fontSize: i < 3 ? 16 : 12, fontWeight: 800, color: i < 3 ? undefined : theme.textSec }}>{medal}</div>
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+                  <div style={{ fontSize: 12, fontWeight: isMe ? 800 : 600, color: theme.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {e.name}{isMe && <span style={{ fontSize: 10, color: "#EAB308", marginLeft: 4 }}>· 나</span>}
+                  </div>
+                  <div style={{ height: 10, borderRadius: 6, background: `${theme.text}10`, overflow: "hidden", position: "relative" }}>
+                    <div style={{ height: "100%", width: `${barPct}%`, background: `linear-gradient(90deg, ${barColor}, ${barColor}dd)`, borderRadius: 6, transition: "width .5s ease-out" }} />
+                  </div>
+                </div>
+                <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1, minWidth: 48 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: barColor, fontVariantNumeric: "tabular-nums" }}>{e.clearCount}회</div>
+                  <div style={{ fontSize: 9, color: "#10B981", fontWeight: 700 }}>✓{e.bestCorrect || 0}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HomeTab({ theme, user, setScreen, playSfx, homework, notifications, archive, members }) {
   const pending = homework.filter(h => h.status !== "completed").length;
 
@@ -127,6 +210,9 @@ function HomeTab({ theme, user, setScreen, playSfx, homework, notifications, arc
           ))}
         </div>
       </div>
+
+      {/* Speed Quiz Leaderboard */}
+      <SpeedQuizLeaderboard theme={theme} currentUser={user} />
 
       {/* Ranking — 임시 비활성 (복구하려면 false → true로 변경) */}
       {false && (
