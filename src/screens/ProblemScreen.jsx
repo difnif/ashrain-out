@@ -162,23 +162,21 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
   const [excludeUnits, setExcludeUnits] = useState([]);
 
   const analyze = async (extraExcludes = null) => {
-    // 이벤트 객체나 다른 비배열 객체가 실수로 전달된 경우 방어 (React Fiber 순환 참조 → JSON.stringify 크래시 방지)
     if (extraExcludes !== null && !Array.isArray(extraExcludes)) {
       extraExcludes = null;
     }
     if (!input.trim() && !imageData) { showMsg("문제를 입력하거나 사진을 올려주세요", 2000); return; }
-    if (loading) return; // 중복 요청 방지
+    if (loading) return;
     setLoading(true); setError(""); setResult(null); setCurrentStep(-1); setHelpMode(null);
     playSfx("click");
 
-    // 단계별 로딩 텍스트
     setLoadingStage("문제를 읽고 있어요...");
     const stageTimer1 = setTimeout(() => setLoadingStage("조건을 분석하고 있어요..."), 3000);
     const stageTimer2 = setTimeout(() => setLoadingStage("풀이 방향을 설정하고 있어요..."), 7000);
     const stageTimer3 = setTimeout(() => setLoadingStage("거의 다 됐어요!"), 12000);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000); // 30초 타임아웃
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
     try {
       const resp = await fetch("/api/analyze", {
@@ -237,9 +235,7 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
 
   const prevStep = () => { if (currentStep >= 0) setCurrentStep(s => s - 1); setHelpMode(null); };
 
-  // Send help request via Firestore
   const sendHelp = () => {
-    // Save to archive too
     if (setArchive && result) {
       setArchive(prev => [...prev, {
         id: `q-${Date.now()}`, type: "질문", title: result.type || "수학 문제",
@@ -301,7 +297,7 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
             padding: "2px 5px", borderRadius: 4,
             fontWeight: p.latest ? 700 : 500,
             transition: "all 0.3s",
-          }}>{p.text}</span>
+          }}><MathSpan highlightColor={p.color}>{p.text}</MathSpan></span>
         ) : <span key={i}><MathSpan>{p.text}</MathSpan></span>)}
       </div>
     );
@@ -443,7 +439,7 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
                     </div>
                   </div>
                   <div style={{ padding: "12px 16px" }}>
-                    <div style={{ fontSize: 13, lineHeight: 2, color: theme.text }}>{curStepData.explain}</div>
+                    <div style={{ fontSize: 13, lineHeight: 2, color: theme.text }}><MathSpan>{curStepData.explain}</MathSpan></div>
                     <button onClick={() => { setHelpStepIdx(currentStep); setHelpMode("deep"); }}
                       style={{ marginTop: 6, padding: "6px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 11, cursor: "pointer" }}>
                       ❓ 이 부분이 이해 안 돼요
@@ -489,7 +485,7 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
                       border: `1.5px solid ${PASTEL.coral}30`,
                       fontSize: 16, fontWeight: 700, color: theme.text, textAlign: "center",
                       fontFamily: "'Playfair Display', serif",
-                    }}>{result.equation}</div>
+                    }}><MathSpan>{result.equation}</MathSpan></div>
                     <p style={{ fontSize: 12, color: theme.textSec, marginTop: 10, lineHeight: 1.8 }}>{result.direction}</p>
                   </div>
                 </div>
@@ -592,14 +588,14 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
                     </div>
                   </div>
                   <div style={{ padding: "12px 16px", fontSize: 13, lineHeight: 2.2, color: theme.text }}>
-                    {deepHelp.simpleExplain}
+                    <MathSpan>{deepHelp.simpleExplain}</MathSpan>
                   </div>
 
                   {/* 쉬운 예시 */}
                   {deepHelp.example && (
                     <div style={{ margin: "0 16px 12px", padding: "12px 14px", borderRadius: 12, background: `${PASTEL.mint}08`, border: `1px solid ${PASTEL.mint}25` }}>
                       <div style={{ fontSize: 11, color: PASTEL.mint, fontWeight: 700, marginBottom: 6 }}>🔢 쉬운 숫자로 해보면</div>
-                      <div style={{ fontSize: 13, lineHeight: 2, color: theme.text }}>{deepHelp.example}</div>
+                      <div style={{ fontSize: 13, lineHeight: 2, color: theme.text }}><MathSpan>{deepHelp.example}</MathSpan></div>
                     </div>
                   )}
 
@@ -607,7 +603,7 @@ export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, h
                   {deepHelp.analogy && (
                     <div style={{ margin: "0 16px 12px", padding: "12px 14px", borderRadius: 12, background: `${PASTEL.sky}08`, border: `1px solid ${PASTEL.sky}25` }}>
                       <div style={{ fontSize: 11, color: PASTEL.sky, fontWeight: 700, marginBottom: 6 }}>🌍 이렇게 생각해봐</div>
-                      <div style={{ fontSize: 13, lineHeight: 2, color: theme.text }}>{deepHelp.analogy}</div>
+                      <div style={{ fontSize: 13, lineHeight: 2, color: theme.text }}><MathSpan>{deepHelp.analogy}</MathSpan></div>
                     </div>
                   )}
 
