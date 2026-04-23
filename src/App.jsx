@@ -1,5 +1,6 @@
 import { useFirestoreSync } from "./hooks/useFirestoreSync";
 import { useWrongNoteSettings } from "./hooks/useWrongNoteSettings";
+import { registerFCMToken, onFCMMessage } from "./firebase";
 import { DEFAULT_PROGRESS } from "./data/curriculum";
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import {
@@ -616,6 +617,25 @@ function AppInner() {
     triangle, jedoType, jedoCenter, jedoCircle, jedoLines, jakdoArcs, jakdoRulerLines,
     archivePublic, archiveDefaultPublic, user, playSfx, showMsg, setShowArchiveSave, setStudentArchive,
   ]);
+
+  // --- FCM Push Notification Registration (admin only) ---
+  useEffect(() => {
+    if (user && userRole === "admin") {
+      registerFCMToken(user.id, userRole).catch(() => {});
+    }
+  }, [user, userRole]);
+
+  // --- FCM Foreground Message Handler (admin only, 앱이 열려 있을 때) ---
+  useEffect(() => {
+    if (!user || userRole !== "admin") return;
+    let unsub;
+    onFCMMessage((payload) => {
+      const body = payload?.notification?.body || "새 알림이 있어요";
+      showMsg(body, 4000);
+      playSfx && playSfx("click");
+    }).then(fn => { unsub = fn; });
+    return () => { if (unsub) unsub(); };
+  }, [user, userRole, showMsg, playSfx]);
 
   // --- Properties Data with highlight info ---
   // Properties, Highlight, Animation — see rendering/TriangleRenderer.jsx
