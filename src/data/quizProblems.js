@@ -1019,4 +1019,106 @@ export const SAMPLE_PROBLEMS = [
     answer: 1,
     explain: "RHA(빗변+예각)와 RHS(빗변+한 변)는 '직각'이라는 조건이 있기에 성립하는 특수 합동조건. 일반 삼각형에서 SSA는 합동조건이 아니지만, 직각삼각형에서는 그게 통한다는 게 핵심.",
   },
+
+  // ═══════════════════════════════════════════════════════════
+  // [V] 직각삼각형 + 내접원 — 넓이/반지름/빗변/정사각형 관계
+  //
+  // 핵심 공식 (직각 B, 두 직각변 a,b, 빗변 c, 내접원 반지름 r, 넓이 S):
+  //   S = r(r + c) = r² + rc   ← 빗변+반지름 → 넓이
+  //   r = S/(r+c) → 2차식이지만, S = r² + rc 에서 r 역산 가능
+  //   c = S/r − r               ← 반지름+넓이 → 빗변
+  //   r = (a+b−c)/2             ← 두 직각변+빗변 → 반지름
+  //
+  // 내심 I에서 세 꼭짓점·세 접점으로 선을 긋는 분할:
+  //   정사각형 IPBQ (한 변 r) — 넓이 r²
+  //   △AIP ≅ △AIR (RHS 합동), △CIQ ≅ △CIR (RHS 합동)
+  //   △AIC (빗변과 내심이 만드는 삼각형) = (S − r²) / 2 = c·r / 2
+  //   이게 난이도 완화용 핵심 아이디어: "큰 넓이에서 정사각형 빼고 2로 나누기"
+  // ═══════════════════════════════════════════════════════════
+  {
+    id: "b20", type: "fill_blank", difficulty: "hard",
+    question: "직각 B인 직각삼각형 ABC에서 빗변 [seg]AC[/seg]=13, 넓이=30. 내접원의 반지름 r = [___]",
+    answer: "2",
+    explain: "공식: S = r(r + c). 30 = r(r + 13) → r² + 13r − 30 = 0 → (r−2)(r+15) = 0 → r = 2.",
+    figure: "right-incircle-5-12-13",
+  },
+  {
+    id: "b21", type: "fill_blank", difficulty: "hard",
+    question: "직각 B인 직각삼각형 ABC에서 빗변 [seg]AC[/seg]=5, 내접원 반지름 r=1. 넓이 S = [___]",
+    answer: "6",
+    explain: "공식: S = r(r + c) = 1 × (1 + 5) = 6. (또는 S = r² + rc = 1 + 5 = 6)",
+    figure: "right-incircle-3-4-5",
+  },
+  {
+    id: "b22", type: "fill_blank", difficulty: "hard",
+    question: "직각 B인 직각삼각형의 넓이=84, 내접원 반지름 r=3. 빗변의 길이 = [___]",
+    answer: "25",
+    explain: "공식: c = [frac]S|r[/frac] − r = [frac]84|3[/frac] − 3 = 28 − 3 = 25.",
+    figure: "right-incircle-tangent",
+  },
+  {
+    id: "b23", type: "fill_blank", difficulty: "hard",
+    question: "직각 B, [seg]BC[/seg]=6, [seg]AB[/seg]=8. 빗변 [seg]AC[/seg]=10. 내접원 반지름 r = [___]",
+    answer: "2",
+    explain: "r = [frac]a + b − c|2[/frac] = [frac]6 + 8 − 10|2[/frac] = [frac]4|2[/frac] = 2.",
+    figure: "right-incircle-6-8-10",
+  },
+  {
+    id: "b24", type: "fill_blank", difficulty: "hard",
+    question: "직각 B, [seg]BC[/seg]=9, [seg]AB[/seg]=12, 내접원 반지름 r=3. 빗변 [seg]AC[/seg] = [___]",
+    answer: "15",
+    explain: "공식 변형: c = a + b − 2r = 9 + 12 − 6 = 15.",
+    figure: "right-incircle-tangent",
+  },
+
+  // ── 넓이 분할 (정사각형 + 합동 2쌍) — 난이도 완화 ──
+  {
+    id: "b25", type: "fill_blank", difficulty: "hard",
+    question: "직각 B인 직각삼각형의 내심 I에서 각 꼭짓점·접점으로 선을 그으면, 정사각형 IPBQ와 합동인 직각삼각형 2쌍이 생긴다. 전체 넓이가 30이고 정사각형 넓이가 4일 때, 빗변과 내심이 만드는 △AIC의 넓이 = [___]",
+    answer: "13",
+    explain: "핵심 관계: △AIC = [frac]S − 정사각형|2[/frac] = [frac]30 − 4|2[/frac] = 13. (두 합동 쌍이 2·△AIC 를 채우고 정사각형이 남은 부분을 채움)",
+    figure: "right-incircle-5-12-13",
+  },
+  {
+    id: "b26", type: "fill_blank", difficulty: "hard",
+    question: "직각 B인 직각삼각형의 내접원 반지름 r=2, 빗변 c=10. △AIC 넓이 = [___]",
+    answer: "10",
+    explain: "△AIC = [frac]c·r|2[/frac] = [frac]10 × 2|2[/frac] = 10. 또는 정사각형 빼기: S = 2·(2+10)=24, (S−r²)/2 = (24−4)/2 = 10.",
+    figure: "right-incircle-6-8-10",
+  },
+  {
+    id: "b27", type: "fill_blank", difficulty: "hard",
+    question: "직각 B인 직각삼각형의 내심 I. 정사각형 IPBQ의 넓이가 1, △AIP와 △AIR의 합동이고 각각 넓이 1.5, △CIQ와 △CIR이 합동이고 각각 넓이 1. 전체 넓이 = [___]",
+    answer: "6",
+    explain: "전체 = 정사각형 + 합동 2쌍 = 1 + 2×1.5 + 2×1 = 1 + 3 + 2 = 6.",
+    figure: "right-incircle-3-4-5",
+  },
+  {
+    id: "b28", type: "fill_blank", difficulty: "hard",
+    question: "직각 B인 직각삼각형. 내심 I에서 합동인 직각삼각형 2쌍과 정사각형이 생긴다. △AIP=△AIR=10, △CIQ=△CIR=3, 정사각형 넓이=4일 때, △AIC = [___]",
+    answer: "13",
+    explain: "전체 S = 4 + 2·10 + 2·3 = 30. △AIC = [frac]S − 정사각형|2[/frac] = [frac]30 − 4|2[/frac] = 13. (또는 △AIR + △CIR = △AIP + △CIQ = 10 + 3 = 13 으로도 같음, 합동이므로)",
+    figure: "right-incircle-5-12-13",
+  },
+  {
+    id: "b29", type: "fill_blank", difficulty: "hard",
+    question: "직각 B, 내접원 반지름 r=2. 정사각형 IPBQ의 넓이와 △AIC의 관계식을 활용하면, △AIC = 13일 때 전체 넓이 S = [___]",
+    answer: "30",
+    explain: "△AIC = (S − r²)/2 → 2·△AIC = S − r² → S = 2·13 + 4 = 30.",
+    figure: "right-incircle-5-12-13",
+  },
+  {
+    id: "b30", type: "fill_blank", difficulty: "hard",
+    question: "직각 B인 직각삼각형에서 △AIC의 넓이=25.5, 내접원 반지름 r=3. 빗변 [seg]AC[/seg] = [___]",
+    answer: "17",
+    explain: "△AIC = [frac]c·r|2[/frac] → c = [frac]2·△AIC|r[/frac] = [frac]51|3[/frac] = 17.",
+    figure: "right-incircle-8-15-17",
+  },
+  {
+    id: "b31", type: "fill_blank", difficulty: "hard",
+    question: "직각 B, [seg]BC[/seg]=7, [seg]AB[/seg]=24, [seg]AC[/seg]=25. 내접원 반지름 r = [___]",
+    answer: "3",
+    explain: "r = [frac]a + b − c|2[/frac] = [frac]7 + 24 − 25|2[/frac] = [frac]6|2[/frac] = 3. 참고로 이 때 △AIC = 25·3/2 = 37.5.",
+    figure: "right-incircle-tangent",
+  },
 ];
