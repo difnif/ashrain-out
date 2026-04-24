@@ -884,7 +884,6 @@ function AppInner() {
   if (screen === "useless-math") {
     const items = [
       { icon: "⚙️", label: "구골 기어 체험", desc: "10¹⁰⁰ 회전 시뮬레이션", action: () => setScreen("googolGear") },
-      { icon: "🍳", label: "레시피 분석하기", desc: "요리 속 비율과 단위 변환", disabled: true },
       { icon: "🧪", label: "물질의 석출량 계산하기", desc: "화학 반응과 수학의 만남", action: () => setScreen("precipitation-sim") },
     ];
     return (
