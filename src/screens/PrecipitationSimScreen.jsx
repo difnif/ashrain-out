@@ -143,47 +143,56 @@ export default function PrecipitationSimScreen({ onBack }) {
       : calculatePrecipitation(ctxCustom);
   }, [ctxCustom]);
 
-  // ─── 비커 상태 유도 (현재 온도 반영) ───
+  // ─── 비커 상태 유도 (phase + 현재 온도 반영) ───
+  // 상태 표시는 현재 비커 안의 실제 내용물과 일치해야 함:
+  //   - empty: 물 0g (아직 안 부어짐)
+  //   - fillingWater~heated: 물 있음, 용질 아직 없음
+  //   - solute-added: 가루만 투입 (아직 안 녹음)
+  //   - stirring: 점진 용해 중
+  //   - saturated: 완전 용해
+  //   - cooling/cold: 현재 온도의 용해도로 실시간 석출
   function deriveBeakerState(ctx, result, sim) {
     if (!ctx || !result) return { waterMass: 0, dissolvedMass: 0, precipitatedMass: 0, maxDissolvedMass: 1 };
-    const waterMass = ctx.waterMass || 100;
-    const totalSolute = ctx.soluteMass != null ? ctx.soluteMass : result.hotS * waterMass / 100;
+    const waterMassFull = ctx.waterMass || 100;
+    const totalSolute = ctx.soluteMass != null ? ctx.soluteMass : result.hotS * waterMassFull / 100;
 
-    let dissolvedMass, precipitatedMass;
+    let waterMass, dissolvedMass, precipitatedMass;
     switch (sim.phase) {
       case 'empty':
+        // 아직 물을 안 부은 상태 → 비커 비어있음, 상태도 0
+        waterMass = 0; dissolvedMass = 0; precipitatedMass = 0;
+        break;
       case 'fillingWater':
       case 'water':
       case 'heating':
       case 'heated':
-        dissolvedMass = 0; precipitatedMass = 0;
+        waterMass = waterMassFull; dissolvedMass = 0; precipitatedMass = 0;
         break;
       case 'solute-added':
-        // 물질 막 투입 — 아직 녹지 않음 (가루로 표시)
-        dissolvedMass = 0; precipitatedMass = 0;
+        // 가루 상태 (아직 안 녹음)
+        waterMass = waterMassFull; dissolvedMass = 0; precipitatedMass = 0;
         break;
       case 'stirring': {
-        // 점진적 용해: 시간에 따라 dissolvedMass 증가 (stirProgress로 계산해야 하지만 간단히 최대량 바로)
-        // 실제로는 stir 시작 시점부터 경과시간으로 계산. sim.stirProgress 추가 가능.
-        // 단순화: stirring은 auto 진행 중이므로 중간 값 상관없음 — saturated에서 최종값
+        // 점진 용해: stirProgress (0→1) 반영
+        waterMass = waterMassFull;
         dissolvedMass = totalSolute * (sim.stirProgress ?? 1);
         precipitatedMass = 0;
         break;
       }
       case 'saturated':
-        dissolvedMass = totalSolute; precipitatedMass = 0;
+        waterMass = waterMassFull; dissolvedMass = totalSolute; precipitatedMass = 0;
         break;
       case 'cooling':
       case 'cold': {
-        // 현재 온도의 용해도로 실시간 계산
+        waterMass = waterMassFull;
         const currentS = getSolubility(ctx.substanceId, sim.temp);
-        const maxDissolvedAtCurrent = currentS * waterMass / 100;
+        const maxDissolvedAtCurrent = currentS * waterMassFull / 100;
         dissolvedMass = Math.min(totalSolute, maxDissolvedAtCurrent);
         precipitatedMass = Math.max(0, totalSolute - dissolvedMass);
         break;
       }
       default:
-        dissolvedMass = totalSolute; precipitatedMass = 0;
+        waterMass = waterMassFull; dissolvedMass = totalSolute; precipitatedMass = 0;
     }
 
     return {
