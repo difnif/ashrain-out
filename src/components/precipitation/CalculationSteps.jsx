@@ -10,31 +10,32 @@
 import { SUBSTANCES } from '../../data/solubilityData';
 
 export default function CalculationSteps({
-  mode = 'basic', // 'basic' | 'advanced'
+  mode = 'basic',
   substanceId,
   hotTemp,
   coldTemp,
   solutionMass,
   saturationPercent = 100,
   result,
+  useFormula = false,
 }) {
   if (!result) return null;
   const sub = SUBSTANCES[substanceId];
 
   if (mode === 'advanced') {
-    return <AdvancedSteps sub={sub} hotTemp={hotTemp} coldTemp={coldTemp} solutionMass={solutionMass} saturationPercent={saturationPercent} result={result} />;
+    return <AdvancedSteps sub={sub} hotTemp={hotTemp} coldTemp={coldTemp} solutionMass={solutionMass} saturationPercent={saturationPercent} result={result} useFormula={useFormula} />;
   }
 
-  return <BasicSteps sub={sub} hotTemp={hotTemp} coldTemp={coldTemp} solutionMass={solutionMass} result={result} />;
+  return <BasicSteps sub={sub} hotTemp={hotTemp} coldTemp={coldTemp} solutionMass={solutionMass} result={result} useFormula={useFormula} />;
 }
 
-function BasicSteps({ sub, hotTemp, coldTemp, solutionMass, result }) {
+function BasicSteps({ sub, hotTemp, coldTemp, solutionMass, result, useFormula }) {
   const { hotS, coldS, referenceSolution, referencePrecipitation, ratio, actualPrecipitation, willPrecipitate } = result;
 
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <span style={styles.headerBadge}>{sub.formula}</span>
+        <span style={styles.headerBadge}>{useFormula ? sub.formula : sub.name}</span>
         <span style={styles.headerText}>
           {hotTemp}℃ 포화용액 {solutionMass}g → {coldTemp}℃ 냉각
         </span>
@@ -122,7 +123,7 @@ function BasicSteps({ sub, hotTemp, coldTemp, solutionMass, result }) {
   );
 }
 
-function AdvancedSteps({ sub, hotTemp, coldTemp, solutionMass, saturationPercent, result }) {
+function AdvancedSteps({ sub, hotTemp, coldTemp, solutionMass, saturationPercent, result, useFormula }) {
   const {
     hotS, coldS, actualSoluteIn100gWater, water, solute, maxSoluteAtColdTemp, precipitation, willPrecipitate,
   } = result;
@@ -132,7 +133,7 @@ function AdvancedSteps({ sub, hotTemp, coldTemp, solutionMass, saturationPercent
       <div style={styles.header}>
         <span style={{ ...styles.headerBadge, background: '#F59E0B' }}>심화</span>
         <span style={styles.headerText}>
-          {sub.formula} {hotTemp}℃ 용액 {solutionMass}g (포화도 {saturationPercent}%) → {coldTemp}℃ 냉각
+          {useFormula ? sub.formula : sub.name} {hotTemp}℃ 용액 {solutionMass}g (포화도 {saturationPercent}%) → {coldTemp}℃ 냉각
         </span>
       </div>
 
