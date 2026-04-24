@@ -588,11 +588,19 @@ const styles = {
     flexDirection: 'column',
     gap: 12,
     padding: 12,
+    paddingBottom: 80, // 하단 탭바에 가려지지 않도록 여유
     background: '#F3F4F6',
     maxWidth: 480,
     margin: '0 auto',
     width: '100%',
     boxSizing: 'border-box',
+    // 스크롤 허용 (모든 부모 구조에 대응)
+    height: '100%',
+    flex: '1 1 auto',
+    minHeight: 0,
+    overflowY: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    overscrollBehavior: 'contain',
   },
   topBar: {
     display: 'flex',
