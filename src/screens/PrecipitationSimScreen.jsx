@@ -1,20 +1,16 @@
 // src/screens/PrecipitationSimScreen.jsx
-// 석출 시뮬레이션 메인 화면 (재설계 v4)
+// 석출 시뮬레이터 메인 (v5)
 //
-// === 셋팅 모드 UX (신규) ===
-//   3단계 카테고리 태그 선택:
-//     ① 물질 (KNO₃ / NaCl / CuSO₄ / H₃BO₃ / NH₄Cl)
-//     ② 온도 조합 (80→0, 80→20, ..., 20→0)
-//     ③ 용액양 (물 100g 기준 포화용액의 배수; 표시는 g 수치)
+// 셋팅 모드: 4단계 카테고리 태그
+//   ① 물질
+//   ② 용해 온도 (20/40/60/80℃)
+//   ③ 냉각 온도 (0/20/40/60℃, 용해온도보다 작은 것만 활성)
+//   ④ 용액양 (물 100g 기준 포화용액 배수, g 수치 표시)
 //
-//   모든 3개가 선택되면 2차 시뮬레이션 + 계산식 해설 표시
+// 각 카테고리는 가로 스크롤 가능 (flex-nowrap + overflowX: auto)
 //
-// === 비커 애니메이션 ===
-//   1차 (항상 표시): 물 100g 기준으로 "빈 비커 → 물 붓기 → 용질 녹이기 → 포화 → 냉각 → 석출"
-//   2차 (3단계 선택 후): 선택한 용액양 기준 동일 흐름 + 계산식 해설
-//
-// === 참고 자료 ===
-//   선택 물질의 온도별 용해도 표 (highlight: 선택된 hot/cold 온도)
+// 1차 비커: 물 100g 기준 (항상 표시)
+// 2차 비커: 선택한 용액양 기준 + 계산식 (용액양 선택 시 표시)
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import {
@@ -27,11 +23,10 @@ import {
   calculatePrecipitationAdvanced,
 } from '../data/solubilityData';
 import {
-  TEMP_COMBINATIONS,
+  HOT_TEMPERATURES,
+  COLD_TEMPERATURES,
   SOLUTION_MULTIPLIERS,
   computeAmountOption,
-  formatTempCombo,
-  tempComboId,
 } from '../data/precipitationPresets';
 import Beaker from '../components/precipitation/Beaker';
 import SolubilityChart from '../components/precipitation/SolubilityChart';
@@ -46,7 +41,6 @@ export default function PrecipitationSimScreen({ onBack }) {
   const [quizPassed, setQuizPassed] = useState(() => {
     try { return localStorage.getItem(QUIZ_PASS_KEY) === 'true'; } catch { return false; }
   });
-
   const [useFormula, setUseFormula] = useState(() => {
     try { return localStorage.getItem(FORMULA_KEY) === 'true'; } catch { return false; }
   });
@@ -59,12 +53,13 @@ export default function PrecipitationSimScreen({ onBack }) {
 
   const [mode, setMode] = useState('setting');
 
-  // === 셋팅 모드 3단계 선택 ===
+  // 셋팅 모드 상태
   const [settingSubstance, setSettingSubstance] = useState('KNO3');
-  const [settingTempComboIdx, setSettingTempComboIdx] = useState(5); // 기본: 60→20
-  const [settingMultiplier, setSettingMultiplier] = useState(null); // null이면 미선택
+  const [settingHotTemp, setSettingHotTemp] = useState(60);
+  const [settingColdTemp, setSettingColdTemp] = useState(20);
+  const [settingMultiplier, setSettingMultiplier] = useState(null);
 
-  // === 커스텀/심화 모드 상태 ===
+  // 커스텀/심화 상태
   const [customSubstance, setCustomSubstance] = useState('KNO3');
   const [customWaterMass, setCustomWaterMass] = useState(100);
   const [customHotTemp, setCustomHotTemp] = useState(60);
@@ -72,7 +67,6 @@ export default function PrecipitationSimScreen({ onBack }) {
   const [customSolutionMass, setCustomSolutionMass] = useState(null);
   const [advancedSaturation, setAdvancedSaturation] = useState(100);
 
-  // 비커 애니메이션 phase + 온도 상태 (1차/2차 각각)
   const [sim1, setSim1] = useState({ phase: 'empty', temp: 60 });
   const [sim2, setSim2] = useState({ phase: 'empty', temp: 60 });
 
@@ -82,51 +76,40 @@ export default function PrecipitationSimScreen({ onBack }) {
     setMode('custom');
   }
 
-  // === 현재 선택된 온도 조합 ===
-  const tempCombo = mode === 'setting'
-    ? TEMP_COMBINATIONS[settingTempComboIdx]
-    : { hot: customHotTemp, cold: customColdTemp };
-
-  // === 1차 시뮬 컨텍스트 (항상 물 100g 기준) ===
+  // 1차 컨텍스트 (물 100g 기준)
   const ctx1 = useMemo(() => {
     const substanceId = mode === 'setting' ? settingSubstance : customSubstance;
-    const hotTemp = tempCombo.hot;
-    const coldTemp = tempCombo.cold;
+    const hotTemp = mode === 'setting' ? settingHotTemp : customHotTemp;
+    const coldTemp = mode === 'setting' ? settingColdTemp : customColdTemp;
     const hotS = getSolubility(substanceId, hotTemp);
     return {
-      substanceId,
-      hotTemp,
-      coldTemp,
+      substanceId, hotTemp, coldTemp,
       waterMass: 100,
       solutionMass: +(100 + hotS).toFixed(1),
       soluteMass: hotS,
-      mode: 'basic',
     };
-  }, [mode, settingSubstance, customSubstance, tempCombo.hot, tempCombo.cold]);
+  }, [mode, settingSubstance, customSubstance, settingHotTemp, settingColdTemp, customHotTemp, customColdTemp]);
 
-  const result1 = useMemo(() => calculatePrecipitation(ctx1), [ctx1]);
+  const result1 = useMemo(() => calculatePrecipitation({ ...ctx1, mode: 'basic' }), [ctx1]);
 
-  // === 2차 시뮬 컨텍스트 (선택한 용액양 기준) ===
+  // 2차 컨텍스트
   const has2ndSim = mode === 'setting' && settingMultiplier != null;
-
   const ctx2 = useMemo(() => {
     if (!has2ndSim) return null;
-    const substanceId = settingSubstance;
-    const opt = computeAmountOption(substanceId, tempCombo.hot, settingMultiplier);
+    const opt = computeAmountOption(settingSubstance, settingHotTemp, settingMultiplier);
     return {
-      substanceId,
-      hotTemp: tempCombo.hot,
-      coldTemp: tempCombo.cold,
+      substanceId: settingSubstance,
+      hotTemp: settingHotTemp,
+      coldTemp: settingColdTemp,
       waterMass: opt.waterMass,
       soluteMass: opt.soluteMass,
       solutionMass: opt.solutionMass,
-      mode: 'basic',
     };
-  }, [has2ndSim, settingSubstance, tempCombo.hot, tempCombo.cold, settingMultiplier]);
+  }, [has2ndSim, settingSubstance, settingHotTemp, settingColdTemp, settingMultiplier]);
 
-  const result2 = useMemo(() => ctx2 ? calculatePrecipitation(ctx2) : null, [ctx2]);
+  const result2 = useMemo(() => ctx2 ? calculatePrecipitation({ ...ctx2, mode: 'basic' }) : null, [ctx2]);
 
-  // === 커스텀/심화 모드 컨텍스트 ===
+  // 커스텀/심화 컨텍스트
   const ctxCustom = useMemo(() => {
     if (mode !== 'custom' && mode !== 'advanced') return null;
     const hotS = getSolubility(customSubstance, customHotTemp);
@@ -138,6 +121,7 @@ export default function PrecipitationSimScreen({ onBack }) {
       substanceId: customSubstance,
       hotTemp: customHotTemp,
       coldTemp: customColdTemp,
+      waterMass: customWaterMass,
       solutionMass: customSolutionMass != null ? customSolutionMass : autoSolutionMass,
       saturationPercent: advancedSaturation,
       mode: mode === 'advanced' ? 'advanced' : 'basic',
@@ -151,8 +135,7 @@ export default function PrecipitationSimScreen({ onBack }) {
       : calculatePrecipitation(ctxCustom);
   }, [ctxCustom]);
 
-  // ─── 비커 상태 계산 (dissolvedMass, precipitatedMass, maxDissolvedMass) ───
-
+  // 비커 상태 유도
   function deriveBeakerState(ctx, result, phase) {
     if (!ctx || !result) return { waterMass: 0, dissolvedMass: 0, precipitatedMass: 0, maxDissolvedMass: 1 };
     const waterMass = ctx.waterMass || 100;
@@ -165,13 +148,11 @@ export default function PrecipitationSimScreen({ onBack }) {
     switch (phase) {
       case 'empty':
       case 'fillingWater':
-        dissolvedMass = 0;
-        precipitatedMass = 0;
+        dissolvedMass = 0; precipitatedMass = 0;
         break;
       case 'addingSolute':
       case 'saturated':
-        dissolvedMass = totalSolute;
-        precipitatedMass = 0;
+        dissolvedMass = totalSolute; precipitatedMass = 0;
         break;
       case 'cold':
         dissolvedMass = totalSolute - maxPrecipitated;
@@ -179,8 +160,7 @@ export default function PrecipitationSimScreen({ onBack }) {
         break;
       case 'cooling':
       default:
-        dissolvedMass = totalSolute;
-        precipitatedMass = 0;
+        dissolvedMass = totalSolute; precipitatedMass = 0;
         break;
     }
     return {
@@ -191,44 +171,38 @@ export default function PrecipitationSimScreen({ onBack }) {
     };
   }
 
-  // ─── 자동 시퀀스: mode/ctx 바뀌면 빈 비커부터 다시 시작 ───
-  const seqTimeoutsRef = useRef([]);
-
-  function startSequence(simSetter, hotTemp) {
-    // 이전 타이머 모두 취소
-    seqTimeoutsRef.current.forEach(id => clearTimeout(id));
-    seqTimeoutsRef.current = [];
-
+  // 자동 시퀀스
+  const seqTimeoutsRef = useRef({ sim1: [], sim2: [] });
+  function startSequence(key, simSetter, hotTemp) {
+    (seqTimeoutsRef.current[key] || []).forEach(id => clearTimeout(id));
+    seqTimeoutsRef.current[key] = [];
     simSetter({ phase: 'empty', temp: hotTemp });
     const t1 = setTimeout(() => simSetter({ phase: 'fillingWater', temp: hotTemp }), 400);
     const t2 = setTimeout(() => simSetter({ phase: 'addingSolute', temp: hotTemp }), 1700);
     const t3 = setTimeout(() => simSetter({ phase: 'saturated', temp: hotTemp }), 3000);
-    seqTimeoutsRef.current.push(t1, t2, t3);
+    seqTimeoutsRef.current[key].push(t1, t2, t3);
   }
 
-  // 1차 시뮬 자동 시작
   useEffect(() => {
-    startSequence(setSim1, ctx1.hotTemp);
-    return () => seqTimeoutsRef.current.forEach(id => clearTimeout(id));
+    startSequence('sim1', setSim1, ctx1.hotTemp);
+    return () => (seqTimeoutsRef.current.sim1 || []).forEach(id => clearTimeout(id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx1.substanceId, ctx1.hotTemp, ctx1.coldTemp]);
 
-  // 2차 시뮬 자동 시작
   useEffect(() => {
     if (!ctx2) return;
-    startSequence(setSim2, ctx2.hotTemp);
-    return () => seqTimeoutsRef.current.forEach(id => clearTimeout(id));
+    startSequence('sim2', setSim2, ctx2.hotTemp);
+    return () => (seqTimeoutsRef.current.sim2 || []).forEach(id => clearTimeout(id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx2?.substanceId, ctx2?.hotTemp, ctx2?.coldTemp, ctx2?.solutionMass]);
 
-  // ─── 냉각 애니메이션 ───
   const coolRafRef = useRef({});
-
   function startCooling(key, ctx, simSetter) {
     if (!ctx) return;
+    if (coolRafRef.current[key]) cancelAnimationFrame(coolRafRef.current[key]);
     const startTemp = ctx.hotTemp;
     const endTemp = ctx.coldTemp;
-    const duration = 2200;
+    const duration = 2500;
     const startTime = performance.now();
 
     simSetter({ phase: 'cooling', temp: startTemp });
@@ -239,19 +213,31 @@ export default function PrecipitationSimScreen({ onBack }) {
       const eased = 1 - Math.pow(1 - t, 2);
       const newTemp = startTemp - (startTemp - endTemp) * eased;
       simSetter({ phase: t < 1 ? 'cooling' : 'cold', temp: t < 1 ? newTemp : endTemp });
-      if (t < 1) {
-        coolRafRef.current[key] = requestAnimationFrame(tick);
-      }
+      if (t < 1) coolRafRef.current[key] = requestAnimationFrame(tick);
     };
     coolRafRef.current[key] = requestAnimationFrame(tick);
   }
-
   function resetSim(key, ctx, simSetter) {
     if (coolRafRef.current[key]) cancelAnimationFrame(coolRafRef.current[key]);
-    startSequence(simSetter, ctx.hotTemp);
+    startSequence(key, simSetter, ctx.hotTemp);
   }
 
-  // 퀴즈 모드
+  // 냉각온도는 용해온도보다 작아야 함 — 제약
+  function handleHotTempChange(t) {
+    setSettingHotTemp(t);
+    if (settingColdTemp >= t) {
+      // cold가 hot 이상이면 cold를 자동 조정
+      const valid = COLD_TEMPERATURES.filter(c => c < t);
+      if (valid.length) setSettingColdTemp(valid[valid.length - 1]);
+    }
+    setSettingMultiplier(null);
+  }
+  function handleColdTempChange(t) {
+    if (t >= settingHotTemp) return;
+    setSettingColdTemp(t);
+    setSettingMultiplier(null);
+  }
+
   if (mode === 'quiz') {
     return (
       <PrecipitationQuiz
@@ -262,11 +248,8 @@ export default function PrecipitationSimScreen({ onBack }) {
     );
   }
 
-  // ─── 렌더 ────────────────────────────────────
-
   return (
     <div style={styles.screen}>
-      {/* 상단 바 */}
       <div style={styles.topBar}>
         {onBack && <button style={styles.backBtn} onClick={onBack}>←</button>}
         <h1 style={styles.title}>석출 시뮬레이터</h1>
@@ -274,7 +257,6 @@ export default function PrecipitationSimScreen({ onBack }) {
         <LabelToggle useFormula={useFormula} onToggle={toggleFormula} />
       </div>
 
-      {/* 모드 탭 */}
       <div style={styles.tabs}>
         <ModeTab active={mode === 'setting'} onClick={() => setMode('setting')} label="셋팅" desc="교과서 예시" locked={false} />
         <ModeTab active={mode === 'custom'} onClick={() => quizPassed ? setMode('custom') : setMode('quiz')} label="커스텀" desc="자유 조작" locked={!quizPassed} />
@@ -291,20 +273,20 @@ export default function PrecipitationSimScreen({ onBack }) {
         </div>
       )}
 
-      {/* === 셋팅 모드 === */}
       {mode === 'setting' && (
         <SettingModeTags
           substance={settingSubstance}
           onSubstance={(s) => { setSettingSubstance(s); setSettingMultiplier(null); }}
-          tempComboIdx={settingTempComboIdx}
-          onTempCombo={(i) => { setSettingTempComboIdx(i); setSettingMultiplier(null); }}
+          hotTemp={settingHotTemp}
+          onHotTemp={handleHotTempChange}
+          coldTemp={settingColdTemp}
+          onColdTemp={handleColdTempChange}
           multiplier={settingMultiplier}
           onMultiplier={setSettingMultiplier}
           useFormula={useFormula}
         />
       )}
 
-      {/* === 커스텀/심화 모드 컨트롤 === */}
       {(mode === 'custom' || mode === 'advanced') && (
         <CustomControls
           mode={mode}
@@ -325,35 +307,34 @@ export default function PrecipitationSimScreen({ onBack }) {
         />
       )}
 
-      {/* === 1차 비커: 물 100g 기준 === */}
+      {/* 1차 비커 */}
       {mode === 'setting' && (
         <BeakerCard
           title="① 물 100g 기준"
-          subtitle={`${getSubstanceLabel(ctx1.substanceId, useFormula)} 포화용액을 ${ctx1.hotTemp}℃에서 만든 뒤 ${ctx1.coldTemp}℃로 냉각`}
+          subtitle={`${getSubstanceLabel(ctx1.substanceId, useFormula)} · ${ctx1.hotTemp}℃ → ${ctx1.coldTemp}℃`}
           ctx={ctx1}
           sim={sim1}
           beakerState={deriveBeakerState(ctx1, result1, sim1.phase)}
           onCool={() => startCooling('sim1', ctx1, setSim1)}
           onReset={() => resetSim('sim1', ctx1, setSim1)}
-          result={result1}
+          useFormula={useFormula}
         />
       )}
 
-      {/* === 커스텀/심화 모드 비커 === */}
       {(mode === 'custom' || mode === 'advanced') && ctxCustom && resultCustom && (
         <BeakerCard
           title={mode === 'advanced' ? '심화 시뮬레이션' : '시뮬레이션'}
-          subtitle={`${getSubstanceLabel(ctxCustom.substanceId, useFormula)} ${ctxCustom.hotTemp}℃ → ${ctxCustom.coldTemp}℃`}
-          ctx={{ ...ctxCustom, waterMass: customWaterMass, soluteMass: getSolubility(customSubstance, customHotTemp) * customWaterMass / 100 }}
+          subtitle={`${getSubstanceLabel(ctxCustom.substanceId, useFormula)} · ${ctxCustom.hotTemp}℃ → ${ctxCustom.coldTemp}℃`}
+          ctx={{ ...ctxCustom, soluteMass: getSolubility(customSubstance, customHotTemp) * customWaterMass / 100 }}
           sim={sim1}
-          beakerState={deriveBeakerState({ ...ctxCustom, waterMass: customWaterMass, soluteMass: getSolubility(customSubstance, customHotTemp) * customWaterMass / 100 }, resultCustom, sim1.phase)}
+          beakerState={deriveBeakerState({ ...ctxCustom, soluteMass: getSolubility(customSubstance, customHotTemp) * customWaterMass / 100 }, resultCustom, sim1.phase)}
           onCool={() => startCooling('sim1', ctxCustom, setSim1)}
           onReset={() => resetSim('sim1', ctxCustom, setSim1)}
-          result={resultCustom}
+          useFormula={useFormula}
         />
       )}
 
-      {/* === 2차 비커: 선택한 용액양 기준 (셋팅 모드 + 3단계 선택 완료 시) === */}
+      {/* 2차 비커 */}
       {mode === 'setting' && has2ndSim && ctx2 && result2 && (
         <>
           <div style={styles.divider}>
@@ -361,18 +342,17 @@ export default function PrecipitationSimScreen({ onBack }) {
             <span style={styles.dividerText}>② 선택한 용액양 기준</span>
             <span style={styles.dividerLine} />
           </div>
-          <BeakerCard
-            title={`② 포화용액 ${ctx2.solutionMass}g 기준`}
-            subtitle={`물 ${ctx2.waterMass}g + ${getSubstanceLabel(ctx2.substanceId, useFormula)} ${ctx2.soluteMass}g`}
+          <BeakerCard2
             ctx={ctx2}
             sim={sim2}
             beakerState={deriveBeakerState(ctx2, result2, sim2.phase)}
+            result1={result1}
+            result2={result2}
             onCool={() => startCooling('sim2', ctx2, setSim2)}
             onReset={() => resetSim('sim2', ctx2, setSim2)}
-            result={result2}
+            useFormula={useFormula}
           />
 
-          {/* 계산식 해설 */}
           <CalculationSteps
             mode="basic"
             substanceId={ctx2.substanceId}
@@ -385,7 +365,6 @@ export default function PrecipitationSimScreen({ onBack }) {
         </>
       )}
 
-      {/* 커스텀/심화 모드 계산식 */}
       {(mode === 'custom' || mode === 'advanced') && ctxCustom && resultCustom && (
         <CalculationSteps
           mode={ctxCustom.mode}
@@ -399,7 +378,6 @@ export default function PrecipitationSimScreen({ onBack }) {
         />
       )}
 
-      {/* === 용해도 곡선 === */}
       <div style={styles.chartSection}>
         <div style={styles.sectionTitle}>용해도 곡선</div>
         <SolubilityChart
@@ -412,7 +390,6 @@ export default function PrecipitationSimScreen({ onBack }) {
         />
       </div>
 
-      {/* === 참고 표 === */}
       <SolubilityReferenceTable
         substanceId={ctx1.substanceId}
         useFormula={useFormula}
@@ -422,9 +399,86 @@ export default function PrecipitationSimScreen({ onBack }) {
   );
 }
 
-// ─── BeakerCard ─────────────────────────────
+// ─── 1차 BeakerCard: 물 100g 기준 ─────────────
 
-function BeakerCard({ title, subtitle, ctx, sim, beakerState, onCool, onReset, result }) {
+function BeakerCard({ title, subtitle, ctx, sim, beakerState, onCool, onReset, useFormula }) {
+  const sub = SUBSTANCES[ctx.substanceId];
+  const canCool = sim.phase === 'saturated' || sim.phase === 'cold';
+  const coolLabel = sim.phase === 'cold'
+    ? '다시 냉각'
+    : sim.phase === 'cooling'
+      ? '냉각 중...'
+      : sim.phase === 'saturated'
+        ? `${ctx.coldTemp}℃로 냉각`
+        : '준비 중...';
+
+  const hotS = ctx.soluteMass ?? 0;
+  const dissolved = beakerState.dissolvedMass;
+  const precipitated = beakerState.precipitatedMass;
+  const solutionNow = +(beakerState.waterMass + dissolved).toFixed(1);
+  const conservation = +(dissolved + precipitated).toFixed(1); // 보존되는 합
+
+  return (
+    <div style={cardStyles.wrap}>
+      <div style={cardStyles.header}>
+        <div style={cardStyles.title}>{title}</div>
+        <div style={cardStyles.subtitle}>{subtitle}</div>
+      </div>
+
+      <Beaker
+        substanceId={ctx.substanceId}
+        waterMass={beakerState.waterMass}
+        dissolvedMass={beakerState.dissolvedMass}
+        precipitatedMass={beakerState.precipitatedMass}
+        maxDissolvedMass={beakerState.maxDissolvedMass}
+        temperature={sim.temp}
+        phase={sim.phase}
+      />
+
+      {/* 색상 안내 (비커 밖 별도 영역) */}
+      {sub.colorNote && (
+        <div style={cardStyles.colorNote}>
+          ※ {sub.name}({sub.formula})의 실제 색은 <b>{sub.realColor}</b>이지만, 가시성을 위해 색을 입혀 표시합니다.
+        </div>
+      )}
+
+      {/* 상태 수식: 물 + 용질 = 용액 / 석출 */}
+      <div style={cardStyles.equationBox}>
+        <div style={cardStyles.eqRow}>
+          <span style={cardStyles.eqLabel}>물</span>
+          <span style={{ ...cardStyles.eqVal, color: '#4A7ED9' }}>{beakerState.waterMass}g</span>
+          <span style={cardStyles.eqOp}>+</span>
+          <span style={cardStyles.eqLabel}>용질</span>
+          <span style={{ ...cardStyles.eqVal, color: sub.displayColor }}>{dissolved}g</span>
+          <span style={cardStyles.eqOp}>=</span>
+          <span style={cardStyles.eqLabel}>용액</span>
+          <span style={{ ...cardStyles.eqVal, color: '#059669' }}>{solutionNow}g</span>
+        </div>
+        <div style={cardStyles.eqRow}>
+          <span style={cardStyles.eqLabel}>석출</span>
+          <span style={{ ...cardStyles.eqVal, color: '#F59E0B' }}>{precipitated}g</span>
+          <span style={{ flex: 1 }} />
+          <span style={cardStyles.conservationNote}>
+            용질+석출 = <b style={{ color: '#374151' }}>{conservation}g</b> (유지)
+          </span>
+        </div>
+      </div>
+
+      <div style={cardStyles.controls}>
+        <button style={{ ...cardStyles.coolBtn, opacity: canCool ? 1 : 0.5 }} onClick={onCool} disabled={!canCool}>
+          {coolLabel}
+        </button>
+        <button style={cardStyles.resetBtn} onClick={onReset}>리셋</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── 2차 BeakerCard: 선택 용액양 기준 ─────────────
+// 물/용질 개별 양은 가리고, 전체 용액량과 석출량만 표시
+// 석출량은 "이전 석출량 × 현재 용액량 / 기준 용액량" 분수 꼴로 표시
+
+function BeakerCard2({ ctx, sim, beakerState, result1, result2, onCool, onReset, useFormula }) {
   const sub = SUBSTANCES[ctx.substanceId];
   const canCool = sim.phase === 'saturated' || sim.phase === 'cold';
   const coolLabel = sim.phase === 'cold'
@@ -438,9 +492,12 @@ function BeakerCard({ title, subtitle, ctx, sim, beakerState, onCool, onReset, r
   return (
     <div style={cardStyles.wrap}>
       <div style={cardStyles.header}>
-        <div style={cardStyles.title}>{title}</div>
-        <div style={cardStyles.subtitle}>{subtitle}</div>
+        <div style={cardStyles.title}>포화용액 {ctx.solutionMass}g 기준</div>
+        <div style={cardStyles.subtitle}>
+          같은 물질·온도지만 용액량만 다릅니다. 물과 용질의 개별 양은 <b>보여주지 않습니다</b>.
+        </div>
       </div>
+
       <Beaker
         substanceId={ctx.substanceId}
         waterMass={beakerState.waterMass}
@@ -450,17 +507,37 @@ function BeakerCard({ title, subtitle, ctx, sim, beakerState, onCool, onReset, r
         temperature={sim.temp}
         phase={sim.phase}
       />
-      <div style={cardStyles.stateRow}>
-        <StateCard label="물" value={`${beakerState.waterMass} g`} color="#4A7ED9" />
-        <StateCard label="녹은 용질" value={`${beakerState.dissolvedMass} g`} color={sub.displayColor} />
-        <StateCard label="석출량" value={`${beakerState.precipitatedMass} g`} color="#F59E0B" />
+
+      {/* 상태 수식 (2차): 용액량 + 석출량만, 분수 형태 */}
+      <div style={cardStyles.equationBox}>
+        <div style={cardStyles.eqRow}>
+          <span style={cardStyles.eqLabel}>용액</span>
+          <span style={{ ...cardStyles.eqVal, color: '#059669' }}>{ctx.solutionMass}g</span>
+          <span style={{ flex: 1 }} />
+          <span style={cardStyles.eqLabel}>석출</span>
+          <span style={{ ...cardStyles.eqVal, color: '#F59E0B' }}>
+            {sim.phase === 'cold' ? `${result2.actualPrecipitation}g` : '?'}
+          </span>
+        </div>
+        <div style={{ ...cardStyles.eqRow, flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+          <span style={{ fontSize: 10, color: '#6B7280', fontWeight: 700 }}>석출량 공식</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+            <span style={cardStyles.chip}>{result1.actualPrecipitation}g</span>
+            <span style={{ color: '#9CA3AF' }}>×</span>
+            <InlineFraction top={ctx.solutionMass} bottom={result1.referenceSolution} />
+            <span style={{ color: '#9CA3AF' }}>=</span>
+            <span style={{ ...cardStyles.chip, background: '#FEF3C7', color: '#92400E' }}>
+              {result2.actualPrecipitation}g
+            </span>
+          </div>
+          <span style={{ fontSize: 10, color: '#6B7280' }}>
+            (이전 석출량 × 현재 용액량 / 기준 용액량)
+          </span>
+        </div>
       </div>
+
       <div style={cardStyles.controls}>
-        <button
-          style={{ ...cardStyles.coolBtn, opacity: canCool ? 1 : 0.5 }}
-          onClick={onCool}
-          disabled={!canCool}
-        >
+        <button style={{ ...cardStyles.coolBtn, opacity: canCool ? 1 : 0.5 }} onClick={onCool} disabled={!canCool}>
           {coolLabel}
         </button>
         <button style={cardStyles.resetBtn} onClick={onReset}>리셋</button>
@@ -469,97 +546,128 @@ function BeakerCard({ title, subtitle, ctx, sim, beakerState, onCool, onReset, r
   );
 }
 
-// ─── Setting Mode Tags ────────────────────────
+function InlineFraction({ top, bottom }) {
+  return (
+    <span style={{
+      display: 'inline-flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', verticalAlign: 'middle',
+      fontFamily: 'ui-monospace, monospace', fontSize: 11, lineHeight: 1.1,
+    }}>
+      <span style={{ padding: '0 4px', fontWeight: 600 }}>{top}</span>
+      <span style={{ height: 1, width: '100%', background: '#374151', margin: '1px 0' }} />
+      <span style={{ padding: '0 4px', fontWeight: 600 }}>{bottom}</span>
+    </span>
+  );
+}
 
-function SettingModeTags({ substance, onSubstance, tempComboIdx, onTempCombo, multiplier, onMultiplier, useFormula }) {
-  // 현재 선택된 정보
-  const combo = TEMP_COMBINATIONS[tempComboIdx];
-  const sub = SUBSTANCES[substance];
+// ─── 셋팅 모드 태그 ─────────────────────────
 
-  // 용액양 옵션 g 값 (현재 물질·온도 기준)
+function SettingModeTags({
+  substance, onSubstance,
+  hotTemp, onHotTemp,
+  coldTemp, onColdTemp,
+  multiplier, onMultiplier,
+  useFormula,
+}) {
   const amountOptions = SOLUTION_MULTIPLIERS.map(m =>
-    computeAmountOption(substance, combo.hot, m)
+    computeAmountOption(substance, hotTemp, m)
   );
 
   return (
     <div style={styles.tagPanel}>
-      {/* 물질 선택 */}
-      <div style={styles.tagRow}>
-        <div style={styles.tagCategory}>물질</div>
-        <div style={styles.tagList}>
-          {SUBSTANCE_LIST.map(s => (
-            <Chip
-              key={s.id}
-              active={substance === s.id}
-              onClick={() => onSubstance(s.id)}
-              activeColor={s.displayColor}
-            >
-              {useFormula ? s.formula : s.name}
-            </Chip>
-          ))}
-        </div>
-      </div>
+      {/* 물질 */}
+      <TagRow label="물질">
+        {SUBSTANCE_LIST.map(s => (
+          <Chip
+            key={s.id}
+            active={substance === s.id}
+            onClick={() => onSubstance(s.id)}
+            activeColor={s.displayColor}
+          >
+            {useFormula ? s.formula : s.name}
+          </Chip>
+        ))}
+      </TagRow>
 
-      {/* 온도 조합 선택 */}
-      <div style={styles.tagRow}>
-        <div style={styles.tagCategory}>온도</div>
-        <div style={styles.tagList}>
-          {TEMP_COMBINATIONS.map((c, i) => (
+      {/* 용해 온도 */}
+      <TagRow label="용해 온도">
+        {HOT_TEMPERATURES.map(t => (
+          <Chip key={t} active={hotTemp === t} onClick={() => onHotTemp(t)} activeColor="#D94A4A">
+            {t}℃
+          </Chip>
+        ))}
+      </TagRow>
+
+      {/* 냉각 온도 */}
+      <TagRow label="냉각 온도">
+        {COLD_TEMPERATURES.map(t => {
+          const disabled = t >= hotTemp;
+          return (
             <Chip
-              key={tempComboId(c)}
-              active={tempComboIdx === i}
-              onClick={() => onTempCombo(i)}
+              key={t}
+              active={coldTemp === t}
+              onClick={() => !disabled && onColdTemp(t)}
               activeColor="#4A7ED9"
+              disabled={disabled}
             >
-              {c.hot}°→{c.cold}°
+              {t}℃
             </Chip>
-          ))}
-        </div>
-      </div>
+          );
+        })}
+      </TagRow>
 
-      {/* 용액양 선택 */}
-      <div style={styles.tagRow}>
-        <div style={styles.tagCategory}>용액양</div>
-        <div style={styles.tagList}>
-          {amountOptions.map((opt, i) => (
-            <Chip
-              key={opt.multiplier}
-              active={multiplier === opt.multiplier}
-              onClick={() => onMultiplier(opt.multiplier)}
-              activeColor="#F59E0B"
-            >
-              {opt.solutionMass}g
-            </Chip>
-          ))}
-        </div>
-      </div>
+      {/* 용액양 */}
+      <TagRow label="용액양">
+        {amountOptions.map(opt => (
+          <Chip
+            key={opt.multiplier}
+            active={multiplier === opt.multiplier}
+            onClick={() => onMultiplier(opt.multiplier)}
+            activeColor="#F59E0B"
+          >
+            {opt.solutionMass}g
+          </Chip>
+        ))}
+      </TagRow>
 
-      {/* 안내 */}
       <div style={styles.tagHint}>
         {multiplier == null
-          ? '용액양까지 선택하면 해당 양 기준 시뮬레이션과 계산식이 나타납니다.'
-          : `선택: ${useFormula ? sub.formula : sub.name} · ${combo.hot}℃→${combo.cold}℃ · ${amountOptions.find(o => o.multiplier === multiplier)?.solutionMass}g`
+          ? '💡 용액양까지 선택하면 아래에 상세 계산식이 나타납니다.'
+          : `선택 완료: ${getSubstanceLabel(substance, useFormula)} · ${hotTemp}℃→${coldTemp}℃ · ${amountOptions.find(o => o.multiplier === multiplier)?.solutionMass}g`
         }
       </div>
     </div>
   );
 }
 
-function Chip({ active, onClick, children, activeColor }) {
+function TagRow({ label, children }) {
+  return (
+    <div style={styles.tagRow}>
+      <div style={styles.tagCategory}>{label}</div>
+      <div style={styles.tagListScroll}>
+        <div style={styles.tagListInner}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function Chip({ active, onClick, children, activeColor, disabled }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       style={{
         padding: '6px 12px',
         borderRadius: 999,
         border: '1.5px solid',
-        borderColor: active ? activeColor : '#E5E8EC',
-        background: active ? activeColor : '#FFFFFF',
-        color: active ? '#FFFFFF' : '#4B5563',
+        borderColor: disabled ? '#E5E8EC' : active ? activeColor : '#D4D9E0',
+        background: disabled ? '#F9FAFB' : active ? activeColor : '#FFFFFF',
+        color: disabled ? '#D1D5DB' : active ? '#FFFFFF' : '#4B5563',
         fontSize: 12,
         fontWeight: active ? 700 : 500,
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
         whiteSpace: 'nowrap',
+        flexShrink: 0,
         transition: 'all 0.15s',
       }}
     >
@@ -568,7 +676,7 @@ function Chip({ active, onClick, children, activeColor }) {
   );
 }
 
-// ─── 기타 서브 컴포넌트 ──────────────────────
+// ─── 기타 ─────────────────────────────────
 
 function LabelToggle({ useFormula, onToggle }) {
   return (
@@ -610,42 +718,32 @@ function CustomControls({
     <div style={styles.controlPanel}>
       <div style={styles.panelTitle}>{mode === 'advanced' ? '심화 모드' : '커스텀 모드'}</div>
 
-      <div style={styles.fieldLabel}>물질</div>
-      <div style={styles.tagList}>
+      <TagRow label="물질">
         {SUBSTANCE_LIST.map(s => (
-          <Chip
-            key={s.id}
-            active={substance === s.id}
-            onClick={() => onSubstance(s.id)}
-            activeColor={s.displayColor}
-          >
+          <Chip key={s.id} active={substance === s.id} onClick={() => onSubstance(s.id)} activeColor={s.displayColor}>
             {useFormula ? s.formula : s.name}
           </Chip>
         ))}
-      </div>
+      </TagRow>
 
       <div style={styles.fieldLabel}>물 양: <b>{waterMass}g</b></div>
       <input type="range" min={50} max={500} step={10} value={waterMass}
         onChange={e => onWaterMass(+e.target.value)} style={styles.slider} />
 
-      <div style={styles.tempRow}>
-        <div style={{ flex: 1 }}>
-          <div style={styles.fieldLabel}>고온: <b style={{ color: '#D94A4A' }}>{hotTemp}℃</b></div>
-          <div style={styles.tagList}>
-            {PRESET_TEMPERATURES.map(t => (
-              <Chip key={t} active={hotTemp === t} onClick={() => t > coldTemp && onHotTemp(t)} activeColor="#D94A4A">{t}℃</Chip>
-            ))}
-          </div>
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={styles.fieldLabel}>저온: <b style={{ color: '#4A7ED9' }}>{coldTemp}℃</b></div>
-          <div style={styles.tagList}>
-            {PRESET_TEMPERATURES.map(t => (
-              <Chip key={t} active={coldTemp === t} onClick={() => t < hotTemp && onColdTemp(t)} activeColor="#4A7ED9">{t}℃</Chip>
-            ))}
-          </div>
-        </div>
-      </div>
+      <TagRow label="용해 온도">
+        {PRESET_TEMPERATURES.map(t => (
+          <Chip key={t} active={hotTemp === t} onClick={() => t > coldTemp && onHotTemp(t)} activeColor="#D94A4A" disabled={t <= coldTemp}>
+            {t}℃
+          </Chip>
+        ))}
+      </TagRow>
+      <TagRow label="냉각 온도">
+        {PRESET_TEMPERATURES.map(t => (
+          <Chip key={t} active={coldTemp === t} onClick={() => t < hotTemp && onColdTemp(t)} activeColor="#4A7ED9" disabled={t >= hotTemp}>
+            {t}℃
+          </Chip>
+        ))}
+      </TagRow>
 
       {mode === 'advanced' && (
         <>
@@ -658,21 +756,12 @@ function CustomControls({
       <div style={styles.fieldLabel}>
         용액 양: <b>{solutionMass != null ? `${solutionMass}g` : `${computedSolutionMass}g (자동)`}</b>
       </div>
-      <div style={styles.tagList}>
+      <TagRow label="">
         <Chip active={solutionMass == null} onClick={() => onSolutionMass(null)} activeColor="#4A7ED9">자동(포화)</Chip>
         {[100, 200, 500].map(v => (
           <Chip key={v} active={solutionMass === v} onClick={() => onSolutionMass(v)} activeColor="#4A7ED9">{v}g</Chip>
         ))}
-      </div>
-    </div>
-  );
-}
-
-function StateCard({ label, value, color }) {
-  return (
-    <div style={cardStyles.stateCell}>
-      <div style={{ ...cardStyles.stateLabel, color }}>{label}</div>
-      <div style={cardStyles.stateValue}>{value}</div>
+      </TagRow>
     </div>
   );
 }
@@ -697,18 +786,12 @@ const styles = {
     width: '100%',
   },
   topBar: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '4px 0',
+    display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0',
   },
   backBtn: {
     width: 32, height: 32,
-    background: '#FFFFFF',
-    border: '1px solid #E5E8EC',
-    borderRadius: 8,
-    fontSize: 16,
-    cursor: 'pointer',
+    background: '#FFFFFF', border: '1px solid #E5E8EC', borderRadius: 8,
+    fontSize: 16, cursor: 'pointer',
   },
   title: { margin: 0, fontSize: 18, fontWeight: 800, color: '#1F2937' },
   tabs: {
@@ -733,14 +816,27 @@ const styles = {
     border: '1px solid #E5E8EC',
   },
   tagRow: {
-    display: 'flex', flexDirection: 'column', gap: 6,
+    display: 'flex', flexDirection: 'column', gap: 4,
   },
   tagCategory: {
     fontSize: 10, fontWeight: 700, color: '#9CA3AF',
     letterSpacing: 0.5, textTransform: 'uppercase',
   },
-  tagList: {
-    display: 'flex', gap: 6, flexWrap: 'wrap',
+  // 가로 스크롤: 한 줄에 나열, 넘치면 좌우 스크롤
+  tagListScroll: {
+    width: '100%',
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    WebkitOverflowScrolling: 'touch',
+    scrollbarWidth: 'thin',
+    paddingBottom: 2, // 스크롤바 공간
+  },
+  tagListInner: {
+    display: 'flex',
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    gap: 6,
+    paddingRight: 4,
   },
   tagHint: {
     marginTop: 4, padding: 8,
@@ -755,7 +851,6 @@ const styles = {
   panelTitle: { fontSize: 13, fontWeight: 700, color: '#1F2937', marginBottom: 4 },
   fieldLabel: { fontSize: 11, color: '#6B7280', marginTop: 4, fontWeight: 500 },
   slider: { width: '100%', marginTop: 2, accentColor: '#4A7ED9' },
-  tempRow: { display: 'flex', gap: 10 },
   chartSection: {
     padding: 12, background: '#FFFFFF', borderRadius: 12,
     border: '1px solid #E5E8EC',
@@ -775,13 +870,60 @@ const cardStyles = {
     padding: 12, background: '#FFFFFF', borderRadius: 12,
     border: '1px solid #E5E8EC',
   },
-  header: { display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 4 },
+  header: { display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 2 },
   title: { fontSize: 13, fontWeight: 800, color: '#1F2937' },
-  subtitle: { fontSize: 11, color: '#6B7280' },
-  stateRow: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 },
-  stateCell: { padding: '8px 6px', background: '#F9FAFB', borderRadius: 8, textAlign: 'center' },
-  stateLabel: { fontSize: 10, fontWeight: 600, marginBottom: 2 },
-  stateValue: { fontSize: 13, fontWeight: 700, color: '#1F2937', fontFamily: 'ui-monospace, monospace' },
+  subtitle: { fontSize: 11, color: '#6B7280', lineHeight: 1.5 },
+  colorNote: {
+    padding: '6px 10px',
+    background: '#F9FAFB',
+    borderRadius: 6,
+    fontSize: 10,
+    color: '#6B7280',
+    lineHeight: 1.4,
+  },
+  equationBox: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    padding: '8px 10px',
+    background: '#F9FAFB',
+    borderRadius: 8,
+    border: '1px solid #F0F2F5',
+  },
+  eqRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    fontSize: 11,
+    flexWrap: 'wrap',
+  },
+  eqLabel: {
+    fontSize: 10,
+    fontWeight: 600,
+    color: '#6B7280',
+  },
+  eqVal: {
+    padding: '2px 6px',
+    background: '#FFFFFF',
+    borderRadius: 4,
+    fontFamily: 'ui-monospace, monospace',
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  eqOp: { color: '#9CA3AF', fontWeight: 700, margin: '0 2px' },
+  conservationNote: {
+    fontSize: 10,
+    color: '#6B7280',
+  },
+  chip: {
+    padding: '2px 8px',
+    background: '#E0E7FF',
+    color: '#3730A3',
+    borderRadius: 4,
+    fontFamily: 'ui-monospace, monospace',
+    fontWeight: 700,
+    fontSize: 11,
+  },
   controls: { display: 'flex', gap: 8 },
   coolBtn: {
     flex: 1, padding: '10px 14px',
