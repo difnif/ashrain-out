@@ -381,6 +381,131 @@ function StarIsosceles({ stroke, fill, accent }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ── 10a. 이등변 AB=AC + AC 위 점 D (BD=BC 조건) ──
+// b9, b10 전용: D는 AC 위, BD 선분, BD=BC 틱 강조
+// 옵션: showAngleABisect (BD가 ∠B 이등분선)
+// 옵션: angleALabel (∠A 값을 A 옆에 표시)
+// ═══════════════════════════════════════════════════════════════
+function makeIsoWithD_onAC_BDeqBC({ showAngleBisect = false, angleALabel = null }) {
+  return function IsoBDeqBCFigure({ stroke, fill, accent }) {
+    const A = [130, 20], B = [80, 150], C = [180, 150];
+    // D: AC 위, BD=BC 되는 점 (수학 계산: t ≈ 0.485)
+    const t = 0.485;
+    const D = [A[0] + (C[0] - A[0]) * t, A[1] + (C[1] - A[1]) * t];
+    return (
+      <>
+        {/* 큰 삼각형 */}
+        <polygon points={`${A} ${B} ${C}`} fill={fill} fillOpacity={0.1}
+          stroke={stroke} strokeWidth={1.5} />
+        {/* BD 선분 (보조선) */}
+        <line x1={B[0]} y1={B[1]} x2={D[0]} y2={D[1]}
+          stroke={accent} strokeWidth={1.3} />
+        {/* AB=AC 틱 (빨강, 한 개씩) */}
+        <SideTick P1={A} P2={B} count={1} color={accent} />
+        <SideTick P1={A} P2={C} count={1} color={accent} />
+        {/* BD=BC 틱 (보라, 다른 색으로 구분) */}
+        <SideTick P1={B} P2={D} count={2} color="#8B5CF6" />
+        <SideTick P1={B} P2={C} count={2} color="#8B5CF6" />
+        {/* ∠B 이등분선 표시 (옵션): BD가 이등분이면 ∠ABD와 ∠DBC 양쪽에 작은 호 */}
+        {showAngleBisect && (
+          <>
+            <AngleArc V={B} P1={A} P2={D} r={20} stroke="#10B981" strokeWidth={1.2} />
+            <AngleArc V={B} P1={D} P2={C} r={20} stroke="#10B981" strokeWidth={1.2} />
+          </>
+        )}
+        {/* ∠A 값 표시 (옵션) */}
+        {angleALabel && (
+          <>
+            <AngleArc V={A} P1={B} P2={C} r={14} stroke={accent} />
+            <text x={A[0]} y={A[1] + 22} fontSize={10} fill={accent}
+              fontWeight={700} textAnchor="middle">{angleALabel}</text>
+          </>
+        )}
+        {/* 라벨 */}
+        <Label x={A[0]} y={A[1] - 10} color={stroke}>A</Label>
+        <Label x={B[0] - 10} y={B[1] + 6} color={stroke}>B</Label>
+        <Label x={C[0] + 10} y={C[1] + 6} color={stroke}>C</Label>
+        <Label x={D[0] + 10} y={D[1] - 4} color={accent}>D</Label>
+      </>
+    );
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── 10b. 이등변 AB=AC + BC 위 D + AC 위 E (AD=AE, ∠DAE 표시) ──
+// b11 전용
+// ═══════════════════════════════════════════════════════════════
+function IsoD_onBC_E_onAC_ADeqAE({ stroke, fill, accent }) {
+  const A = [130, 20], B = [80, 150], C = [180, 150];
+  // D는 BC 중점(대략), E는 AC 위에서 AE=AD 되는 점 (계산: u ≈ 0.933)
+  const D = [130, 150];
+  const u = 0.933;
+  const E = [A[0] + (C[0] - A[0]) * u, A[1] + (C[1] - A[1]) * u];
+  return (
+    <>
+      <polygon points={`${A} ${B} ${C}`} fill={fill} fillOpacity={0.1}
+        stroke={stroke} strokeWidth={1.5} />
+      {/* AD, AE, DE 선분 */}
+      <line x1={A[0]} y1={A[1]} x2={D[0]} y2={D[1]}
+        stroke={accent} strokeWidth={1.3} />
+      <line x1={A[0]} y1={A[1]} x2={E[0]} y2={E[1]}
+        stroke={accent} strokeWidth={1.3} />
+      <line x1={D[0]} y1={D[1]} x2={E[0]} y2={E[1]}
+        stroke={accent} strokeWidth={1.3} />
+      {/* △ADE 강조 */}
+      <polygon points={`${A} ${D} ${E}`} fill={accent} fillOpacity={0.15} stroke="none" />
+      {/* AB=AC 틱 */}
+      <SideTick P1={A} P2={B} count={1} color={accent} />
+      <SideTick P1={A} P2={C} count={1} color={accent} />
+      {/* AD=AE 틱 (보라) */}
+      <SideTick P1={A} P2={D} count={2} color="#8B5CF6" />
+      <SideTick P1={A} P2={E} count={2} color="#8B5CF6" />
+      {/* ∠DAE 호 */}
+      <AngleArc V={A} P1={D} P2={E} r={14} stroke="#10B981" strokeWidth={1.3} />
+      {/* 라벨 */}
+      <Label x={A[0]} y={A[1] - 10} color={stroke}>A</Label>
+      <Label x={B[0] - 10} y={B[1] + 6} color={stroke}>B</Label>
+      <Label x={C[0] + 10} y={C[1] + 6} color={stroke}>C</Label>
+      <Label x={D[0]} y={D[1] + 12} color={accent}>D</Label>
+      <Label x={E[0] + 10} y={E[1] - 4} color={accent}>E</Label>
+    </>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── 10c. 이등변 AB=AC + AC 위 D (AD=BD 조건) ──
+// b12 전용
+// ═══════════════════════════════════════════════════════════════
+function IsoD_onAC_ADeqBD({ stroke, fill, accent }) {
+  const A = [130, 20], B = [80, 150], C = [180, 150];
+  // D: AC 위, AD=BD 되는 점 (수학 계산: t ≈ 0.674)
+  const t = 0.674;
+  const D = [A[0] + (C[0] - A[0]) * t, A[1] + (C[1] - A[1]) * t];
+  return (
+    <>
+      <polygon points={`${A} ${B} ${C}`} fill={fill} fillOpacity={0.1}
+        stroke={stroke} strokeWidth={1.5} />
+      {/* BD 보조선 */}
+      <line x1={B[0]} y1={B[1]} x2={D[0]} y2={D[1]}
+        stroke={accent} strokeWidth={1.3} />
+      {/* AB=AC 틱 (빨강) */}
+      <SideTick P1={A} P2={B} count={1} color={accent} />
+      <SideTick P1={A} P2={C} count={1} color={accent} />
+      {/* AD=BD 틱 (보라) */}
+      <SideTick P1={A} P2={D} count={2} color="#8B5CF6" />
+      <SideTick P1={B} P2={D} count={2} color="#8B5CF6" />
+      {/* ∠A 호 + 라벨 */}
+      <AngleArc V={A} P1={B} P2={C} r={14} stroke="#10B981" strokeWidth={1.2} />
+      {/* 라벨 */}
+      <Label x={A[0]} y={A[1] - 10} color={stroke}>A</Label>
+      <Label x={B[0] - 10} y={B[1] + 6} color={stroke}>B</Label>
+      <Label x={C[0] + 10} y={C[1] + 6} color={stroke}>C</Label>
+      <Label x={D[0] + 10} y={D[1] - 4} color={accent}>D</Label>
+    </>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // ── 11. 직각삼각형 쌍 (합동 비교) ──
 // ═══════════════════════════════════════════════════════════════
 function RightPair({ stroke, fill, accent, ticks = [], arcs = [], rightAngles = [] }) {
@@ -631,6 +756,12 @@ const REGISTRY = {
   "right-incircle-8-15-17": makeRightIncircle(8, 15, 17),
   "right-incircle-tangent": makeRightIncircle(5, 12, 13),
   "star-isosceles": StarIsosceles,
+  // 외각+이등변 연쇄 전용 (b9~b12)
+  "iso-bd-eq-bc": makeIsoWithD_onAC_BDeqBC({}),
+  "iso-bd-eq-bc-bisect": makeIsoWithD_onAC_BDeqBC({ showAngleBisect: true }),
+  "iso-bd-eq-bc-a20": makeIsoWithD_onAC_BDeqBC({ angleALabel: "∠A=20°" }),
+  "iso-de-adeqae": IsoD_onBC_E_onAC_ADeqAE,
+  "iso-ad-eq-bd": IsoD_onAC_ADeqBD,
   "right-pair-rhs": RightPairTwoSidesSame,
   "right-pair-rha": RightPairHypAndAngle,
   "right-pair-two-legs": RightPairTwoLegs,
