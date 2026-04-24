@@ -44,8 +44,8 @@ const LazyGoogolGearScreen = lazy(() =>
     }
   }))
 );
-// Lazy-loaded: Canvas 기반 석출 시뮬레이터 (useless-math 서브 메뉴에서 진입)
-const LazyPrecipitationSimScreen = lazy(() => import("./screens/PrecipitationSimScreen"));
+// Static import: 석출 시뮬레이터 (React.lazy 사용 금지 — 배포 시 청크 해시 불일치로 Failed to fetch 발생)
+import PrecipitationSimScreen from "./screens/PrecipitationSimScreen";
 // Lazy-loaded: 성분표 탐정 (hard-math 서브 메뉴에서 진입)
 const LazyRecipeDetectiveScreen = lazy(() =>
   import("./screens/RecipeDetectiveScreen").then(m => ({
@@ -950,24 +950,9 @@ function AppInner() {
     );
   }
 
-  // --- 쓸모 없어 보이는 수학: 석출 시뮬레이터 (lazy-loaded Canvas) ---
+  // --- 쓸모 없어 보이는 수학: 석출 시뮬레이터 (static import) ---
   if (screen === "precipitation-sim") {
-    return (
-      <Suspense fallback={
-        <div style={{
-          height: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-          background: theme.bg, color: theme.text, fontSize: 14,
-          fontFamily: "'Noto Serif KR', serif",
-        }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 28, marginBottom: 12 }}>🧪</div>
-            <div>시뮬레이터를 불러오는 중...</div>
-          </div>
-        </div>
-      }>
-        <LazyPrecipitationSimScreen onBack={() => setScreen("useless-math")} />
-      </Suspense>
-    );
+    return <PrecipitationSimScreen onBack={() => setScreen("useless-math")} />;
   }
 
   // --- Plaza (광장) Screen ---
