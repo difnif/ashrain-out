@@ -283,7 +283,10 @@ const styles = {
     flexDirection: 'column',
     gap: 12,
     padding: 12,
-    minHeight: '100%',
+    maxWidth: 480,
+    margin: '0 auto',
+    width: '100%',
+    boxSizing: 'border-box',
   },
   topBar: {
     display: 'flex',
