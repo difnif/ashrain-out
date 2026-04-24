@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { generateQuizSet, regenerateStage } from '../../data/precipitationQuizBank';
 import SolubilityChart from './SolubilityChart';
 import { getSolubility } from '../../data/solubilityData';
+import { useBackGuard } from '../../hooks/useBackGuard';
 
 export default function PrecipitationQuiz({ onComplete, onCancel, useFormula = false }) {
   const [quiz, setQuiz] = useState(() => generateQuizSet(useFormula));
@@ -19,6 +20,23 @@ export default function PrecipitationQuiz({ onComplete, onCancel, useFormula = f
   const [selected, setSelected] = useState(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [stageResult, setStageResult] = useState(null); // 'pass' | 'fail' | null
+
+  // 안드로이드 하드웨어 뒤로가기 가드
+  // - 외부 ◁ 버튼 시: onCancel 콜백 호출 (finish는 자동 — history 이미 pop됨)
+  // - 내부 "나가기"/"완료" 버튼 시: finish() 수동 호출 후 콜백
+  const finish = useBackGuard(() => {
+    onCancel?.();
+  });
+
+  function handleCancel() {
+    finish();
+    onCancel?.();
+  }
+
+  function handleComplete() {
+    finish();
+    onComplete?.();
+  }
 
   const currentProblems = currentStage === 1 ? quiz.stage1 : quiz.stage2;
   const current = currentProblems[currentIndex];
@@ -84,7 +102,7 @@ export default function PrecipitationQuiz({ onComplete, onCancel, useFormula = f
       setShowFeedback(false);
       setStageResult(null);
     } else if (stageResult === 'complete') {
-      onComplete?.();
+      handleComplete();
     }
   }
 
@@ -148,7 +166,7 @@ export default function PrecipitationQuiz({ onComplete, onCancel, useFormula = f
     <div style={styles.container}>
       {/* 상단 진행 표시 */}
       <div style={styles.topBar}>
-        <button style={styles.backBtn} onClick={onCancel}>← 나가기</button>
+        <button style={styles.backBtn} onClick={handleCancel}>← 나가기</button>
         <div style={styles.stageIndicator}>
           <span style={styles.stageLabel}>
             {currentStage}단계 · {currentIndex + 1} / {totalInStage}
