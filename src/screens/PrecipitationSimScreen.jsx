@@ -1,17 +1,23 @@
 // src/screens/PrecipitationSimScreen.jsx
 // 석출 시뮬레이션 메인 화면
 //
+// 스크롤 전략:
+//   App.jsx 루트가 overflow: hidden인 구조이므로, 이 스크린이 독립 스크롤 영역이 되어야 함.
+//   height: 100dvh + overflow-y: auto로 자체 뷰포트 높이 + 자체 스크롤 처리.
+//   (ScreenWrap을 쓰지 않는 대신 ScreenWrap 역할을 직접 수행)
+//
 // 모드:
 //   1. 셋팅 모드 (setting) — 교과서 프리셋
 //   2. 커스텀 모드 (custom) — 자유 입력 [퀴즈 통과 필요]
 //   3. 심화 모드 (advanced) — 초기 포화도 변수 추가 [퀴즈 통과 필요]
 //   4. 퀴즈 (quiz) — 5문제 단계 관문
 //
-// 잠금 상태는 localStorage로 저장 (추후 Firestore 연동 예정)
+// 표시 언어:
+//   - 기본: 한글 이름 (질산칼륨, 염화나트륨 등)
+//   - 토글: 화학식 (KNO₃, NaCl 등)
+//   - localStorage로 선호 저장
 //
-// ⚠️ 총괄방에서 처리 필요:
-//   - App.jsx에서 이 스크린 import 및 라우팅 연결
-//   - 퀴즈 통과 플래그를 Firestore로 옮길지 결정 (현재는 localStorage)
+// 잠금 상태는 localStorage로 저장 (추후 Firestore 연동 예정)
 
 import { useState, useEffect, useMemo } from 'react';
 import {
@@ -19,12 +25,12 @@ import {
   SUBSTANCE_LIST,
   PRESET_TEMPERATURES,
   getSolubility,
+  getSubstanceLabel,
   calculatePrecipitation,
   calculatePrecipitationAdvanced,
 } from '../data/solubilityData';
 import {
   PRESET_SCENARIOS,
-  SOLUTION_MASS_PRESETS,
   resolvePresetSolutionMass,
 } from '../data/precipitationPresets';
 import Beaker from '../components/precipitation/Beaker';
@@ -33,9 +39,9 @@ import CalculationSteps from '../components/precipitation/CalculationSteps';
 import PrecipitationQuiz from '../components/precipitation/PrecipitationQuiz';
 
 const QUIZ_PASS_KEY = 'ashrain:precipitation:quizPassed';
+const FORMULA_KEY = 'ashrain:precipitation:useFormula';
 
 export default function PrecipitationSimScreen({ onBack }) {
-  // 퀴즈 통과 여부
   const [quizPassed, setQuizPassed] = useState(() => {
     try {
       return localStorage.getItem(QUIZ_PASS_KEY) === 'true';
@@ -44,24 +50,36 @@ export default function PrecipitationSimScreen({ onBack }) {
     }
   });
 
-  // 현재 모드: 'setting' | 'custom' | 'advanced' | 'quiz'
+  // 한글 이름/화학식 토글 (localStorage 연동)
+  const [useFormula, setUseFormula] = useState(() => {
+    try {
+      return localStorage.getItem(FORMULA_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  function toggleFormula() {
+    const next = !useFormula;
+    setUseFormula(next);
+    try {
+      localStorage.setItem(FORMULA_KEY, next ? 'true' : 'false');
+    } catch {}
+  }
+
   const [mode, setMode] = useState('setting');
 
-  // 셋팅 모드 상태
   const [selectedPresetId, setSelectedPresetId] = useState(PRESET_SCENARIOS[0].id);
-  const [presetSubstanceOverride, setPresetSubstanceOverride] = useState(null); // compareMode용
+  const [presetSubstanceOverride, setPresetSubstanceOverride] = useState(null);
 
-  // 커스텀 모드 상태
   const [customSubstance, setCustomSubstance] = useState('KNO3');
   const [customWaterMass, setCustomWaterMass] = useState(100);
   const [customHotTemp, setCustomHotTemp] = useState(60);
   const [customColdTemp, setCustomColdTemp] = useState(20);
-  const [customSolutionMass, setCustomSolutionMass] = useState(null); // null이면 자동(포화용액)
+  const [customSolutionMass, setCustomSolutionMass] = useState(null);
 
-  // 심화 모드 추가 변수
-  const [advancedSaturation, setAdvancedSaturation] = useState(100); // %
+  const [advancedSaturation, setAdvancedSaturation] = useState(100);
 
-  // 시뮬레이션 진행 상태: 'initial'(고온, 포화) | 'cooling'(냉각 중) | 'done'(냉각 완료)
   const [simPhase, setSimPhase] = useState('initial');
   const [simTemperature, setSimTemperature] = useState(60);
 
@@ -73,7 +91,6 @@ export default function PrecipitationSimScreen({ onBack }) {
     setMode('custom');
   }
 
-  // 현재 모드의 계산 컨텍스트 도출
   const ctx = useMemo(() => {
     if (mode === 'setting') {
       const preset = PRESET_SCENARIOS.find(p => p.id === selectedPresetId) || PRESET_SCENARIOS[0];
@@ -111,7 +128,6 @@ export default function PrecipitationSimScreen({ onBack }) {
         mode: 'advanced',
       };
     }
-    // quiz 모드 등 — placeholder (실제로 안 씀)
     return {
       substanceId: 'KNO3',
       hotTemp: 60,
@@ -121,7 +137,6 @@ export default function PrecipitationSimScreen({ onBack }) {
     };
   }, [mode, selectedPresetId, presetSubstanceOverride, customSubstance, customWaterMass, customHotTemp, customColdTemp, customSolutionMass, advancedSaturation]);
 
-  // 계산 결과
   const result = useMemo(() => {
     if (ctx.mode === 'advanced') {
       return calculatePrecipitationAdvanced(ctx);
@@ -129,11 +144,8 @@ export default function PrecipitationSimScreen({ onBack }) {
     return calculatePrecipitation(ctx);
   }, [ctx]);
 
-  // 비커에 보여줄 값
   const beakerState = useMemo(() => {
     const hotS = result.hotS;
-
-    // 실제 물/용질 양 (시각화용)
     let waterMass, dissolvedMass, precipitatedMass;
 
     if (ctx.mode === 'advanced') {
@@ -145,13 +157,11 @@ export default function PrecipitationSimScreen({ onBack }) {
         dissolvedMass = result.maxSoluteAtColdTemp;
         precipitatedMass = result.precipitation;
       } else {
-        // cooling 중간: 온도에 따라 보간
         const progress = (ctx.hotTemp - simTemperature) / (ctx.hotTemp - ctx.coldTemp);
         dissolvedMass = Math.max(result.maxSoluteAtColdTemp, result.solute - result.precipitation * progress);
         precipitatedMass = result.precipitation * progress;
       }
     } else {
-      // basic — 포화 용액이라 가정
       waterMass = ctx.solutionMass * 100 / (100 + hotS);
       const totalSolute = ctx.solutionMass - waterMass;
       if (simPhase === 'initial') {
@@ -175,13 +185,11 @@ export default function PrecipitationSimScreen({ onBack }) {
     };
   }, [ctx, result, simPhase, simTemperature]);
 
-  // 시뮬레이션 리셋 (ctx 바뀌면)
   useEffect(() => {
     setSimPhase('initial');
     setSimTemperature(ctx.hotTemp);
   }, [ctx.substanceId, ctx.hotTemp, ctx.coldTemp, ctx.solutionMass, ctx.mode]);
 
-  // 냉각 애니메이션
   useEffect(() => {
     if (simPhase !== 'cooling') return;
     const startTemp = simTemperature;
@@ -208,12 +216,13 @@ export default function PrecipitationSimScreen({ onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simPhase]);
 
-  // 퀴즈 모드일 때 별도 렌더링 (Hooks 호출 이후로 이동)
+  // 퀴즈 모드
   if (mode === 'quiz') {
     return (
       <PrecipitationQuiz
         onComplete={passQuiz}
         onCancel={() => setMode('setting')}
+        useFormula={useFormula}
       />
     );
   }
@@ -240,6 +249,9 @@ export default function PrecipitationSimScreen({ onBack }) {
           <button style={styles.backBtn} onClick={onBack}>←</button>
         )}
         <h1 style={styles.title}>석출 시뮬레이터</h1>
+        <div style={{ flex: 1 }} />
+        {/* 한글/화학식 토글 */}
+        <LabelToggle useFormula={useFormula} onToggle={toggleFormula} />
       </div>
 
       {/* 모드 탭 */}
@@ -267,7 +279,6 @@ export default function PrecipitationSimScreen({ onBack }) {
         />
       </div>
 
-      {/* 퀴즈 안내 (미통과 시) */}
       {!quizPassed && (
         <div style={styles.quizBanner}>
           <div>
@@ -280,13 +291,13 @@ export default function PrecipitationSimScreen({ onBack }) {
         </div>
       )}
 
-      {/* 컨트롤 패널 */}
       {mode === 'setting' && (
         <SettingModeControls
           selectedId={selectedPresetId}
           onSelect={setSelectedPresetId}
           presetSubstanceOverride={presetSubstanceOverride}
           onOverrideSubstance={setPresetSubstanceOverride}
+          useFormula={useFormula}
         />
       )}
       {(mode === 'custom' || mode === 'advanced') && (
@@ -305,10 +316,10 @@ export default function PrecipitationSimScreen({ onBack }) {
           saturation={advancedSaturation}
           onSaturation={setAdvancedSaturation}
           computedSolutionMass={ctx.solutionMass}
+          useFormula={useFormula}
         />
       )}
 
-      {/* 비커 시뮬레이션 */}
       <div style={styles.beakerSection}>
         <Beaker
           substanceId={ctx.substanceId}
@@ -318,7 +329,6 @@ export default function PrecipitationSimScreen({ onBack }) {
           temperature={simTemperature}
           phase={simPhase}
         />
-        {/* 상태 표시 */}
         <div style={styles.stateRow}>
           <StateCard label="물" value={`${beakerState.waterMass} g`} color="#4A7ED9" />
           <StateCard label="녹은 용질" value={`${beakerState.dissolvedMass} g`} color={SUBSTANCES[ctx.substanceId].displayColor} />
@@ -339,7 +349,6 @@ export default function PrecipitationSimScreen({ onBack }) {
         </div>
       </div>
 
-      {/* 용해도 곡선 */}
       <div style={styles.chartSection}>
         <div style={styles.sectionTitle}>용해도 곡선</div>
         <SolubilityChart
@@ -348,10 +357,10 @@ export default function PrecipitationSimScreen({ onBack }) {
           coldTemp={ctx.coldTemp}
           hotSolubility={result.hotS}
           coldSolubility={result.coldS}
+          useFormula={useFormula}
         />
       </div>
 
-      {/* 계산식 */}
       <CalculationSteps
         mode={ctx.mode}
         substanceId={ctx.substanceId}
@@ -360,12 +369,26 @@ export default function PrecipitationSimScreen({ onBack }) {
         solutionMass={ctx.solutionMass}
         saturationPercent={ctx.saturationPercent}
         result={result}
+        useFormula={useFormula}
       />
     </div>
   );
 }
 
 // ─── 서브 컴포넌트 ─────────────────────────────────────
+
+function LabelToggle({ useFormula, onToggle }) {
+  return (
+    <button style={toggleStyles.wrap} onClick={onToggle} aria-label="표시 전환">
+      <span style={{ ...toggleStyles.side, ...(useFormula ? {} : toggleStyles.sideActive) }}>
+        한글
+      </span>
+      <span style={{ ...toggleStyles.side, ...(useFormula ? toggleStyles.sideActive : {}) }}>
+        화학식
+      </span>
+    </button>
+  );
+}
 
 function ModeTab({ active, onClick, label, desc, locked }) {
   return (
@@ -385,34 +408,37 @@ function ModeTab({ active, onClick, label, desc, locked }) {
   );
 }
 
-function SettingModeControls({ selectedId, onSelect, presetSubstanceOverride, onOverrideSubstance }) {
+function SettingModeControls({ selectedId, onSelect, presetSubstanceOverride, onOverrideSubstance, useFormula }) {
   const selected = PRESET_SCENARIOS.find(p => p.id === selectedId);
+  const effectiveSubstanceId = selected?.compareMode && presetSubstanceOverride ? presetSubstanceOverride : selected?.substanceId;
 
   return (
     <div style={styles.controlPanel}>
       <div style={styles.panelTitle}>시나리오 선택</div>
       <div style={styles.presetGrid}>
-        {PRESET_SCENARIOS.map(p => (
-          <button
-            key={p.id}
-            style={{
-              ...styles.presetBtn,
-              ...(p.id === selectedId ? styles.presetBtnActive : {}),
-            }}
-            onClick={() => { onSelect(p.id); onOverrideSubstance(null); }}
-          >
-            <div style={styles.presetTitle}>{p.title}</div>
-            <div style={styles.presetDifficulty}>
-              {'●'.repeat(p.difficulty)}
-              <span style={{ opacity: 0.2 }}>{'●'.repeat(3 - p.difficulty)}</span>
-            </div>
-          </button>
-        ))}
+        {PRESET_SCENARIOS.map(p => {
+          const label = getSubstanceLabel(p.substanceId, useFormula);
+          return (
+            <button
+              key={p.id}
+              style={{
+                ...styles.presetBtn,
+                ...(p.id === selectedId ? styles.presetBtnActive : {}),
+              }}
+              onClick={() => { onSelect(p.id); onOverrideSubstance(null); }}
+            >
+              <div style={styles.presetTitle}>{p.title(label)}</div>
+              <div style={styles.presetDifficulty}>
+                {'●'.repeat(p.difficulty)}
+                <span style={{ opacity: 0.2 }}>{'●'.repeat(3 - p.difficulty)}</span>
+              </div>
+            </button>
+          );
+        })}
       </div>
       {selected && (
         <div style={styles.presetDesc}>{selected.description}</div>
       )}
-      {/* 비교 모드: 물질 바꿔가며 확인 */}
       {selected?.compareMode && (
         <div style={{ marginTop: 10 }}>
           <div style={styles.fieldLabel}>물질 바꿔보기</div>
@@ -422,12 +448,12 @@ function SettingModeControls({ selectedId, onSelect, presetSubstanceOverride, on
                 key={s.id}
                 style={{
                   ...styles.substanceChip,
-                  borderColor: (presetSubstanceOverride || selected.substanceId) === s.id ? s.displayColor : '#E5E8EC',
-                  background: (presetSubstanceOverride || selected.substanceId) === s.id ? s.displayColorLight : '#FFFFFF',
+                  borderColor: effectiveSubstanceId === s.id ? s.displayColor : '#E5E8EC',
+                  background: effectiveSubstanceId === s.id ? s.displayColorLight : '#FFFFFF',
                 }}
                 onClick={() => onOverrideSubstance(s.id)}
               >
-                {s.formula}
+                {useFormula ? s.formula : s.name}
               </button>
             ))}
           </div>
@@ -446,6 +472,7 @@ function CustomControls({
   solutionMass, onSolutionMass,
   saturation, onSaturation,
   computedSolutionMass,
+  useFormula,
 }) {
   return (
     <div style={styles.controlPanel}>
@@ -453,7 +480,6 @@ function CustomControls({
         {mode === 'advanced' ? '심화 모드' : '커스텀 모드'}
       </div>
 
-      {/* 물질 선택 */}
       <div style={styles.fieldLabel}>물질</div>
       <div style={styles.substanceRow}>
         {SUBSTANCE_LIST.map(s => (
@@ -466,12 +492,11 @@ function CustomControls({
             }}
             onClick={() => onSubstance(s.id)}
           >
-            {s.formula}
+            {useFormula ? s.formula : s.name}
           </button>
         ))}
       </div>
 
-      {/* 물 양 */}
       <div style={styles.fieldLabel}>물 양: <b>{waterMass}g</b></div>
       <input
         type="range"
@@ -483,7 +508,6 @@ function CustomControls({
         style={styles.slider}
       />
 
-      {/* 고온 / 저온 */}
       <div style={styles.tempRow}>
         <div style={{ flex: 1 }}>
           <div style={styles.fieldLabel}>고온(초기): <b style={{ color: '#D94A4A' }}>{hotTemp}℃</b></div>
@@ -523,7 +547,6 @@ function CustomControls({
         </div>
       </div>
 
-      {/* 심화: 포화도 */}
       {mode === 'advanced' && (
         <>
           <div style={styles.fieldLabel}>초기 포화도: <b style={{ color: '#F59E0B' }}>{saturation}%</b></div>
@@ -539,7 +562,6 @@ function CustomControls({
         </>
       )}
 
-      {/* 포화용액 양: 자동 or 수동 */}
       <div style={styles.fieldLabel}>
         용액 양:{' '}
         <b>{solutionMass != null ? `${solutionMass}g` : `${computedSolutionMass}g (자동)`}</b>
@@ -583,29 +605,28 @@ function StateCard({ label, value, color }) {
 // ─── 스타일 ─────────────────────────────────────
 
 const styles = {
+  // 핵심: App.jsx 루트가 overflow:hidden이어도 동작하도록 독립 스크롤 영역
   screen: {
+    height: '100dvh',
+    overflowY: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    overscrollBehavior: 'contain',
+    boxSizing: 'border-box',
+    // 내부 레이아웃
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
     padding: 12,
-    paddingBottom: 80, // 하단 탭바에 가려지지 않도록 여유
+    paddingBottom: 48,
     background: '#F3F4F6',
     maxWidth: 480,
     margin: '0 auto',
     width: '100%',
-    boxSizing: 'border-box',
-    // 스크롤 허용 (모든 부모 구조에 대응)
-    height: '100%',
-    flex: '1 1 auto',
-    minHeight: 0,
-    overflowY: 'auto',
-    WebkitOverflowScrolling: 'touch',
-    overscrollBehavior: 'contain',
   },
   topBar: {
     display: 'flex',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     padding: '4px 0',
   },
   backBtn: {
@@ -618,7 +639,7 @@ const styles = {
   },
   title: {
     margin: 0,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 800,
     color: '#1F2937',
   },
@@ -873,5 +894,31 @@ const tabStyles = {
     fontSize: 9,
     marginTop: 2,
     opacity: 0.85,
+  },
+};
+
+const toggleStyles = {
+  wrap: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: 2,
+    background: '#F3F4F6',
+    border: '1px solid #E5E8EC',
+    borderRadius: 16,
+    cursor: 'pointer',
+    gap: 0,
+  },
+  side: {
+    padding: '4px 9px',
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#9CA3AF',
+    borderRadius: 14,
+    transition: 'all 0.15s',
+  },
+  sideActive: {
+    background: '#FFFFFF',
+    color: '#1F2937',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
   },
 };
