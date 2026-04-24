@@ -308,6 +308,7 @@ export default function Beaker({
           display: 'block',
           background: 'linear-gradient(180deg, #F5F7FA 0%, #E8EDF3 100%)',
           borderRadius: 12,
+          touchAction: 'pan-y',
         }}
       />
       {sub.colorNote && (
