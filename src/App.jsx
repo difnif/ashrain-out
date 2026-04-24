@@ -820,7 +820,7 @@ function AppInner() {
     const categories = [
       { icon: "⬡", label: "그려서 공부하기", desc: "삼각형, 외심, 내심", action: () => setScreen("polygons") },
       { icon: "📝", label: "문제의 문장 이해하기", desc: "AI 조건추출 · 유형분류 · 풀이방향", action: () => setScreen("sentence") },
-      { icon: "🧮", label: "쓸모 없어 보이는 수학", desc: "일상 속 숨은 수학 발견하기", action: () => setScreen("googolGear") },
+      { icon: "🧮", label: "쓸모 없어 보이는 수학", desc: "일상 속 숨은 수학 발견하기", action: () => setScreen("useless-math") },
       { icon: "🧠", label: "쓸모 있는데 어려운 수학", desc: "심화 개념 도전하기", disabled: true },
     ];
     return (
@@ -869,6 +869,22 @@ function AppInner() {
 
   // --- Distance Screen (거리 개념) ---
   if (screen === "distance") return renderDistanceScreen(ctx);
+
+  // --- 쓸모 없어 보이는 수학 (서브 메뉴) ---
+  if (screen === "useless-math") {
+    const items = [
+      { icon: "⚙️", label: "구골 기어 체험", desc: "10¹⁰⁰ 회전 시뮬레이션", action: () => setScreen("googolGear") },
+      { icon: "🍳", label: "레시피 분석하기", desc: "요리 속 비율과 단위 변환", disabled: true },
+      { icon: "🧪", label: "물질의 석출량 계산하기", desc: "화학 반응과 수학의 만남", disabled: true },
+    ];
+    return (
+      <ScreenWrap title="쓸모 없어 보이는 수학" back="복습하기" backTo="study">
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <MenuGrid items={items} cols={1} />
+        </div>
+      </ScreenWrap>
+    );
+  }
 
   // --- 쓸모 없어 보이는 수학: 구골 기어 (lazy-loaded Three.js) ---
   if (screen === "googolGear") {
