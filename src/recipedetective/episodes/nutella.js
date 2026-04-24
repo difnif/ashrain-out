@@ -137,4 +137,16 @@ export default {
     "헤이즐넛도 딱 13% — EU 규정 최소치 정확히 맞춤. 1g이라도 줄이면 '헤이즐넛 스프레드' 못 써요.",
     "팜유 22%가 누텔라의 부드러움 비결. 빵에 잘 발리는 건 팜유 덕분이에요.",
   ],
+
+  steps: [
+    { type: "intro",      title: "오늘의 타겟" },
+    { type: "clue",       title: "단서 공개 — 영양성분표" },
+    { type: "guess",      title: "느낌으로 맞춰봐" },
+    { type: "refdata",    title: "각 재료의 정체" },
+    { type: "equation",   title: "방정식을 세운다" },
+    { type: "constraint", title: "식품 과학의 제약" },
+    { type: "solve",      title: "풀이 — 한 단계씩" },
+    { type: "reveal",     title: "추정 레시피 공개" },
+    { type: "compare",    title: "네 추측은 어땠을까?" },
+  ],
 };
