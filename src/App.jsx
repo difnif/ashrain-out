@@ -46,6 +46,14 @@ const LazyGoogolGearScreen = lazy(() =>
 );
 // Lazy-loaded: Canvas 기반 석출 시뮬레이터 (useless-math 서브 메뉴에서 진입)
 const LazyPrecipitationSimScreen = lazy(() => import("./screens/PrecipitationSimScreen"));
+// Lazy-loaded: 성분표 탐정 (hard-math 서브 메뉴에서 진입)
+const LazyRecipeDetectiveScreen = lazy(() =>
+  import("./screens/RecipeDetectiveScreen").then(m => ({
+    default: function RecipeDetectiveLazy(props) {
+      return m.renderRecipeDetectiveScreen(props);
+    }
+  }))
+);
 import { getProperties as getPropertiesFn, renderHighlight as renderHighlightFn, renderTriangleAnim as renderTriangleAnimFn } from "./rendering/TriangleRenderer";
 import { useUserSystem } from "./hooks/useUserSystem";
 import { useJakdoCanvas } from "./hooks/useJakdoCanvas";
@@ -823,7 +831,7 @@ function AppInner() {
       { icon: "⬡", label: "그려서 공부하기", desc: "삼각형, 외심, 내심", action: () => setScreen("polygons") },
       { icon: "📝", label: "문제의 문장 이해하기", desc: "AI 조건추출 · 유형분류 · 풀이방향", action: () => setScreen("sentence") },
       { icon: "🧮", label: "쓸모 없어 보이는 수학", desc: "일상 속 숨은 수학 발견하기", action: () => setScreen("useless-math") },
-      { icon: "🧠", label: "쓸모 있는데 어려운 수학", desc: "심화 개념 도전하기", disabled: true },
+      { icon: "🧠", label: "쓸모 있는데 어려운 수학", desc: "심화 개념 도전하기", action: () => setScreen("hard-math") },
     ];
     return (
       <ScreenWrap title="복습하기" back="메뉴" backTo="menu">
@@ -885,6 +893,40 @@ function AppInner() {
           <MenuGrid items={items} cols={1} />
         </div>
       </ScreenWrap>
+    );
+  }
+
+  // --- 쓸모 있는데 어려운 수학 (서브 메뉴) ---
+  if (screen === "hard-math") {
+    const items = [
+      { icon: "🕵️", label: "성분표 탐정", desc: "성분표로 레시피를 역산한다", action: () => setScreen("recipeDetective") },
+    ];
+    return (
+      <ScreenWrap title="쓸모 있는데 어려운 수학" back="복습하기" backTo="study">
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <MenuGrid items={items} cols={1} />
+        </div>
+      </ScreenWrap>
+    );
+  }
+
+  // --- 쓸모 있는데 어려운 수학: 성분표 탐정 (lazy-loaded) ---
+  if (screen === "recipeDetective") {
+    return (
+      <Suspense fallback={
+        <div style={{
+          height: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+          background: theme.bg, color: theme.text, fontSize: 14,
+          fontFamily: "'Noto Serif KR', serif",
+        }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 28, marginBottom: 12 }}>🕵️</div>
+            <div>에피소드를 불러오는 중...</div>
+          </div>
+        </div>
+      }>
+        <LazyRecipeDetectiveScreen {...ctx} />
+      </Suspense>
     );
   }
 
