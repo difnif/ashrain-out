@@ -122,6 +122,17 @@ export const SUBSTANCE_LIST = Object.values(SUBSTANCES);
 export const PRESET_TEMPERATURES = [0, 20, 40, 60, 80];
 
 /**
+ * 물질 표시명 조회 (한글 이름 vs 화학식)
+ * @param {string} substanceId
+ * @param {boolean} useFormula true면 화학식, false면 한글 이름 (기본값)
+ */
+export function getSubstanceLabel(substanceId, useFormula = false) {
+  const sub = SUBSTANCES[substanceId];
+  if (!sub) return substanceId;
+  return useFormula ? sub.formula : sub.name;
+}
+
+/**
  * 특정 온도에서의 용해도 조회 (선형 보간)
  * @param {string} substanceId
  * @param {number} temperature 0~100
