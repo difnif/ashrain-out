@@ -87,7 +87,6 @@ function SpeedQuizLeaderboard({ theme, currentUser }) {
                 </div>
                 <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1, minWidth: 48 }}>
                   <div style={{ fontSize: 13, fontWeight: 800, color: barColor, fontVariantNumeric: "tabular-nums" }}>{e.clearCount}회</div>
-                  <div style={{ fontSize: 9, color: "#10B981", fontWeight: 700 }}>✓{e.bestCorrect || 0}</div>
                 </div>
               </div>
             );
