@@ -141,4 +141,16 @@ export default {
     "당류 26g = 각설탕 6.5개분. 하지만 그중 10g은 우유의 자연 유당이에요.",
     "1974년 출시 당시에는 진짜 바나나 과즙 0%! 합성향료만 썼어요. 2010년부터 과즙 1% 추가.",
   ],
+
+  steps: [
+    { type: "intro",      title: "오늘의 타겟" },
+    { type: "clue",       title: "단서 공개 — 영양성분표" },
+    { type: "guess",      title: "느낌으로 맞춰봐" },
+    { type: "refdata",    title: "각 재료의 정체" },
+    { type: "equation",   title: "방정식을 세운다" },
+    { type: "constraint", title: "식품 과학의 제약" },
+    { type: "solve",      title: "풀이 — 한 단계씩" },
+    { type: "reveal",     title: "추정 레시피 공개" },
+    { type: "compare",    title: "네 추측은 어땠을까?" },
+  ],
 };
