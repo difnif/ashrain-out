@@ -1,11 +1,15 @@
 // src/components/precipitation/CalculationSteps.jsx
-// 석출량 계산식 단계별 표시
+// 석출량 계산 2가지 방법 + 분수 표기
 //
-// 방법 A (기본):
-//   1단계: 물 100g 기준 석출량 = S_hot - S_cold
-//   2단계: 실제 석출량 = 1단계 결과 × (주어진 포화용액양 / (100 + S_hot))
+// 계산법 1 (단축형 — 분수 × 차이):
+//   물 100 + 용해온도 용질 S_hot = 기준 용액량 R
+//   석출량 = (S_hot − S_cold) × (주어진 용액량 ÷ R)
 //
-// 심화 모드: 초기 포화도가 변수로 추가되어 3단계
+// 계산법 2 (비율 상수 a 먼저):
+//   a = 주어진 용액량 ÷ 기준 용액량
+//   석출량 = a × S_hot − a × S_cold
+//
+// 심화 모드: 초기 포화도 변수 추가 (기존 유지)
 
 import { SUBSTANCES } from '../../data/solubilityData';
 
@@ -30,89 +34,113 @@ export default function CalculationSteps({
 }
 
 function BasicSteps({ sub, hotTemp, coldTemp, solutionMass, result, useFormula }) {
-  const { hotS, coldS, referenceSolution, referencePrecipitation, ratio, actualPrecipitation, willPrecipitate } = result;
+  const { hotS, coldS, referenceSolution, referencePrecipitation, actualPrecipitation, willPrecipitate } = result;
+  const label = useFormula ? sub.formula : sub.name;
+
+  // 계산법 2용 비율 상수 a
+  const a = +(solutionMass / referenceSolution).toFixed(4);
+  const aTimesHot = +(a * hotS).toFixed(2);
+  const aTimesCold = +(a * coldS).toFixed(2);
 
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <span style={styles.headerBadge}>{useFormula ? sub.formula : sub.name}</span>
+        <span style={styles.headerBadge}>{label}</span>
         <span style={styles.headerText}>
           {hotTemp}℃ 포화용액 {solutionMass}g → {coldTemp}℃ 냉각
         </span>
       </div>
 
-      {/* 용해도 조회 */}
-      <div style={styles.lookupBox}>
-        <div style={styles.lookupRow}>
-          <span style={styles.lookupLabel}>{hotTemp}℃ 용해도</span>
-          <span style={styles.lookupValue(sub.displayColor)}>{hotS} g / 물 100g</span>
-        </div>
-        <div style={styles.lookupRow}>
-          <span style={styles.lookupLabel}>{coldTemp}℃ 용해도</span>
-          <span style={styles.lookupValue(sub.displayColor)}>{coldS} g / 물 100g</span>
+      {/* 기준 용액량 공통 */}
+      <div style={styles.commonBox}>
+        <div style={styles.commonLabel}>기준 용액량 (물 100g + 용해 온도 용질)</div>
+        <div style={styles.equation}>
+          <span style={styles.eqToken}>100</span>
+          <span style={styles.op}>+</span>
+          <span style={styles.eqToken}>{hotS}</span>
+          <span style={styles.op}>=</span>
+          <span style={styles.eqResult}>{referenceSolution} g</span>
         </div>
       </div>
 
-      {!willPrecipitate && (
+      {!willPrecipitate ? (
         <div style={styles.noNote}>
           고온 용해도가 저온 용해도보다 작거나 같아 <b>석출이 일어나지 않습니다</b>.
         </div>
-      )}
-
-      {willPrecipitate && (
+      ) : (
         <>
-          {/* 1단계 */}
-          <StepBlock num="1" title="물 100g 기준 석출량">
-            <div style={styles.equation}>
-              <span>{hotTemp}℃ 용해도</span>
-              <span style={styles.op}>−</span>
-              <span>{coldTemp}℃ 용해도</span>
-              <span style={styles.op}>=</span>
-              <span style={styles.numberChip}>{hotS}</span>
-              <span style={styles.op}>−</span>
-              <span style={styles.numberChip}>{coldS}</span>
-              <span style={styles.op}>=</span>
-              <span style={styles.resultChip}>{referencePrecipitation} g</span>
+          {/* 계산법 1 */}
+          <div style={styles.methodBox}>
+            <div style={styles.methodTitle}>
+              <span style={styles.methodBadge}>계산법 1</span>
+              <span>물 100g 기준 석출량 × 비율</span>
             </div>
-            <div style={styles.explain}>
-              물 100g일 때 녹아있던 {hotS}g 중 {coldTemp}℃에선 {coldS}g만 녹을 수 있으므로,
-              <br />그 차이 <b>{referencePrecipitation}g</b>이 석출됩니다.
+            <div style={styles.methodBody}>
+              <div style={styles.explain}>
+                물 100g 기준 석출량에 <b>주어진 용액량/기준 용액량</b> 비율을 곱합니다.
+              </div>
+              <div style={styles.equation}>
+                <span style={styles.eqParen}>(</span>
+                <span style={styles.eqToken}>{hotS}</span>
+                <span style={styles.op}>−</span>
+                <span style={styles.eqToken}>{coldS}</span>
+                <span style={styles.eqParen}>)</span>
+                <span style={styles.op}>×</span>
+                <Fraction top={solutionMass} bottom={referenceSolution} />
+              </div>
+              <div style={styles.equation}>
+                <span style={styles.op}>=</span>
+                <span style={styles.eqToken}>{referencePrecipitation}</span>
+                <span style={styles.op}>×</span>
+                <Fraction top={solutionMass} bottom={referenceSolution} />
+                <span style={styles.op}>=</span>
+                <span style={styles.finalChip}>{actualPrecipitation} g</span>
+              </div>
             </div>
-          </StepBlock>
+          </div>
 
-          {/* 2단계 */}
-          <StepBlock num="2" title="실제 석출량 (포화용액 양 비례)">
-            <div style={styles.subEquation}>
-              <span style={styles.subLabel}>포화용액 비율</span>
-              <span style={styles.op}>=</span>
-              <span style={styles.numberChip}>{solutionMass}</span>
-              <span style={styles.op}>÷</span>
-              <span style={styles.numberChip}>(100 + {hotS})</span>
-              <span style={styles.op}>=</span>
-              <span style={styles.numberChip}>{solutionMass}</span>
-              <span style={styles.op}>÷</span>
-              <span style={styles.numberChip}>{referenceSolution}</span>
-              <span style={styles.op}>=</span>
-              <span style={styles.miniResult}>{ratio}</span>
+          {/* 계산법 2 */}
+          <div style={styles.methodBox}>
+            <div style={styles.methodTitle}>
+              <span style={styles.methodBadge}>계산법 2</span>
+              <span>비율 a를 먼저 구하기</span>
             </div>
-            <div style={styles.equation}>
-              <span>1단계 결과</span>
-              <span style={styles.op}>×</span>
-              <span>비율</span>
-              <span style={styles.op}>=</span>
-              <span style={styles.numberChip}>{referencePrecipitation}</span>
-              <span style={styles.op}>×</span>
-              <span style={styles.numberChip}>{ratio}</span>
-              <span style={styles.op}>=</span>
-              <span style={styles.resultChip}>{actualPrecipitation} g</span>
+            <div style={styles.methodBody}>
+              <div style={styles.explain}>
+                먼저 용액량 비율 a를 구한 뒤, 용해/냉각 온도 용질량에 각각 곱해서 차이를 구합니다.
+              </div>
+              {/* a 구하기 */}
+              <div style={styles.equation}>
+                <span style={styles.subLabel}>a =</span>
+                <span style={styles.eqToken}>{solutionMass}</span>
+                <span style={styles.op}>÷</span>
+                <span style={styles.eqToken}>{referenceSolution}</span>
+                <span style={styles.op}>=</span>
+                <span style={styles.aChip}>{a}</span>
+              </div>
+              {/* 석출량 = a × hot - a × cold */}
+              <div style={styles.equation}>
+                <span style={styles.subLabel}>석출량 =</span>
+                <span style={styles.aChip}>a</span>
+                <span style={styles.op}>×</span>
+                <span style={styles.eqToken}>{hotS}</span>
+                <span style={styles.op}>−</span>
+                <span style={styles.aChip}>a</span>
+                <span style={styles.op}>×</span>
+                <span style={styles.eqToken}>{coldS}</span>
+              </div>
+              <div style={styles.equation}>
+                <span style={styles.op}>=</span>
+                <span style={styles.eqToken}>{aTimesHot}</span>
+                <span style={styles.op}>−</span>
+                <span style={styles.eqToken}>{aTimesCold}</span>
+                <span style={styles.op}>=</span>
+                <span style={styles.finalChip}>{actualPrecipitation} g</span>
+              </div>
             </div>
-            <div style={styles.explain}>
-              물 100g 기준 포화용액은 {referenceSolution}g이지만, 문제는 {solutionMass}g이므로
-              <br />그 비율만큼 스케일한 값이 실제 석출량입니다.
-            </div>
-          </StepBlock>
+          </div>
 
-          {/* 최종 */}
+          {/* 최종 답 */}
           <div style={styles.finalBox}>
             <div style={styles.finalLabel}>석출량</div>
             <div style={styles.finalValue}>{actualPrecipitation} g</div>
@@ -124,108 +152,93 @@ function BasicSteps({ sub, hotTemp, coldTemp, solutionMass, result, useFormula }
 }
 
 function AdvancedSteps({ sub, hotTemp, coldTemp, solutionMass, saturationPercent, result, useFormula }) {
-  const {
-    hotS, coldS, actualSoluteIn100gWater, water, solute, maxSoluteAtColdTemp, precipitation, willPrecipitate,
-  } = result;
+  const { hotS, coldS, actualSoluteIn100gWater, water, solute, maxSoluteAtColdTemp, precipitation, willPrecipitate } = result;
+  const label = useFormula ? sub.formula : sub.name;
 
   return (
     <div style={styles.container}>
       <div style={styles.header}>
         <span style={{ ...styles.headerBadge, background: '#F59E0B' }}>심화</span>
         <span style={styles.headerText}>
-          {useFormula ? sub.formula : sub.name} {hotTemp}℃ 용액 {solutionMass}g (포화도 {saturationPercent}%) → {coldTemp}℃ 냉각
+          {label} {hotTemp}℃ 용액 {solutionMass}g (포화도 {saturationPercent}%) → {coldTemp}℃ 냉각
         </span>
       </div>
 
-      <div style={styles.lookupBox}>
-        <div style={styles.lookupRow}>
-          <span style={styles.lookupLabel}>{hotTemp}℃ 용해도</span>
-          <span style={styles.lookupValue(sub.displayColor)}>{hotS} g / 물 100g</span>
-        </div>
-        <div style={styles.lookupRow}>
-          <span style={styles.lookupLabel}>{coldTemp}℃ 용해도</span>
-          <span style={styles.lookupValue(sub.displayColor)}>{coldS} g / 물 100g</span>
+      <div style={styles.commonBox}>
+        <div style={styles.commonLabel}>① 실제 녹은 용질 (물 100g 기준)</div>
+        <div style={styles.equation}>
+          <span style={styles.eqToken}>{hotS}</span>
+          <span style={styles.op}>×</span>
+          <span style={styles.eqToken}>{saturationPercent}%</span>
+          <span style={styles.op}>=</span>
+          <span style={styles.eqResult}>{actualSoluteIn100gWater} g</span>
         </div>
       </div>
 
-      <StepBlock num="1" title="현재 녹은 용질 양 (물 100g 기준)">
-        <div style={styles.equation}>
-          <span>{hotTemp}℃ 용해도</span>
-          <span style={styles.op}>×</span>
-          <span>포화도</span>
-          <span style={styles.op}>=</span>
-          <span style={styles.numberChip}>{hotS}</span>
-          <span style={styles.op}>×</span>
-          <span style={styles.numberChip}>{saturationPercent}%</span>
-          <span style={styles.op}>=</span>
-          <span style={styles.resultChip}>{actualSoluteIn100gWater} g</span>
+      <div style={styles.methodBox}>
+        <div style={styles.methodTitle}>
+          <span style={styles.methodBadge}>②</span>
+          <span>실제 물 양과 용질 양</span>
         </div>
-        <div style={styles.explain}>
-          물 100g에 녹아있는 실제 용질은 포화량이 아닌 포화도를 곱한 양입니다.
-        </div>
-      </StepBlock>
-
-      <StepBlock num="2" title="실제 물 양과 용질 양">
-        <div style={styles.subEquation}>
-          <span style={styles.subLabel}>물</span>
-          <span style={styles.op}>=</span>
-          <span style={styles.numberChip}>{solutionMass}</span>
-          <span style={styles.op}>×</span>
-          <span style={styles.numberChip}>100</span>
-          <span style={styles.op}>÷</span>
-          <span style={styles.numberChip}>(100 + {actualSoluteIn100gWater})</span>
-          <span style={styles.op}>=</span>
-          <span style={styles.miniResult}>{water} g</span>
-        </div>
-        <div style={styles.equation}>
-          <span>용질</span>
-          <span style={styles.op}>=</span>
-          <span style={styles.numberChip}>{solutionMass}</span>
-          <span style={styles.op}>−</span>
-          <span style={styles.numberChip}>{water}</span>
-          <span style={styles.op}>=</span>
-          <span style={styles.resultChip}>{solute} g</span>
-        </div>
-      </StepBlock>
-
-      <StepBlock num="3" title={`${coldTemp}℃에서 녹을 수 있는 최대량`}>
-        <div style={styles.equation}>
-          <span>{coldTemp}℃ 용해도</span>
-          <span style={styles.op}>×</span>
-          <span>물 양</span>
-          <span style={styles.op}>÷</span>
-          <span>100</span>
-          <span style={styles.op}>=</span>
-          <span style={styles.numberChip}>{coldS}</span>
-          <span style={styles.op}>×</span>
-          <span style={styles.numberChip}>{water}</span>
-          <span style={styles.op}>÷</span>
-          <span style={styles.numberChip}>100</span>
-          <span style={styles.op}>=</span>
-          <span style={styles.resultChip}>{maxSoluteAtColdTemp} g</span>
-        </div>
-      </StepBlock>
-
-      <StepBlock num="4" title="석출량">
-        {willPrecipitate ? (
+        <div style={styles.methodBody}>
           <div style={styles.equation}>
-            <span>현재 용질</span>
-            <span style={styles.op}>−</span>
-            <span>최대 용해량</span>
+            <span style={styles.subLabel}>물 =</span>
+            <span style={styles.eqToken}>{solutionMass}</span>
+            <span style={styles.op}>×</span>
+            <Fraction top={100} bottom={`100+${actualSoluteIn100gWater}`} />
             <span style={styles.op}>=</span>
-            <span style={styles.numberChip}>{solute}</span>
+            <span style={styles.aChip}>{water} g</span>
+          </div>
+          <div style={styles.equation}>
+            <span style={styles.subLabel}>용질 =</span>
+            <span style={styles.eqToken}>{solutionMass}</span>
             <span style={styles.op}>−</span>
-            <span style={styles.numberChip}>{maxSoluteAtColdTemp}</span>
+            <span style={styles.eqToken}>{water}</span>
             <span style={styles.op}>=</span>
-            <span style={styles.resultChip}>{precipitation} g</span>
+            <span style={styles.finalChip}>{solute} g</span>
           </div>
-        ) : (
-          <div style={styles.noNote}>
-            현재 용질 양({solute}g)이 {coldTemp}℃ 최대 용해량({maxSoluteAtColdTemp}g)보다 작거나 같아
-            <br /><b>석출되지 않습니다</b>.
+        </div>
+      </div>
+
+      <div style={styles.methodBox}>
+        <div style={styles.methodTitle}>
+          <span style={styles.methodBadge}>③</span>
+          <span>{coldTemp}℃에서 녹을 수 있는 최대량</span>
+        </div>
+        <div style={styles.methodBody}>
+          <div style={styles.equation}>
+            <span style={styles.eqToken}>{coldS}</span>
+            <span style={styles.op}>×</span>
+            <span style={styles.eqToken}>{water}</span>
+            <span style={styles.op}>÷</span>
+            <span style={styles.eqToken}>100</span>
+            <span style={styles.op}>=</span>
+            <span style={styles.finalChip}>{maxSoluteAtColdTemp} g</span>
           </div>
-        )}
-      </StepBlock>
+        </div>
+      </div>
+
+      <div style={styles.methodBox}>
+        <div style={styles.methodTitle}>
+          <span style={styles.methodBadge}>④</span>
+          <span>석출량</span>
+        </div>
+        <div style={styles.methodBody}>
+          {willPrecipitate ? (
+            <div style={styles.equation}>
+              <span style={styles.eqToken}>{solute}</span>
+              <span style={styles.op}>−</span>
+              <span style={styles.eqToken}>{maxSoluteAtColdTemp}</span>
+              <span style={styles.op}>=</span>
+              <span style={styles.finalChip}>{precipitation} g</span>
+            </div>
+          ) : (
+            <div style={styles.noNote}>
+              현재 용질 양이 최대 용해량보다 작거나 같아 <b>석출되지 않습니다</b>.
+            </div>
+          )}
+        </div>
+      </div>
 
       {willPrecipitate && (
         <div style={styles.finalBox}>
@@ -237,17 +250,33 @@ function AdvancedSteps({ sub, hotTemp, coldTemp, solutionMass, saturationPercent
   );
 }
 
-function StepBlock({ num, title, children }) {
+// ─── 분수 컴포넌트 ─────────────────────
+function Fraction({ top, bottom }) {
   return (
-    <div style={styles.stepBlock}>
-      <div style={styles.stepHeader}>
-        <span style={styles.stepNum}>{num}</span>
-        <span style={styles.stepTitle}>{title}</span>
-      </div>
-      <div style={styles.stepBody}>{children}</div>
-    </div>
+    <span style={fractionStyles.wrap}>
+      <span style={fractionStyles.top}>{top}</span>
+      <span style={fractionStyles.line} />
+      <span style={fractionStyles.bottom}>{bottom}</span>
+    </span>
   );
 }
+
+const fractionStyles = {
+  wrap: {
+    display: 'inline-flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    verticalAlign: 'middle',
+    margin: '0 2px',
+    fontFamily: 'ui-monospace, monospace',
+    fontSize: 12,
+    lineHeight: 1.1,
+  },
+  top: { padding: '0 4px', fontWeight: 600, color: '#1F2937' },
+  line: { height: 1, width: '100%', background: '#374151', margin: '2px 0' },
+  bottom: { padding: '0 4px', fontWeight: 600, color: '#1F2937' },
+};
 
 const styles = {
   container: {
@@ -263,7 +292,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    paddingBottom: 10,
+    paddingBottom: 8,
     borderBottom: '1px solid #F0F2F5',
   },
   headerBadge: {
@@ -274,59 +303,55 @@ const styles = {
     fontSize: 12,
     borderRadius: 6,
   },
-  headerText: {
-    fontSize: 13,
-    color: '#374151',
-    fontWeight: 500,
-  },
-  lookupBox: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 4,
+  headerText: { fontSize: 12, color: '#374151', fontWeight: 500 },
+  commonBox: {
     padding: 10,
-    background: '#F9FAFB',
-    borderRadius: 8,
-    fontSize: 12,
+    background: '#F0F9FF',
+    borderLeft: '3px solid #4A7ED9',
+    borderRadius: 6,
   },
-  lookupRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  lookupLabel: { color: '#6B7280' },
-  lookupValue: color => ({ color, fontWeight: 600 }),
-  stepBlock: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-  },
-  stepHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepNum: {
-    width: 22,
-    height: 22,
-    borderRadius: '50%',
-    background: '#4A7ED9',
-    color: '#fff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 12,
+  commonLabel: {
+    fontSize: 10,
+    color: '#1E40AF',
     fontWeight: 700,
+    marginBottom: 6,
   },
-  stepTitle: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: '#1F2937',
-  },
-  stepBody: {
-    paddingLeft: 30,
+  methodBox: {
     display: 'flex',
     flexDirection: 'column',
     gap: 6,
+    padding: 10,
+    background: '#FAFBFC',
+    borderRadius: 8,
+    border: '1px solid #E5E8EC',
+  },
+  methodTitle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#1F2937',
+  },
+  methodBadge: {
+    padding: '2px 8px',
+    background: '#4F46E5',
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 700,
+    borderRadius: 4,
+  },
+  methodBody: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    paddingLeft: 2,
+  },
+  explain: {
+    fontSize: 10,
+    color: '#6B7280',
+    lineHeight: 1.5,
+    marginBottom: 2,
   },
   equation: {
     display: 'flex',
@@ -336,29 +361,38 @@ const styles = {
     fontSize: 13,
     color: '#374151',
   },
-  subEquation: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 4,
-    fontSize: 12,
-    color: '#6B7280',
-    paddingBottom: 4,
-    borderBottom: '1px dashed #E5E8EC',
-  },
-  subLabel: {
-    fontWeight: 600,
-    color: '#4B5563',
-  },
-  op: { color: '#9CA3AF', fontWeight: 600, margin: '0 2px' },
-  numberChip: {
+  eqToken: {
     padding: '2px 6px',
     background: '#F3F4F6',
     borderRadius: 4,
     fontFamily: 'ui-monospace, monospace',
     fontSize: 12,
+    fontWeight: 600,
   },
-  resultChip: {
+  eqParen: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: '#9CA3AF',
+  },
+  eqResult: {
+    padding: '2px 8px',
+    background: '#DBEAFE',
+    color: '#1E40AF',
+    borderRadius: 4,
+    fontFamily: 'ui-monospace, monospace',
+    fontWeight: 700,
+    fontSize: 12,
+  },
+  aChip: {
+    padding: '2px 8px',
+    background: '#E0E7FF',
+    color: '#3730A3',
+    borderRadius: 4,
+    fontFamily: 'ui-monospace, monospace',
+    fontWeight: 700,
+    fontSize: 12,
+  },
+  finalChip: {
     padding: '3px 8px',
     background: '#FEF3C7',
     color: '#92400E',
@@ -367,23 +401,9 @@ const styles = {
     fontWeight: 700,
     fontSize: 13,
   },
-  miniResult: {
-    padding: '2px 6px',
-    background: '#E0E7FF',
-    color: '#3730A3',
-    borderRadius: 4,
-    fontFamily: 'ui-monospace, monospace',
-    fontWeight: 600,
-    fontSize: 12,
-  },
-  explain: {
-    fontSize: 11,
-    color: '#6B7280',
-    lineHeight: 1.5,
-    paddingLeft: 2,
-  },
+  op: { color: '#9CA3AF', fontWeight: 600 },
+  subLabel: { fontSize: 11, color: '#6B7280', fontWeight: 600 },
   finalBox: {
-    marginTop: 4,
     padding: 14,
     background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)',
     borderRadius: 10,
