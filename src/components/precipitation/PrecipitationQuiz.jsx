@@ -11,8 +11,8 @@ import { generateQuizSet, regenerateStage } from '../../data/precipitationQuizBa
 import SolubilityChart from './SolubilityChart';
 import { getSolubility } from '../../data/solubilityData';
 
-export default function PrecipitationQuiz({ onComplete, onCancel }) {
-  const [quiz, setQuiz] = useState(() => generateQuizSet());
+export default function PrecipitationQuiz({ onComplete, onCancel, useFormula = false }) {
+  const [quiz, setQuiz] = useState(() => generateQuizSet(useFormula));
   const [currentStage, setCurrentStage] = useState(1);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState([]); // 현재 단계 답안들
@@ -73,7 +73,7 @@ export default function PrecipitationQuiz({ onComplete, onCancel }) {
       setStageResult(null);
     } else if (stageResult === 'fail') {
       // 현재 단계 새 문제로 재시도
-      const newProblems = regenerateStage(currentStage);
+      const newProblems = regenerateStage(currentStage, useFormula);
       setQuiz(prev => ({
         ...prev,
         [currentStage === 1 ? 'stage1' : 'stage2']: newProblems,
@@ -182,6 +182,7 @@ export default function PrecipitationQuiz({ onComplete, onCancel }) {
             coldTemp={current.cold}
             hotSolubility={getSolubility(current.substanceId, current.hot)}
             coldSolubility={getSolubility(current.substanceId, current.cold)}
+            useFormula={useFormula}
           />
         </div>
 
@@ -279,21 +280,20 @@ export default function PrecipitationQuiz({ onComplete, onCancel }) {
 
 const styles = {
   container: {
+    height: '100dvh',
+    overflowY: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    overscrollBehavior: 'contain',
+    boxSizing: 'border-box',
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
     padding: 12,
-    paddingBottom: 80,
+    paddingBottom: 48,
     maxWidth: 480,
     margin: '0 auto',
     width: '100%',
-    boxSizing: 'border-box',
-    height: '100%',
-    flex: '1 1 auto',
-    minHeight: 0,
-    overflowY: 'auto',
-    WebkitOverflowScrolling: 'touch',
-    overscrollBehavior: 'contain',
+    background: '#F3F4F6',
   },
   topBar: {
     display: 'flex',
