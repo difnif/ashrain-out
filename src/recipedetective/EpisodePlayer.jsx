@@ -40,11 +40,12 @@ export default function EpisodePlayer({ episode, theme, onExit }) {
   const scrollRef = useRef(null);
 
   const ep = episode;
-  const steps = ep.steps;
-  const currentStep = steps[step];
+  const steps = ep?.steps || [];
+  const currentStep = steps[step] || { type: "intro", title: "" };
 
   // 초기 추측값 세팅
   useEffect(() => {
+    if (!ep) return;
     const init = {};
     for (const ing of ep.ingredients) {
       if (ing.key === "vanilla") continue; // 미량이라 추측 제외
@@ -52,6 +53,15 @@ export default function EpisodePlayer({ episode, theme, onExit }) {
     }
     setGuesses(init);
   }, [ep]);
+
+  // 효과음 — 스텝 타입 변경 시 (hooks를 최상위에서 호출)
+  const prevStepType = useRef(null);
+  useEffect(() => {
+    if (currentStep.type === prevStepType.current) return;
+    prevStepType.current = currentStep.type;
+    if (currentStep.type === "solve") sfx.tension();
+    if (currentStep.type === "reveal") sfx.reveal();
+  }, [currentStep.type]);
 
   // 스텝 전환 애니메이션
   const goStep = useCallback((n) => {
@@ -438,7 +448,6 @@ export default function EpisodePlayer({ episode, theme, onExit }) {
 
   function renderSolve() {
     const ss = ep.solveSteps;
-    useEffect(() => { sfx.tension(); }, []);
     return (
       <div style={s.card}>
         <div style={s.heading}>🔎 풀이 — 한 단계씩</div>
@@ -491,7 +500,6 @@ export default function EpisodePlayer({ episode, theme, onExit }) {
   }
 
   function renderReveal() {
-    useEffect(() => { sfx.reveal(); }, []);
     const sol = ep.solution;
     const keys = Object.keys(sol);
     const maxVal = Math.max(...keys.map(k => sol[k].best));
