@@ -150,4 +150,17 @@ export default {
     "난황이 8%나! 달걀 노른자 하나(약 18g)의 거의 절반이 들어가요.",
     "하겐다즈가 비싼 이유: 공기(오버런) 25%뿐. 저가 아이스크림은 100%까지 넣어요.",
   ],
+
+  // 스텝별 진행 (EpisodePlayer가 이 순서로 화면을 보여줌)
+  steps: [
+    { type: "intro",      title: "오늘의 타겟" },
+    { type: "clue",       title: "단서 공개 — 영양성분표" },
+    { type: "guess",      title: "느낌으로 맞춰봐" },
+    { type: "refdata",    title: "각 재료의 정체" },
+    { type: "equation",   title: "방정식을 세운다" },
+    { type: "constraint", title: "식품 과학의 제약" },
+    { type: "solve",      title: "풀이 — 한 단계씩" },
+    { type: "reveal",     title: "추정 레시피 공개" },
+    { type: "compare",    title: "네 추측은 어땠을까?" },
+  ],
 };
