@@ -589,9 +589,10 @@ const styles = {
     gap: 12,
     padding: 12,
     background: '#F3F4F6',
-    minHeight: '100vh',
     maxWidth: 480,
     margin: '0 auto',
+    width: '100%',
+    boxSizing: 'border-box',
   },
   topBar: {
     display: 'flex',
