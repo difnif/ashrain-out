@@ -1,681 +1,1219 @@
-import { useState, useRef, useCallback } from "react";
-import { PASTEL } from "../config";
+// QuizScreen.jsx — 퀴즈 허브
+// 담당: 이 채팅방 전담 파일
+// 모드: 오늘의 문제, 스피드 퀴즈, OX 퀴즈, 복습 큐, 타임 퀴즈
+//
+// 스피드 퀴즈 설계:
+//   - 초기 30초, 정답 시 +30초
+//   - 답 제출 전에는 다음 문제로 넘어갈 수 없음
+//   - 남은 시간 ≥ 120초 : 어려운 문제(slow) 출제
+//   - 남은 시간 < 120초 : 빠른 문제(fast) 출제
+//   - 시간 0 → 결과 (정답 수만 표시, XP 미적용)
+//
+// 수식 태그: [seg][exp][frac][rep] → QuizMathText로 렌더
+// 도형: problem.figure 지정 시 QuizFigure로 렌더
 
-const CMAP = { coral: PASTEL.coral, sky: PASTEL.sky, mint: PASTEL.mint, lavender: PASTEL.lavender };
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { GAME_DEFAULTS, getDueReviews } from "../GameConfig";
+import {
+  loadAllXPData, saveUserXP, grantXP, checkBadges,
+  getActiveTimeQuiz, loadReviewQueue, saveReviewItem,
+  loadQuizHistory, saveQuizResult, createDefaultXPData,
+} from "../XPSystem";
+import { fbGet, fbSet, fbListen } from "../firebase";
+import { SAMPLE_PROBLEMS } from "../data/quizProblems";
+import QuizMathText from "../components/QuizMathText";
+import QuizFigure from "../components/QuizFigure";
 
-// Unicode superscript → normal digit/letter map (fallback when AI emits 2¹⁰ instead of [exp]2|10[/exp])
-const SUP_MAP = {
-  "\u00B2": "2", "\u00B3": "3", "\u00B9": "1",
-  "\u2070": "0", "\u2074": "4", "\u2075": "5",
-  "\u2076": "6", "\u2077": "7", "\u2078": "8", "\u2079": "9",
-  "\u207A": "+", "\u207B": "-", "\u207F": "n",
-  "\u02E3": "x", "\u02B8": "y",
-  "\u1D43": "a", "\u1D47": "b", "\u1D9C": "c",
-  "\u1D48": "d", "\u1D49": "e",
-};
-const SUP_CHARS = Object.keys(SUP_MAP).join("");
-const SUP_RE = new RegExp(`([a-zA-Z0-9])([${SUP_CHARS}]+)`, "g");
 
-// Clean up math symbols that don't render well on mobile
-function cleanMathText(text) {
-  if (!text) return text;
-  return text.replace(/\u0305/g, "");
-}
+// ── 퀴즈 모드 정의 ──
+const QUIZ_MODES = [
+  { id: "daily", label: "오늘의 문제", icon: "📅", desc: "매일 1문제, 도전하면 XP!", color: "#F59E0B" },
+  { id: "speed", label: "스피드 퀴즈", icon: "⚡", desc: "정답 +30초 / 오답 −40초", color: "#8B5CF6" },
+  { id: "review", label: "복습 큐", icon: "🔄", desc: "틀린 문제 다시 풀기", color: "#10B981" },
+  { id: "ox", label: "OX 퀴즈", icon: "⭕", desc: "참/거짓 빠른 판단", color: "#3B82F6" },
+  { id: "time", label: "타임 퀴즈", icon: "🔥", desc: "XP 폭탄! 한정 시간", color: "#EF4444" },
+];
 
-function FracSpan({ num, den, color }) {
-  return (
-    <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", verticalAlign: "middle", margin: "0 3px", lineHeight: 1.2 }}>
-      <span style={{ fontSize: "0.85em", padding: "0 4px", color }}>{num}</span>
-      <span style={{ width: "100%", height: 1.5, background: color || "currentColor", margin: "1px 0" }} />
-      <span style={{ fontSize: "0.85em", padding: "0 4px", color }}>{den}</span>
-    </span>
-  );
-}
+// 스피드 퀴즈 타이머 설정
+const SPEED_INITIAL_SEC = 30;
+const SPEED_BONUS_SEC = 30;
+const SPEED_PENALTY_SEC = 40; // 오답 시 차감. 시간이 0 이하 도달 시 즉시 종료.
+const CLEAR_THRESHOLD_SEC = 440; // 7분 20초 초과 시 자동 클리어
+// 3단계 난이도 구간 (남은 시간 기준)
+//   < SLOW_THRESHOLD         → fast 풀
+//   SLOW_THRESHOLD ~ HARD_THRESHOLD → slow 풀
+//   ≥ HARD_THRESHOLD         → hard 풀
+const SLOW_THRESHOLD_SEC = 120;
+const HARD_THRESHOLD_SEC = 240;
 
-function ExpSpan({ base, exp, color }) {
-  return (
-    <span style={{ display: "inline", whiteSpace: "nowrap" }}>
-      <span style={{ color }}>{base}</span>
-      <sup style={{ fontSize: "0.75em", lineHeight: 0, verticalAlign: "super", color, marginLeft: "1px" }}>{exp}</sup>
-    </span>
-  );
-}
-
-function MathSpan({ children, highlightColor }) {
-  if (!children) return null;
-  let text = String(children);
-
-  // 1st fallback: Unicode superscripts → [exp] tag (e.g. "2¹⁰" → "[exp]2|10[/exp]")
-  text = text.replace(SUP_RE, (match, base, supSeq) => {
-    const converted = supSeq.split("").map(ch => SUP_MAP[ch] || ch).join("");
-    return `[exp]${base}|${converted}[/exp]`;
-  });
-
-  // 2nd fallback: Auto-convert bare x^n / x^(abc) patterns to [exp] tags
-  text = text.replace(/([a-zA-Z0-9])\^\(([^)]+)\)/g, "[exp]$1|$2[/exp]");
-  text = text.replace(/([a-zA-Z0-9])\^([a-zA-Z0-9]+)/g, "[exp]$1|$2[/exp]");
-
-  // Handle [exp]base|exp[/exp] and [frac]num|den[/frac] together
-  const tagRegex = /\[(exp|frac)\](.+?)\|(.+?)\[\/\1\]/g;
-  const parts = []; let last = 0; let m;
-  while ((m = tagRegex.exec(text)) !== null) {
-    if (m.index > last) parts.push({ type: "text", val: text.slice(last, m.index) });
-    parts.push({ type: m[1], a: m[2], b: m[3] });
-    last = tagRegex.lastIndex;
+// ── 유틸 ──
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
   }
-  if (last < text.length) parts.push({ type: "text", val: text.slice(last) });
-
-  if (parts.length === 0) return <MathInner>{text}</MathInner>;
-
-  return <>{parts.map((p, i) => {
-    if (p.type === "frac") return <FracSpan key={i} num={p.a} den={p.b} color={highlightColor} />;
-    if (p.type === "exp") return <ExpSpan key={i} base={p.a} exp={p.b} color={highlightColor} />;
-    return <MathInner key={i}>{p.val}</MathInner>;
-  })}</>;
+  return a;
 }
 
-function MathInner({ children }) {
-  if (!children) return null;
-  const text = String(children);
-  const regex = /\[(seg|line|ray)\](.+?)\[\/\1\]/g;
-  const parts = []; let last = 0; let mm;
-  while ((mm = regex.exec(text)) !== null) {
-    if (mm.index > last) parts.push({ type: "text", val: text.slice(last, mm.index) });
-    parts.push({ type: mm[1], val: mm[2] });
-    last = regex.lastIndex;
-  }
-  if (last < text.length) parts.push({ type: "text", val: text.slice(last) });
-  if (parts.length === 0) return <>{text}</>;
-  return <>{parts.map((p, i) => {
-    if (p.type === "seg") return <span key={i} style={{ textDecoration: "overline", textDecorationColor: "#D95F4B", textDecorationThickness: "2px", fontWeight: 600 }}>{p.val}</span>;
-    if (p.type === "line") return <span key={i} style={{ textDecoration: "overline", textDecorationStyle: "double", fontWeight: 600 }}>{p.val}</span>;
-    if (p.type === "ray") return <span key={i}><span style={{ textDecoration: "overline", textDecorationThickness: "2px", fontWeight: 600 }}>{p.val.charAt(0)}</span>{p.val.slice(1)}→</span>;
-    return <span key={i}>{p.val}</span>;
-  })}</>;
+function todayKey() { return new Date().toISOString().slice(0, 10); }
+
+// fill_blank 정답 비교 (공백 제거, 대소문자 구분)
+function matchesFillBlank(input, answer) {
+  return String(input).trim().replace(/\s/g, "") === String(answer).replace(/\s/g, "");
 }
 
-function FigureCanvas({ figure, theme, highlights = [] }) {
-  if (!figure || figure.type === "none" || !figure.vertices?.length) return null;
-  const verts = figure.vertices;
-  const pad = 30;
-  const xs = verts.map(v => v.x), ys = verts.map(v => v.y);
-  const minX = Math.min(...xs) - pad, maxX = Math.max(...xs) + pad;
-  const minY = Math.min(...ys) - pad, maxY = Math.max(...ys) + pad;
-  const w = maxX - minX, h = maxY - minY;
+// ══════════════════════════════════════════
+// ── 퀴즈 허브 (모드 선택) ──
+// ══════════════════════════════════════════
+function QuizHub({ theme, playSfx, setMode, activeTimeQuiz, reviewDueCount, currentUser }) {
   return (
-    <svg width="100%" viewBox={`${minX} ${minY} ${w} ${h}`}
-      style={{ maxHeight: 180, borderRadius: 12, background: theme.svgBg || theme.bg, border: `1px solid ${theme.border}`, marginBottom: 8 }}>
-      {(figure.edges || []).map((e, i) => {
-        const from = verts.find(v => v.label === e.from), to = verts.find(v => v.label === e.to);
-        if (!from || !to) return null;
-        const isHl = highlights.includes(e.from + e.to) || highlights.includes(e.to + e.from);
-        return <g key={i}>
-          <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={isHl ? PASTEL.coral : theme.text} strokeWidth={isHl ? 3 : 2} />
-          {e.label && <text x={(from.x+to.x)/2+5} y={(from.y+to.y)/2-5} fontSize={10} fill={isHl ? PASTEL.coral : theme.textSec}>{e.label}</text>}
-        </g>;
-      })}
-      {(figure.angles || []).filter(a => a.isRight).map((a, i) => {
-        const v = verts.find(vv => vv.label === a.vertex);
-        return v ? <rect key={`r${i}`} x={v.x-6} y={v.y-6} width={10} height={10} fill="none" stroke={PASTEL.lavender} strokeWidth={1.2} /> : null;
-      })}
-      {verts.map((v, i) => {
-        const isHl = highlights.some(h => h.includes(v.label));
-        return <g key={i}>
-          <circle cx={v.x} cy={v.y} r={isHl ? 4 : 3} fill={isHl ? PASTEL.coral : theme.text} />
-          <text x={v.x+(v.x<(minX+w/2)?-14:8)} y={v.y+(v.y<(minY+h/2)?-8:14)} fontSize={12} fill={isHl ? PASTEL.coral : theme.text} fontWeight={700}>{v.label}</text>
-        </g>;
-      })}
-    </svg>
+    <div style={{ padding: "0 16px 20px" }}>
+      {/* 스피드 퀴즈 명예의 전당 */}
+      <ClearLeaderboard theme={theme} currentUser={currentUser} />
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {QUIZ_MODES.map(m => {
+          const isTime = m.id === "time";
+          const isReview = m.id === "review";
+          const disabled = isTime && !activeTimeQuiz;
+
+          return (
+            <button key={m.id} disabled={disabled}
+              onClick={() => { if (!disabled) { playSfx("click"); setMode(m.id); } }}
+              style={{
+                display: "flex", alignItems: "center", gap: 14,
+                padding: "16px 18px", borderRadius: 16,
+                border: `1.5px solid ${disabled ? theme.border : m.color + "30"}`,
+                background: isTime && activeTimeQuiz
+                  ? `linear-gradient(135deg, ${m.color}15, ${m.color}08)`
+                  : theme.card,
+                cursor: disabled ? "default" : "pointer",
+                opacity: disabled ? 0.4 : 1,
+                textAlign: "left", fontFamily: "'Noto Serif KR', serif",
+                transition: "all .15s", position: "relative",
+              }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 12,
+                background: `${m.color}12`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 22, flexShrink: 0,
+              }}>{m.icon}</div>
+
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: theme.text, marginBottom: 2 }}>
+                  {m.label}
+                  {isTime && activeTimeQuiz && (
+                    <span style={{ fontSize: 11, color: "#EF4444", fontWeight: 800, marginLeft: 6 }}>
+                      LIVE ×{activeTimeQuiz.multiplier}
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: theme.textSec }}>{m.desc}</div>
+              </div>
+
+              {isReview && reviewDueCount > 0 && (
+                <div style={{
+                  width: 24, height: 24, borderRadius: "50%",
+                  background: "#EF4444", color: "#fff",
+                  fontSize: 11, fontWeight: 800,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0,
+                }}>{reviewDueCount}</div>
+              )}
+
+              {isTime && activeTimeQuiz && (
+                <TimeCountdown expiresAt={activeTimeQuiz.expiresAt} theme={theme} />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
-const CAT_ICON = { "조건": "📌", "관계": "🔗", "구하는것": "🎯", "공식힌트": "💡" };
+// ══════════════════════════════════════════
+// ── 스피드 퀴즈 명예의 전당 (클리어 랭킹) ──
+// Firestore "quiz-clears" 문서 실시간 구독
+// 정렬: clearCount 내림차순 → bestCorrect 내림차순
+// ══════════════════════════════════════════
+function ClearLeaderboard({ theme, currentUser }) {
+  const [entries, setEntries] = useState([]);
+  const [loaded, setLoaded] = useState(false);
 
-export function ProblemScreenInner({ theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests, archive, setArchive, archiveDefaultPublic, analysisModel, progress }) {
-  const [input, setInput] = useState("");
-  const [imageData, setImageData] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState("");
-  const [currentStep, setCurrentStep] = useState(-1); // -1=문제보기, 0~N=분석, N+1=식세우기
-  const [helpMode, setHelpMode] = useState(null); // null|"select"|"deep"|"sent"
-  const [helpStepIdx, setHelpStepIdx] = useState(null);
-  const fileRef = useRef(null);
-  const scrollRef = useRef(null);
-
-  const handleImage = useCallback((e) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    const img = new Image();
-    img.onload = () => {
-      const mx = 1024; let w = img.width, h = img.height;
-      if (w > mx || h > mx) { const s = mx / Math.max(w, h); w *= s; h *= s; }
-      const c = document.createElement("canvas"); c.width = w; c.height = h;
-      c.getContext("2d").drawImage(img, 0, 0, w, h);
-      const full = c.toDataURL("image/jpeg", 0.85);
-      setImagePreview(full); setImageData(full.split(",")[1]);
-    };
-    img.src = URL.createObjectURL(file);
+  useEffect(() => {
+    const unsub = fbListen("quiz-clears", (data) => {
+      const list = data
+        ? Object.values(data).filter(e => e && e.userId)
+        : [];
+      list.sort((a, b) => {
+        if (b.clearCount !== a.clearCount) return b.clearCount - a.clearCount;
+        return b.bestCorrect - a.bestCorrect;
+      });
+      setEntries(list);
+      setLoaded(true);
+    });
+    return () => { if (typeof unsub === "function") unsub(); };
   }, []);
 
-  const [loadingStage, setLoadingStage] = useState("");
-  const [excludeUnits, setExcludeUnits] = useState([]);
+  // 클리어 0인 사람은 랭킹에서 제외, 전체 0이면 초대 문구
+  const ranked = entries.filter(e => e.clearCount > 0);
+  const topN = ranked.slice(0, 5);
 
-  const analyze = async (extraExcludes = null) => {
-    if (extraExcludes !== null && !Array.isArray(extraExcludes)) {
-      extraExcludes = null;
-    }
-    if (!input.trim() && !imageData) { showMsg("문제를 입력하거나 사진을 올려주세요", 2000); return; }
-    if (loading) return;
-    setLoading(true); setError(""); setResult(null); setCurrentStep(-1); setHelpMode(null);
-    playSfx("click");
-
-    setLoadingStage("문제를 읽고 있어요...");
-    const stageTimer1 = setTimeout(() => setLoadingStage("조건을 분석하고 있어요..."), 3000);
-    const stageTimer2 = setTimeout(() => setLoadingStage("풀이 방향을 설정하고 있어요..."), 7000);
-    const stageTimer3 = setTimeout(() => setLoadingStage("거의 다 됐어요!"), 12000);
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
-
-    try {
-      const resp = await fetch("/api/analyze", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: input.trim() || undefined,
-          imageBase64: imageData || undefined,
-          model: analysisModel || undefined,
-          allowedUnits: progress,
-          excludeUnits: extraExcludes !== null ? extraExcludes : excludeUnits,
-        }),
-        signal: controller.signal,
-      });
-      const data = await resp.json();
-      if (data.error) throw new Error(data.error);
-      setResult(data);
-      if (data.problemText) setInput(data.problemText);
-      setCurrentStep(-1);
-      playSfx("success");
-    } catch (e) {
-      if (e.name === "AbortError") setError("분석 시간이 너무 오래 걸려요. 다시 시도해주세요.");
-      else setError(e.message || "분석 실패");
-      playSfx("error");
-    } finally {
-      clearTimeout(timeout); clearTimeout(stageTimer1); clearTimeout(stageTimer2); clearTimeout(stageTimer3);
-      setLoading(false); setLoadingStage("");
-    }
-  };
-
-  const reset = () => {
-    setInput(""); setImageData(null); setImagePreview(null);
-    setResult(null); setError(""); setCurrentStep(-1);
-    setHelpMode(null); setHelpStepIdx(null);
-    setExcludeUnits([]);
-  };
-
-  const saveToArchive = () => {
-    if (!result || !setArchive) return;
-    setArchive(prev => [...prev, {
-      id: `prob-${Date.now()}`, type: "문제분석", title: result.type || "수학 문제",
-      preview: (result.problemText || "").slice(0, 60),
-      content: { problemText: result.problemText, steps: result.steps, equation: result.equation, figure: result.figure },
-      createdAt: Date.now(), isPublic: archiveDefaultPublic || false, hidden: false, userId: user?.id,
-    }]);
-    playSfx("success"); showMsg("아카이브에 저장! 학생 홈 > 아카이브에서 확인하세요 📂", 2500);
-  };
-
-  const nextStep = () => {
-    const maxS = (result?.steps?.length || 0);
-    if (currentStep < maxS) {
-      setCurrentStep(s => s + 1);
-      setHelpMode(null); setHelpStepIdx(null);
-      setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }), 100);
-    }
-  };
-
-  const prevStep = () => { if (currentStep >= 0) setCurrentStep(s => s - 1); setHelpMode(null); };
-
-  const sendHelp = () => {
-    if (setArchive && result) {
-      setArchive(prev => [...prev, {
-        id: `q-${Date.now()}`, type: "질문", title: result.type || "수학 문제",
-        preview: (result.problemText || input || "").slice(0, 60),
-        content: { problemText: result.problemText, steps: result.steps, equation: result.equation },
-        createdAt: Date.now(), isPublic: archiveDefaultPublic || false, hidden: false, userId: user?.id,
-        isQuestion: true, helpStepIdx,
-      }]);
-    }
-    try {
-      const newReq = {
-        id: `help-${Date.now()}`,
-        userId: user?.id || "anonymous",
-        userName: user?.name || "익명",
-        timestamp: Date.now(),
-        problemText: result?.problemText || input,
-        type: result?.type || "",
-        grade: result?.grade || "",
-        stuckAtStep: helpStepIdx,
-        stuckStepTitle: result?.steps?.[helpStepIdx]?.title || "",
-        stuckStepExplain: result?.steps?.[helpStepIdx]?.explain || "",
-        analysisResult: result,
-        status: "pending",
-      };
-      setHelpRequests(prev => [...prev, newReq]);
-      setHelpMode("sent"); playSfx("success");
-    } catch (e) { showMsg("전달 실패: " + e.message, 2000); }
-  };
-
-  // Render highlighted problem text
-  const renderProblemText = () => {
-    const text = cleanMathText(result?.problemText || input);
-    if (!text) return null;
-    const steps = result?.steps || [];
-    const activeSteps = steps.slice(0, Math.max(currentStep + 1, 0));
-
-    let parts = [{ text, hl: false }];
-    activeSteps.forEach((step, si) => {
-      const next = [];
-      parts.forEach(part => {
-        if (part.hl) { next.push(part); return; }
-        const idx = part.text.indexOf(step.highlight);
-        if (idx >= 0) {
-          if (idx > 0) next.push({ text: part.text.slice(0, idx), hl: false });
-          next.push({ text: step.highlight, hl: true, color: CMAP[step.color] || PASTEL.coral, latest: si === activeSteps.length - 1 });
-          const rest = part.text.slice(idx + step.highlight.length);
-          if (rest) next.push({ text: rest, hl: false });
-        } else next.push(part);
-      });
-      parts = next;
-    });
-
+  if (!loaded) return null;
+  if (ranked.length === 0) {
     return (
-      <div style={{ fontSize: 15, lineHeight: 2.4, color: theme.text, padding: "14px 18px", whiteSpace: "pre-line" }}>
-        {parts.map((p, i) => p.hl ? (
-          <span key={i} style={{
-            background: `${p.color}${p.latest ? "35" : "18"}`,
-            borderBottom: `2.5px solid ${p.color}`,
-            padding: "2px 5px", borderRadius: 4,
-            fontWeight: p.latest ? 700 : 500,
-            transition: "all 0.3s",
-          }}><MathSpan highlightColor={p.color}>{p.text}</MathSpan></span>
-        ) : <span key={i}><MathSpan>{p.text}</MathSpan></span>)}
+      <div style={{
+        padding: "14px 16px", borderRadius: 14, marginBottom: 14,
+        background: "linear-gradient(135deg, #FEF3C712, #FDE68A10)",
+        border: `1px dashed #EAB30840`,
+        textAlign: "center",
+      }}>
+        <div style={{ fontSize: 20, marginBottom: 4 }}>🏆</div>
+        <div style={{ fontSize: 12, color: theme.textSec, lineHeight: 1.6 }}>
+          스피드 퀴즈 7분 20초 돌파!
+          <br />
+          첫 클리어의 주인공이 되어 보세요
+        </div>
       </div>
     );
-  };
-
-  const maxStep = (result?.steps?.length || 0);
-  const isLastStep = currentStep >= maxStep;
-  const curStepData = currentStep >= 0 && currentStep < maxStep ? result.steps[currentStep] : null;
-  const deepHelp = helpStepIdx !== null ? result?.deepHelp?.find(d => d.stepIndex === helpStepIdx) : null;
-
-  const ist = { width: "100%", padding: "14px", borderRadius: 12, border: `1.5px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 14, fontFamily: "'Noto Serif KR', serif", resize: "vertical", boxSizing: "border-box" };
-  const btnPrimary = { width: "100%", padding: "14px", borderRadius: 14, border: "none", background: `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`, color: "white", fontSize: 15, fontWeight: 700, cursor: "pointer" };
+  }
 
   return (
-    <div style={{ height: "100vh", maxHeight: "100dvh", display: "flex", flexDirection: "column", background: theme.bg, fontFamily: "'Noto Serif KR', serif" }}>
-      <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Noto+Serif+KR:wght@400;700&display=swap" rel="stylesheet" />
-      <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes pulse{0%,100%{opacity:0.4}50%{opacity:1}}.pulse{animation:pulse 1.5s infinite}
-        @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}`}</style>
+    <div style={{
+      padding: "12px 14px", borderRadius: 14, marginBottom: 14,
+      background: "linear-gradient(135deg, #FEF3C715, #FDE68A08)",
+      border: `1px solid #EAB30830`,
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6, marginBottom: 10,
+      }}>
+        <span style={{ fontSize: 14 }}>🏆</span>
+        <span style={{ fontSize: 13, fontWeight: 800, color: theme.text }}>
+          스피드 퀴즈 명예의 전당
+        </span>
+        <span style={{ fontSize: 10, color: theme.textSec, marginLeft: "auto" }}>
+          TOP {topN.length}
+        </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {topN.map((e, i) => {
+          const isMe = currentUser && e.userId === currentUser.id;
+          const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`;
+          return (
+            <div key={e.userId}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "6px 8px", borderRadius: 8,
+                background: isMe ? "#EAB30818" : "transparent",
+                border: isMe ? "1px solid #EAB30840" : "1px solid transparent",
+              }}>
+              <div style={{
+                width: 22, textAlign: "center",
+                fontSize: i < 3 ? 14 : 11,
+                fontWeight: 700,
+                color: i < 3 ? undefined : theme.textSec,
+              }}>{medal}</div>
+              <div style={{
+                flex: 1, fontSize: 12, fontWeight: isMe ? 800 : 600,
+                color: theme.text,
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              }}>
+                {e.name}{isMe && <span style={{ fontSize: 10, color: "#EAB308", marginLeft: 4 }}>· 나</span>}
+              </div>
+              <div style={{ fontSize: 11, color: theme.textSec, fontVariantNumeric: "tabular-nums" }}>
+                {e.clearCount}회
+              </div>
+              <div style={{
+                fontSize: 10, color: "#10B981", fontWeight: 700,
+                minWidth: 42, textAlign: "right",
+              }}>
+                ✓{e.bestCorrect}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
-      {/* Header */}
-      <div style={{ flexShrink: 0, display: "flex", alignItems: "center", padding: "14px 20px", borderBottom: `1px solid ${theme.border}` }}>
-        <button onClick={() => { playSfx("click"); result ? reset() : setScreen("study"); }}
-          style={{ background: "none", border: "none", color: theme.textSec, fontSize: 13, cursor: "pointer" }}>
-          ← {result ? "새 문제" : "복습하기"}
+function TimeCountdown({ expiresAt, theme }) {
+  const [remaining, setRemaining] = useState(Math.max(0, expiresAt - Date.now()));
+  useEffect(() => {
+    const iv = setInterval(() => setRemaining(Math.max(0, expiresAt - Date.now())), 1000);
+    return () => clearInterval(iv);
+  }, [expiresAt]);
+  const mins = Math.floor(remaining / 60000);
+  const secs = Math.floor((remaining % 60000) / 1000);
+  return (
+    <div style={{ fontSize: 14, fontWeight: 800, color: "#EF4444", fontVariantNumeric: "tabular-nums" }}>
+      {mins}:{String(secs).padStart(2, "0")}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════
+// ── 공통: 문제 본문 렌더 (수식 + 도형) ──
+// ══════════════════════════════════════════
+function ProblemBody({ problem, theme }) {
+  return (
+    <div style={{
+      padding: "20px 18px", borderRadius: 16,
+      background: theme.card, border: `1px solid ${theme.border}`,
+      marginBottom: 16,
+    }}>
+      <div style={{
+        fontSize: 15, fontWeight: 600, color: theme.text,
+        lineHeight: 1.9, whiteSpace: "pre-wrap",
+      }}>
+        <QuizMathText highlightColor="#D95F4B">{problem.question}</QuizMathText>
+      </div>
+      {problem.figure && <QuizFigure name={problem.figure} theme={theme} />}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════
+// ── OX / 객관식 / 빈칸 응답 UI ──
+// ══════════════════════════════════════════
+function AnswerArea({ problem, revealed, selected, fillInput, setFillInput, onAnswer, theme }) {
+  if (problem.type === "ox") {
+    return (
+      <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+        {[{ val: true, label: "⭕ O", color: "#3B82F6" }, { val: false, label: "✕ X", color: "#EF4444" }].map(opt => {
+          const isSelected = selected === opt.val;
+          const isCorrect = revealed && opt.val === problem.answer;
+          const isWrong = revealed && isSelected && !isCorrect;
+          return (
+            <button key={String(opt.val)}
+              onClick={() => onAnswer(opt.val)}
+              disabled={revealed}
+              style={{
+                flex: 1, padding: "18px 0", borderRadius: 14, cursor: revealed ? "default" : "pointer",
+                fontSize: 20, fontWeight: 800,
+                border: `2px solid ${isCorrect ? "#10B981" : isWrong ? "#EF4444" : isSelected ? opt.color : theme.border}`,
+                background: isCorrect ? "#10B98115" : isWrong ? "#EF444415" : "transparent",
+                color: isCorrect ? "#10B981" : isWrong ? "#EF4444" : opt.color,
+                fontFamily: "'Noto Serif KR', serif", transition: "all .15s",
+              }}>
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (problem.type === "choice") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+        {problem.choices.map((ch, i) => {
+          const isSelected = selected === i;
+          const isCorrect = revealed && i === problem.answer;
+          const isWrong = revealed && isSelected && !isCorrect;
+          return (
+            <button key={i} onClick={() => onAnswer(i)} disabled={revealed}
+              style={{
+                padding: "14px 16px", borderRadius: 12, textAlign: "left",
+                border: `1.5px solid ${isCorrect ? "#10B981" : isWrong ? "#EF4444" : isSelected ? "#8B5CF6" : theme.border}`,
+                background: isCorrect ? "#10B98110" : isWrong ? "#EF444410" : theme.card,
+                color: isCorrect ? "#10B981" : isWrong ? "#EF4444" : theme.text,
+                fontSize: 14, fontWeight: 600, cursor: revealed ? "default" : "pointer",
+                fontFamily: "'Noto Serif KR', serif", transition: "all .15s",
+                lineHeight: 1.6,
+              }}>
+              <span style={{ marginRight: 6 }}>{String.fromCharCode(9312 + i)}</span>
+              <QuizMathText>{ch}</QuizMathText>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // fill_blank
+  if (!revealed) {
+    return (
+      <div style={{ marginBottom: 16 }}>
+        <input
+          value={fillInput}
+          onChange={(e) => setFillInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && fillInput.trim()) onAnswer(fillInput); }}
+          placeholder="답을 입력하세요"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          style={{
+            width: "100%", padding: "14px 16px", borderRadius: 12, boxSizing: "border-box",
+            border: `1.5px solid ${theme.border}`, background: theme.card,
+            color: theme.text, fontSize: 15, fontWeight: 600,
+            fontFamily: "'Noto Serif KR', serif", outline: "none",
+          }}
+        />
+        <button onClick={() => { if (fillInput.trim()) onAnswer(fillInput); }}
+          style={{
+            marginTop: 8, width: "100%", padding: "12px 0", borderRadius: 12,
+            background: fillInput.trim() ? theme.text : `${theme.text}30`,
+            color: theme.bg, fontSize: 14, fontWeight: 700,
+            border: "none", cursor: fillInput.trim() ? "pointer" : "default",
+            fontFamily: "'Noto Serif KR', serif",
+          }}>
+          제출
         </button>
-        <span style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 700, color: theme.text, fontFamily: "'Playfair Display', serif" }}>
-          문제의 문장 이해하기
+      </div>
+    );
+  }
+  return null;
+}
+
+// ══════════════════════════════════════════
+// ── 해설 표시 ──
+// ══════════════════════════════════════════
+function Explanation({ problem, selected, fillInput, theme }) {
+  const isCorrect = problem.type === "fill_blank"
+    ? matchesFillBlank(fillInput, problem.answer)
+    : selected === problem.answer;
+  return (
+    <div style={{
+      padding: "14px 16px", borderRadius: 14, marginBottom: 16,
+      background: isCorrect ? "#10B98110" : "#EF444410",
+      border: `1px solid ${isCorrect ? "#10B98130" : "#EF444430"}`,
+    }}>
+      <div style={{ fontSize: 13, color: theme.text, lineHeight: 1.8 }}>
+        {problem.type === "fill_blank" && (
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>
+            정답: <QuizMathText>{problem.answer}</QuizMathText>
+          </div>
+        )}
+        <QuizMathText>{problem.explain}</QuizMathText>
+      </div>
+    </div>
+  );
+}
+
+// 결과 화면용 통계 카드
+function StatCard({ label, value, color, bg }) {
+  return (
+    <div style={{
+      flex: 1, padding: "14px 8px", borderRadius: 12,
+      background: bg,
+      display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+    }}>
+      <div style={{ fontSize: 11, color: "#6B7280", fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 900, color }}>{value}</div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════
+// ── [1] SpeedQuizPlayer — 스피드 퀴즈 전용 ──
+// ══════════════════════════════════════════
+function SpeedQuizPlayer({ theme, playSfx, onFinish }) {
+  // 풀 분리
+  const pools = useMemo(() => {
+    const fast = SAMPLE_PROBLEMS.filter(p => p.difficulty === "fast");
+    const slow = SAMPLE_PROBLEMS.filter(p => p.difficulty === "slow");
+    const hard = SAMPLE_PROBLEMS.filter(p => p.difficulty === "hard");
+    return { fast: shuffle(fast), slow: shuffle(slow), hard: shuffle(hard) };
+  }, []);
+
+  // 풀 인덱스는 ref로 관리 (리렌더 영향 없이 소모)
+  const fastIdxRef = useRef(0);
+  const slowIdxRef = useRef(0);
+  const hardIdxRef = useRef(0);
+  const timeLeftRef = useRef(SPEED_INITIAL_SEC);
+
+  // 상태
+  const [currentProblem, setCurrentProblem] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [revealed, setRevealed] = useState(false);
+  const [fillInput, setFillInput] = useState("");
+  const [results, setResults] = useState([]); // {problemId, correct}[]
+  const [timeLeft, setTimeLeft] = useState(SPEED_INITIAL_SEC);
+  const [finished, setFinished] = useState(false);
+  const [cleared, setCleared] = useState(false); // 440초 초과 달성
+  const [pendingFinish, setPendingFinish] = useState(false); // 오답 페널티로 시간 소진, 해설 본 뒤 종료 예정
+  const [streak, setStreak] = useState(0);
+  // 시각 이펙트용 펄스 상태
+  const [pulse, setPulse] = useState(null); // { kind: "correct" | "wrong", ts }
+
+  // timeLeft 동기화 → ref
+  useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
+
+  // 다음 문제 pull (남은 시간 기준)
+  // 1순위: 현재 구간에 맞는 풀
+  // 2순위: 한 단계 낮은 풀 (예: hard 소진 시 slow)
+  // 3순위: 그 아래 풀 (fast)
+  const pullNextProblem = useCallback(() => {
+    const t = timeLeftRef.current;
+
+    // 구간별 우선순위 배열 [풀 이름 순서]
+    let priority;
+    if (t >= HARD_THRESHOLD_SEC) {
+      priority = ["hard", "slow", "fast"];
+    } else if (t >= SLOW_THRESHOLD_SEC) {
+      priority = ["slow", "fast", "hard"];
+    } else {
+      priority = ["fast", "slow", "hard"];
+    }
+
+    const refMap = { fast: fastIdxRef, slow: slowIdxRef, hard: hardIdxRef };
+    for (const kind of priority) {
+      const ref = refMap[kind];
+      const pool = pools[kind];
+      if (ref.current < pool.length) {
+        return pool[ref.current++];
+      }
+    }
+    return null; // 모든 풀 소진
+  }, [pools]);
+
+  // 초기 문제 로드
+  useEffect(() => {
+    if (!currentProblem && !finished) {
+      const first = pullNextProblem();
+      if (first) setCurrentProblem(first);
+      else setFinished(true);
+    }
+  }, [currentProblem, finished, pullNextProblem]);
+
+  // 타이머: 제출 전(!revealed)이고 종료 안 됐을 때만 카운트다운.
+  // 해설 읽는 동안엔 시간 멈춤 (공정한 학습 시간).
+  useEffect(() => {
+    if (finished || revealed) return;
+    const iv = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(iv);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [finished, revealed]);
+
+  // 시간 0 → 종료
+  // 시간 0 → 자동 종료 (단, 해설 보는 중이면 대기 — '다음' 버튼 누를 때 종료)
+  useEffect(() => {
+    if (timeLeft <= 0 && !finished && !revealed) {
+      setFinished(true);
+    }
+    // revealed=true 이면 pendingFinish가 이미 설정되어 있거나 (오답 페널티 케이스)
+    // 자연 카운트다운으로 0 도달 시엔 해설이 표시되어 있지 않을 것이므로
+    // !revealed 조건만으로 충분
+  }, [timeLeft, finished, revealed]);
+
+  // 답 제출
+  const handleAnswer = (answer) => {
+    if (revealed || !currentProblem) return;
+    setSelected(answer);
+    setRevealed(true);
+
+    let correct = false;
+    if (currentProblem.type === "ox") correct = answer === currentProblem.answer;
+    else if (currentProblem.type === "choice") correct = answer === currentProblem.answer;
+    else if (currentProblem.type === "fill_blank") correct = matchesFillBlank(answer, currentProblem.answer);
+
+    setResults(prev => [...prev, { problemId: currentProblem.id, correct }]);
+    setStreak(s => correct ? s + 1 : 0);
+
+    if (correct) {
+      // 정답 보너스: +30초. 440초 초과 시 자동 클리어.
+      setTimeLeft(t => {
+        const next = t + SPEED_BONUS_SEC;
+        if (next > CLEAR_THRESHOLD_SEC) {
+          // 해설 보고 '클리어!' 버튼 누르면 종료
+          setCleared(true);
+          setPendingFinish(true);
+        }
+        return next;
+      });
+      setPulse({ kind: "correct", ts: Date.now() });
+      playSfx("success");
+    } else {
+      // 오답 페널티: -40초. 결과 0 이하면 해설 본 후 종료 예정으로 표시.
+      playSfx("click");
+      setPulse({ kind: "wrong", ts: Date.now() });
+      setTimeLeft(t => {
+        const next = t - SPEED_PENALTY_SEC;
+        if (next <= 0) {
+          setPendingFinish(true); // 다음 버튼이 '종료'로 변경됨
+          return 0;
+        }
+        return next;
+      });
+    }
+  };
+
+  // 다음 문제로 (또는 페널티로 종료 예정이면 종료)
+  const handleNext = () => {
+    if (pendingFinish) {
+      setFinished(true);
+      return;
+    }
+    const next = pullNextProblem();
+    if (!next) {
+      setFinished(true);
+      return;
+    }
+    setCurrentProblem(next);
+    setSelected(null);
+    setRevealed(false);
+    setFillInput("");
+  };
+
+  // ── 결과 화면 ──
+  if (finished) {
+    const correct = results.filter(r => r.correct).length;
+    const total = results.length;
+    const rate = total > 0 ? Math.round((correct / total) * 100) : 0;
+
+    // cleared: 440초 돌파한 클리어 케이스
+    // !cleared: 시간 소진 (0초 도달)
+
+    return (
+      <div style={{
+        padding: "40px 20px", textAlign: "center",
+        background: cleared
+          ? "linear-gradient(180deg, #FEF3C7 0%, #FDE68A 50%, #F59E0B 100%)"
+          : "transparent",
+        borderRadius: cleared ? 24 : 0,
+        margin: cleared ? "20px 12px" : 0,
+        animation: cleared ? "clearFlash 0.6s ease-out" : undefined,
+      }}>
+        {/* 아이콘 & 제목 */}
+        <div style={{ fontSize: cleared ? 72 : 48, marginBottom: 16 }}>
+          {cleared ? "🏆" : rate >= 80 ? "🎉" : rate >= 50 ? "👍" : "💪"}
+        </div>
+        <div style={{
+          fontSize: cleared ? 26 : 20,
+          fontWeight: 900,
+          color: cleared ? "#7C2D12" : theme.text,
+          marginBottom: 8,
+          letterSpacing: cleared ? "0.05em" : 0,
+        }}>
+          {cleared ? "CLEAR!" : "스피드 퀴즈 종료"}
+        </div>
+        {cleared && (
+          <div style={{ fontSize: 13, color: "#92400E", fontWeight: 700, marginBottom: 20 }}>
+            7분 20초 돌파 · 명예의 전당 등록
+          </div>
+        )}
+
+        {/* 통계 카드 3개 */}
+        <div style={{
+          display: "flex", gap: 8, margin: "16px auto 24px", maxWidth: 360,
+          justifyContent: "center",
+        }}>
+          <StatCard label="풀이 수" value={total}
+            color={cleared ? "#7C2D12" : theme.text}
+            bg={cleared ? "#FFFFFF80" : `${theme.text}08`} />
+          <StatCard label="정답 수" value={correct}
+            color="#10B981"
+            bg={cleared ? "#FFFFFFB0" : "#10B98110"} />
+          <StatCard label="정답률" value={`${rate}%`}
+            color={rate >= 80 ? "#10B981" : rate >= 50 ? "#F59E0B" : "#EF4444"}
+            bg={cleared ? "#FFFFFFB0" : `${theme.text}08`} />
+        </div>
+
+        <button onClick={() => onFinish({ results, cleared })}
+          style={{
+            padding: "12px 32px", borderRadius: 12,
+            background: cleared ? "#7C2D12" : theme.text,
+            color: cleared ? "#FDE68A" : theme.bg,
+            fontSize: 14, fontWeight: 700, border: "none", cursor: "pointer",
+            fontFamily: "'Noto Serif KR', serif",
+            boxShadow: cleared ? "0 4px 12px rgba(124,45,18,0.3)" : undefined,
+          }}>
+          돌아가기
+        </button>
+
+        {/* 클리어 애니메이션용 CSS */}
+        <style>{`
+          @keyframes clearFlash {
+            0% { transform: scale(0.9); opacity: 0; }
+            50% { transform: scale(1.03); }
+            100% { transform: scale(1); opacity: 1; }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  if (!currentProblem) {
+    return (
+      <div style={{ textAlign: "center", padding: 40, color: theme.textSec, fontSize: 13 }}>
+        문제 불러오는 중...
+      </div>
+    );
+  }
+
+  const correctCount = results.filter(r => r.correct).length;
+  const isUrgent = timeLeft < 10;
+  const isHardZone = timeLeft >= HARD_THRESHOLD_SEC;
+  const isSlowZone = !isHardZone && timeLeft >= SLOW_THRESHOLD_SEC;
+  // 클리어 근접: 400초(클리어 40초 전)부터 반짝임
+  const isNearClear = timeLeft >= CLEAR_THRESHOLD_SEC - 40;
+
+  // 구간별 색상 & 라벨
+  const zoneColor = isNearClear ? "#EAB308" : isHardZone ? "#F97316" : isSlowZone ? "#8B5CF6" : "#3B82F6";
+  const zoneLabel = isNearClear ? "👑 클리어 임박!" : isHardZone ? "🔥 극한 구간" : isSlowZone ? "🧠 계산 구간" : "⚡ 스피드 구간";
+
+  // 펄스 이펙트: 최근 답변에 따라 잠시 배경 점멸 (0.8초)
+  const pulseActive = pulse && (Date.now() - pulse.ts < 800);
+  const pulseBg = pulseActive
+    ? (pulse.kind === "correct" ? "#10B98118" : "#EF444418")
+    : null;
+
+  return (
+    <div style={{
+      padding: "0 16px 20px",
+      background: pulseBg || undefined,
+      transition: "background 0.3s ease",
+    }}>
+      {/* 상단: 타이머 + 정답 수 */}
+      <div
+        key={pulse?.ts /* 펄스마다 재마운트로 애니메이션 재실행 */}
+        style={{
+          display: "flex", alignItems: "center", gap: 10, marginBottom: 14,
+          padding: "10px 14px", borderRadius: 12,
+          background: isUrgent
+            ? "#EF444418"
+            : pulseActive
+              ? (pulse.kind === "correct" ? "#10B98122" : "#EF444422")
+              : `${zoneColor}12`,
+          border: `1.5px solid ${
+            isUrgent ? "#EF444460"
+              : pulseActive
+                ? (pulse.kind === "correct" ? "#10B981" : "#EF4444")
+                : `${zoneColor}30`
+          }`,
+          transition: "background .3s, border-color .3s",
+          animation: pulseActive
+            ? (pulse.kind === "correct" ? "quizBounce 0.5s ease-out" : "quizShake 0.4s ease-out")
+            : (isNearClear ? "quizGlow 1.2s ease-in-out infinite" : undefined),
+          position: "relative", overflow: "visible",
+        }}>
+        {/* 정답/오답 플로팅 텍스트 */}
+        {pulseActive && (
+          <div style={{
+            position: "absolute",
+            top: -12, right: 20,
+            fontSize: 14, fontWeight: 900,
+            color: pulse.kind === "correct" ? "#10B981" : "#EF4444",
+            animation: "quizFloat 0.8s ease-out forwards",
+            pointerEvents: "none",
+          }}>
+            {pulse.kind === "correct" ? `+${SPEED_BONUS_SEC}초` : `−${SPEED_PENALTY_SEC}초`}
+          </div>
+        )}
+        <div style={{
+          fontSize: 22, fontWeight: 900,
+          color: isUrgent ? "#EF4444" : theme.text,
+          fontVariantNumeric: "tabular-nums",
+          minWidth: 52,
+          animation: isUrgent ? "quizHeartbeat 1s ease-in-out infinite" : undefined,
+        }}>
+          {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
+        </div>
+        <div style={{ flex: 1, fontSize: 11, color: theme.textSec, lineHeight: 1.4 }}>
+          <span style={{ color: zoneColor, fontWeight: 700 }}>{zoneLabel}</span>
+          <br />
+          <span style={{ fontSize: 10 }}>
+            정답 <span style={{ color: "#10B981", fontWeight: 700 }}>+{SPEED_BONUS_SEC}초</span>
+            {"  "}
+            오답 <span style={{ color: "#EF4444", fontWeight: 700 }}>−{SPEED_PENALTY_SEC}초</span>
+          </span>
+        </div>
+        <div style={{
+          fontSize: 13, fontWeight: 700, color: "#10B981",
+          padding: "4px 10px", borderRadius: 8, background: "#10B98115",
+        }}>
+          ✓ {correctCount}
+        </div>
+      </div>
+
+      {/* CSS 애니메이션 정의 */}
+      <style>{`
+        @keyframes quizBounce {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.03) translateY(-2px); }
+          100% { transform: scale(1); }
+        }
+        @keyframes quizShake {
+          0%, 100% { transform: translateX(0); }
+          20% { transform: translateX(-4px); }
+          40% { transform: translateX(4px); }
+          60% { transform: translateX(-3px); }
+          80% { transform: translateX(3px); }
+        }
+        @keyframes quizGlow {
+          0%, 100% { box-shadow: 0 0 0 rgba(234,179,8,0); }
+          50% { box-shadow: 0 0 16px rgba(234,179,8,0.5); }
+        }
+        @keyframes quizHeartbeat {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.08); }
+        }
+        @keyframes quizFloat {
+          0% { transform: translateY(0); opacity: 1; }
+          100% { transform: translateY(-20px); opacity: 0; }
+        }
+      `}</style>
+
+      {/* 연속 정답 표시 */}
+      {streak >= 3 && (
+        <div style={{
+          textAlign: "center", fontSize: 12, color: "#F59E0B", fontWeight: 700,
+          marginBottom: 10,
+        }}>
+          🔥 {streak}연속 정답!
+        </div>
+      )}
+
+      {/* 문제 */}
+      <ProblemBody problem={currentProblem} theme={theme} />
+
+      {/* 답변 영역 */}
+      <AnswerArea
+        problem={currentProblem}
+        revealed={revealed}
+        selected={selected}
+        fillInput={fillInput}
+        setFillInput={setFillInput}
+        onAnswer={handleAnswer}
+        theme={theme}
+      />
+
+      {/* 해설 */}
+      {revealed && (
+        <Explanation
+          problem={currentProblem}
+          selected={selected}
+          fillInput={fillInput}
+          theme={theme}
+        />
+      )}
+
+      {/* 다음 버튼 (제출 후에만 노출) — 3가지 상태
+          · cleared: 클리어 달성! 골드 버튼
+          · pendingFinish (not cleared): 시간 소진 → 결과
+          · normal: 다음 문제
+      */}
+      {revealed && (
+        <button onClick={handleNext}
+          style={{
+            width: "100%", padding: "14px 0", borderRadius: 12,
+            background: cleared ? "#EAB308"
+              : pendingFinish ? "#EF4444"
+              : theme.text,
+            color: cleared ? "#422006"
+              : pendingFinish ? "#fff"
+              : theme.bg,
+            fontSize: 14, fontWeight: 800, border: "none", cursor: "pointer",
+            fontFamily: "'Noto Serif KR', serif",
+            boxShadow: cleared ? "0 4px 12px rgba(234,179,8,0.4)" : undefined,
+            animation: cleared ? "quizGlow 1.2s ease-in-out infinite" : undefined,
+          }}>
+          {cleared ? "👑 클리어! 결과 보기"
+            : pendingFinish ? "시간 소진 — 결과 보기"
+            : "다음 문제 →"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════
+// ── [2] QuizPlayer — 그 외 모드(daily, ox, review, time) ──
+// ══════════════════════════════════════════
+function QuizPlayer({ problems, theme, playSfx, onFinish, multiplier = 1, timeLimit = 0, modeName = "퀴즈" }) {
+  const [idx, setIdx] = useState(0);
+  const [selected, setSelected] = useState(null);
+  const [revealed, setRevealed] = useState(false);
+  const [results, setResults] = useState([]);
+  const [streak, setStreak] = useState(0);
+  const [fillInput, setFillInput] = useState("");
+  const [timeLeft, setTimeLeft] = useState(timeLimit);
+  const [hintLevel, setHintLevel] = useState(0);
+
+  const problem = problems[idx];
+  const isLast = idx >= problems.length - 1;
+  const totalXPEarned = results.reduce((s, r) => s + r.xp, 0);
+
+  // Timer (time 모드 등)
+  useEffect(() => {
+    if (timeLimit <= 0) return;
+    setTimeLeft(timeLimit);
+    const iv = setInterval(() => {
+      setTimeLeft(prev => (prev <= 1 ? (clearInterval(iv), 0) : prev - 1));
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [timeLimit]);
+
+  useEffect(() => {
+    if (timeLimit > 0 && timeLeft <= 0 && !revealed) {
+      onFinish(results);
+    }
+  }, [timeLeft]);
+
+  const handleAnswer = (answer) => {
+    if (revealed) return;
+    setSelected(answer);
+    setRevealed(true);
+
+    let correct = false;
+    if (problem.type === "ox") correct = answer === problem.answer;
+    else if (problem.type === "choice") correct = answer === problem.answer;
+    else if (problem.type === "fill_blank") correct = matchesFillBlank(answer, problem.answer);
+
+    const xpConfig = GAME_DEFAULTS.xp;
+    let xp = correct ? xpConfig.quizCorrect : xpConfig.quizIncorrect;
+    xp = Math.round(xp * multiplier);
+    if (hintLevel >= 1) xp += xpConfig.hintPenalty1;
+    if (hintLevel >= 2) xp += xpConfig.hintPenalty2;
+    if (hintLevel >= 3) xp += xpConfig.hintPenaltyAnswer;
+    xp = Math.max(0, xp);
+
+    setStreak(correct ? streak + 1 : 0);
+    setResults(prev => [...prev, {
+      problemId: problem.id, correct, xp, hintUsed: hintLevel, timestamp: Date.now(),
+    }]);
+    if (correct) playSfx("success"); else playSfx("click");
+  };
+
+  const handleNext = () => {
+    if (isLast) { onFinish([...results]); return; }
+    setIdx(i => i + 1);
+    setSelected(null);
+    setRevealed(false);
+    setFillInput("");
+    setHintLevel(0);
+  };
+
+  // 결과 화면
+  if (results.length >= problems.length || (timeLimit > 0 && timeLeft <= 0)) {
+    const correct = results.filter(r => r.correct).length;
+    const total = problems.length;
+    const answeredCount = results.length;
+    return (
+      <div style={{ padding: "40px 20px", textAlign: "center" }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>
+          {correct >= total * 0.8 ? "🎉" : correct >= total * 0.5 ? "👍" : "💪"}
+        </div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: theme.text, marginBottom: 8 }}>
+          {modeName} 완료!
+        </div>
+        <div style={{ fontSize: 14, color: theme.textSec, marginBottom: 20, lineHeight: 1.6 }}>
+          {answeredCount}문제 중 {correct}문제 정답
+          {multiplier > 1 && <span style={{ color: "#EF4444", fontWeight: 700 }}> (×{multiplier} XP!)</span>}
+        </div>
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: 8,
+          padding: "12px 24px", borderRadius: 14,
+          background: `${GAME_DEFAULTS.ranking.categories[0]?.color || "#F59E0B"}12`,
+          fontSize: 18, fontWeight: 800, color: "#F59E0B",
+        }}>
+          +{totalXPEarned} XP
+        </div>
+        <div style={{ marginTop: 24 }}>
+          <button onClick={() => onFinish(results)}
+            style={{
+              padding: "12px 32px", borderRadius: 12,
+              background: theme.text, color: theme.bg,
+              fontSize: 14, fontWeight: 700, border: "none", cursor: "pointer",
+              fontFamily: "'Noto Serif KR', serif",
+            }}>
+            돌아가기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: "0 16px 20px" }}>
+      {/* Progress */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+        <div style={{ flex: 1, height: 4, borderRadius: 2, background: `${theme.text}10` }}>
+          <div style={{
+            height: "100%", borderRadius: 2, transition: "width .3s",
+            background: multiplier > 1 ? "#EF4444" : "#8B5CF6",
+            width: `${((idx + 1) / problems.length) * 100}%`,
+          }} />
+        </div>
+        <span style={{ fontSize: 12, color: theme.textSec, fontWeight: 600 }}>
+          {idx + 1}/{problems.length}
+        </span>
+        {timeLimit > 0 && (
+          <span style={{ fontSize: 13, fontWeight: 800, color: timeLeft < 30 ? "#EF4444" : theme.text, fontVariantNumeric: "tabular-nums" }}>
+            {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
+          </span>
+        )}
+      </div>
+
+      {streak >= 3 && (
+        <div style={{ textAlign: "center", fontSize: 12, color: "#F59E0B", fontWeight: 700, marginBottom: 10 }}>
+          🔥 {streak}연속 정답!
+        </div>
+      )}
+
+      <ProblemBody problem={problem} theme={theme} />
+
+      <AnswerArea
+        problem={problem}
+        revealed={revealed}
+        selected={selected}
+        fillInput={fillInput}
+        setFillInput={setFillInput}
+        onAnswer={handleAnswer}
+        theme={theme}
+      />
+
+      {revealed && (
+        <Explanation
+          problem={problem}
+          selected={selected}
+          fillInput={fillInput}
+          theme={theme}
+        />
+      )}
+
+      {!revealed && GAME_DEFAULTS.features.aiHint && (
+        <button onClick={() => setHintLevel(h => Math.min(h + 1, 3))}
+          style={{
+            padding: "8px 16px", borderRadius: 10,
+            border: `1px solid ${theme.border}`, background: "transparent",
+            color: theme.textSec, fontSize: 12, cursor: "pointer",
+            fontFamily: "'Noto Serif KR', serif",
+          }}>
+          💡 힌트 ({hintLevel}/3) {hintLevel > 0 && `(XP -${Math.abs(GAME_DEFAULTS.xp.hintPenalty1 * hintLevel)})`}
+        </button>
+      )}
+
+      {revealed && (
+        <button onClick={handleNext}
+          style={{
+            width: "100%", padding: "14px 0", borderRadius: 12,
+            background: theme.text, color: theme.bg,
+            fontSize: 14, fontWeight: 700, border: "none", cursor: "pointer",
+            fontFamily: "'Noto Serif KR', serif",
+          }}>
+          {isLast ? "결과 보기" : "다음 문제 →"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════
+// ── 메인 QuizScreen ──
+// ══════════════════════════════════════════
+function QuizScreenInner({ theme, user, setScreen, playSfx, showMsg, members }) {
+  const [mode, setMode] = useState(null);
+  const [quizSession, setQuizSession] = useState(0);
+  const [allXP, setAllXP] = useState(null);
+  const [activeTimeQuiz, setActiveTimeQuiz] = useState(null);
+  const [reviewQueue, setReviewQueue] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      loadAllXPData(),
+      getActiveTimeQuiz(),
+      user ? loadReviewQueue(user.id) : Promise.resolve([]),
+    ]).then(([xp, tq, rq]) => {
+      if (cancelled) return;
+      setAllXP(xp);
+      setActiveTimeQuiz(tq);
+      setReviewQueue(rq);
+      setLoading(false);
+    }).catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [user]);
+
+  const reviewDue = useMemo(() => getDueReviews(reviewQueue), [reviewQueue]);
+
+  // 스피드 퀴즈 종료 — XP 미적용, 클리어 시 Firestore 기록
+  // payload: { results: [{problemId, correct}], cleared: boolean }
+  const handleSpeedFinish = useCallback(async (payload) => {
+    const { results, cleared } = payload || {};
+    const correct = (results || []).filter(r => r.correct).length;
+    const total = (results || []).length;
+    const rate = total > 0 ? correct / total : 0;
+
+    // 사용자에게 결과 토스트
+    if (cleared) {
+      showMsg(`🏆 클리어! ${correct}/${total} 정답`, 2500);
+    } else if (total > 0) {
+      showMsg(`${total}문제 중 ${correct}문제 정답!`, 1500);
+    }
+
+    // Firestore 기록 — 로그인한 사용자에 한해
+    if (user && total > 0) {
+      try {
+        const doc = await fbGet("quiz-clears") || {};
+        const prev = doc[user.id] || {
+          userId: user.id,
+          name: user.name || user.nickname || "익명",
+          clearCount: 0,
+          bestCorrect: 0,
+          bestRate: 0,
+          totalAttempts: 0,
+          lastClearAt: null,
+        };
+        const updated = {
+          ...prev,
+          name: user.name || user.nickname || prev.name,
+          clearCount: prev.clearCount + (cleared ? 1 : 0),
+          bestCorrect: Math.max(prev.bestCorrect, correct),
+          bestRate: Math.max(prev.bestRate, rate),
+          totalAttempts: prev.totalAttempts + 1,
+          lastClearAt: cleared ? Date.now() : prev.lastClearAt,
+        };
+        await fbSet("quiz-clears", { [user.id]: updated });
+      } catch (e) {
+        console.warn("quiz-clears save failed:", e);
+      }
+    }
+
+    setMode(null);
+  }, [user, showMsg]);
+
+  // 그 외 모드 — 기존 XP 처리 유지
+  const handleQuizFinish = useCallback(async (results) => {
+    if (!user) { setMode(null); return; }
+
+    const data = allXP || {};
+    let userData = data[user.id] || createDefaultXPData(user.id);
+    let totalEarned = 0;
+
+    for (const r of results) {
+      const { data: updated } = await grantXP(
+        user.id, r.xp, r.correct ? "퀴즈 정답" : "퀴즈 시도",
+        { [user.id]: userData }
+      );
+      userData = updated;
+      totalEarned += r.xp;
+
+      userData.stats.quizTotal = (userData.stats.quizTotal || 0) + 1;
+      if (r.correct) userData.stats.quizCorrect = (userData.stats.quizCorrect || 0) + 1;
+      userData.stats.quizCorrectRate = userData.stats.quizTotal > 0
+        ? userData.stats.quizCorrect / userData.stats.quizTotal : 0;
+
+      if (!r.correct) {
+        await saveReviewItem(user.id, {
+          problemId: r.problemId,
+          lastReviewDate: null,
+          reviewCount: 0,
+          mastered: false,
+        }, { [user.id]: reviewQueue });
+      }
+    }
+
+    const newBadges = checkBadges(userData);
+    if (newBadges.length > 0) {
+      userData.badges = [...(userData.badges || []), ...newBadges];
+      showMsg(`🏅 새 뱃지 획득! (${newBadges.length}개)`, 2000);
+    }
+
+    await saveUserXP(user.id, userData, data);
+    setAllXP({ ...data, [user.id]: userData });
+
+    if (totalEarned > 0) {
+      showMsg(`+${totalEarned} XP 획득!`, 1500);
+    }
+    setMode(null);
+  }, [user, allXP, reviewQueue, showMsg]);
+
+  const getProblems = (quizMode) => {
+    switch (quizMode) {
+      case "daily": {
+        const dayIdx = new Date().getDate() % SAMPLE_PROBLEMS.length;
+        return [SAMPLE_PROBLEMS[dayIdx]];
+      }
+      case "ox":
+        return shuffle(SAMPLE_PROBLEMS.filter(p => p.type === "ox")).slice(0, 8);
+      case "time":
+        return shuffle(SAMPLE_PROBLEMS).slice(0, 5);
+      case "review":
+        return reviewDue.length > 0
+          ? reviewDue.slice(0, 5).map(r => SAMPLE_PROBLEMS.find(p => p.id === r.problemId)).filter(Boolean)
+          : shuffle(SAMPLE_PROBLEMS).slice(0, 3);
+      default:
+        return shuffle(SAMPLE_PROBLEMS).slice(0, 5);
+    }
+  };
+
+  return (
+    <div style={{
+      height: "100vh", maxHeight: "100dvh",
+      display: "flex", flexDirection: "column",
+      background: theme.bg, fontFamily: "'Noto Serif KR', serif",
+    }}>
+      {/* Header */}
+      <div style={{
+        flexShrink: 0, display: "flex", alignItems: "center",
+        padding: "14px 20px", borderBottom: `1px solid ${theme.border}`,
+      }}>
+        <button onClick={() => {
+          playSfx("click");
+          if (mode) setMode(null);
+          else setScreen("menu");
+        }}
+          style={{ background: "none", border: "none", color: theme.textSec, fontSize: 13, cursor: "pointer", fontFamily: "'Noto Serif KR', serif" }}>
+          ← {mode ? "퀴즈 메뉴" : "메뉴"}
+        </button>
+        <span style={{ flex: 1, textAlign: "center", fontSize: 15, fontWeight: 700, color: theme.text }}>
+          {mode ? QUIZ_MODES.find(m => m.id === mode)?.label || "퀴즈" : "⚡ 퀴즈"}
         </span>
         <span style={{ width: 40 }} />
       </div>
 
-      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
-
-        {/* ===== PHASE 1: Input ===== */}
-        {!result && !loading && (
-          <div style={{ padding: 20, animation: "fadeIn 0.4s ease" }}>
-            <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleImage} style={{ display: "none" }} />
-
-            {imagePreview ? (
-              <div style={{ marginBottom: 12, position: "relative" }}>
-                <img src={imagePreview} alt="" style={{ width: "100%", borderRadius: 14, border: `1px solid ${theme.border}` }} />
-                <button onClick={() => { setImageData(null); setImagePreview(null); }}
-                  style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: 14, background: "rgba(0,0,0,0.5)", border: "none", color: "white", fontSize: 14, cursor: "pointer" }}>✕</button>
-              </div>
-            ) : (
-              <button onClick={() => fileRef.current?.click()} style={{
-                width: "100%", padding: 24, borderRadius: 16, border: `2px dashed ${theme.border}`,
-                background: theme.card, color: theme.text, fontSize: 14, cursor: "pointer",
-                display: "flex", flexDirection: "column", alignItems: "center", gap: 8, marginBottom: 12,
-              }}>
-                <span style={{ fontSize: 32 }}>📷</span>
-                수학 문제 사진 촬영 / 업로드
-                <span style={{ fontSize: 11, color: theme.textSec }}>사진을 찍으면 자동으로 문제를 읽어요</span>
-              </button>
-            )}
-
-            <div style={{ position: "relative", marginBottom: 12 }}>
-              <div style={{ textAlign: "center", fontSize: 11, color: theme.textSec, margin: "8px 0" }}>또는 직접 입력</div>
-              <textarea value={input} onChange={e => setInput(e.target.value)}
-                placeholder="문제를 여기에 입력해도 돼요..."
-                rows={3} style={ist} />
-            </div>
-
-            <button onClick={() => analyze()} disabled={loading || (!input.trim() && !imageData)}
-              style={{ ...btnPrimary, opacity: (!loading && (input.trim() || imageData)) ? 1 : 0.4 }}>
-              {loading ? "분석 중..." : "🔍 문제 분석하기"}
-            </button>
-            {error && <p style={{ fontSize: 12, color: PASTEL.coral, textAlign: "center", marginTop: 10 }}>{error}</p>}
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: "auto", paddingTop: 16 }}>
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 40, color: theme.textSec, fontSize: 13 }}>
+            불러오는 중...
           </div>
-        )}
-
-        {/* ===== Loading ===== */}
-        {loading && (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 300, gap: 16, padding: 40 }}>
-            <div style={{ fontSize: 40 }} className="pulse">📖</div>
-            <p style={{ fontSize: 14, color: theme.text, fontWeight: 700 }}>{loadingStage || "문제를 읽고 있어요..."}</p>
-            <div style={{ width: 180, height: 4, borderRadius: 2, background: theme.border, overflow: "hidden" }}>
-              <div className="pulse" style={{ width: "60%", height: "100%", borderRadius: 2, background: PASTEL.coral }} />
-            </div>
-          </div>
-        )}
-
-        {/* ===== PHASE 2: Analysis ===== */}
-        {result && (
-          <div style={{ animation: "fadeIn 0.4s ease" }}>
-            {/* Problem type badge */}
-            <div style={{ padding: "12px 20px 0", display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 11, padding: "4px 12px", borderRadius: 20, background: `${PASTEL.coral}12`, color: PASTEL.coral, fontWeight: 700 }}>{result.type}</span>
-              <span style={{ fontSize: 11, padding: "4px 12px", borderRadius: 20, background: `${PASTEL.sky}12`, color: PASTEL.sky }}>{result.grade} · {result.chapter}</span>
-            </div>
-
-            {/* Problem text with highlights */}
-            <div style={{ margin: "8px 12px", borderRadius: 16, background: theme.card, border: `1px solid ${theme.border}` }}>
-              {renderProblemText()}
-              {result.figure && result.figure.type !== "none" && (
-                <div style={{ padding: "0 14px 12px" }}>
-                  <FigureCanvas figure={result.figure} theme={theme} highlights={curStepData?.figureHighlight || []} />
-                </div>
-              )}
-            </div>
-
-            {/* Step-by-step explanations */}
-            {currentStep === -1 && (
-              <div style={{ padding: "8px 20px 16px", textAlign: "center", animation: "fadeIn 0.3s ease" }}>
-                <p style={{ fontSize: 12, color: theme.textSec, marginBottom: 12 }}>문제를 한 문장씩 같이 읽어볼까요?</p>
-                <button onClick={nextStep} style={btnPrimary}>시작하기 →</button>
-              </div>
-            )}
-
-            {/* Current step explanation card */}
-            {curStepData && (
-              <div style={{ padding: "0 12px 8px", animation: "slideUp 0.4s ease" }}>
-                <div style={{
-                  borderRadius: 16, overflow: "hidden",
-                  border: `2px solid ${CMAP[curStepData.color] || PASTEL.coral}`,
-                  background: theme.card,
-                }}>
-                  <div style={{ padding: "12px 16px", background: `${CMAP[curStepData.color]}12`, display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 16 }}>{CAT_ICON[curStepData.category] || "📌"}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 10, color: CMAP[curStepData.color], fontWeight: 700 }}>STEP {currentStep + 1}/{maxStep}</span>
-                        {curStepData.curriculumTag && (
-                          <span style={{
-                            fontSize: 9, padding: "2px 8px", borderRadius: 8,
-                            background: curStepData.curriculumTag.unlearned ? `${PASTEL.coral}20` : `${PASTEL.mint}15`,
-                            color: curStepData.curriculumTag.unlearned ? PASTEL.coral : PASTEL.mint,
-                            border: `1px solid ${curStepData.curriculumTag.unlearned ? PASTEL.coral : PASTEL.mint}40`,
-                            fontWeight: 600,
-                          }}>
-                            {curStepData.curriculumTag.unlearned && "⚠️ "}
-                            {curStepData.curriculumTag.semester} · {curStepData.curriculumTag.unit}
-                            {curStepData.curriculumTag.unlearned && " · 안 배운 단원"}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: theme.text, marginTop: 2 }}>{curStepData.title}</div>
-                    </div>
-                  </div>
-                  <div style={{ padding: "12px 16px" }}>
-                    <div style={{ fontSize: 13, lineHeight: 2, color: theme.text }}><MathSpan>{curStepData.explain}</MathSpan></div>
-                    <button onClick={() => { setHelpStepIdx(currentStep); setHelpMode("deep"); }}
-                      style={{ marginTop: 6, padding: "6px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 11, cursor: "pointer" }}>
-                      ❓ 이 부분이 이해 안 돼요
-                    </button>
-                    {result?.steps?.some(s => s.curriculumTag?.unlearned) && (
-                      <button onClick={async () => {
-                        const newExcludes = result.steps
-                          .filter(s => s.curriculumTag?.unlearned)
-                          .map(s => s.curriculumTag.unit);
-                        const merged = [...new Set([...excludeUnits, ...newExcludes])];
-                        if (merged.length >= 4) {
-                          showMsg("이 문제는 현재 진도로 풀기 어려워요. 선생님께 질문해보세요.", 3000);
-                          return;
-                        }
-                        setExcludeUnits(merged);
-                        showMsg("다른 방법으로 다시 풀어볼게요...", 1500);
-                        await analyze(merged);
-                      }} style={{
-                        marginTop: 8, marginLeft: 6, padding: "6px 12px", borderRadius: 8,
-                        border: `1.5px solid ${PASTEL.coral}`,
-                        background: `${PASTEL.coral}10`,
-                        color: PASTEL.coral, fontSize: 11, fontWeight: 700, cursor: "pointer",
-                      }}>
-                        🤔 안 배운 단원이에요 · 다시 풀어줘
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Equation reveal (after all steps) */}
-            {isLastStep && currentStep > 0 && (
-              <div style={{ padding: "0 12px 8px", animation: "slideUp 0.4s ease" }}>
-                <div style={{ borderRadius: 16, border: `2px solid ${PASTEL.mint}`, background: theme.card, overflow: "hidden" }}>
-                  <div style={{ padding: "12px 16px", background: `${PASTEL.mint}12` }}>
-                    <div style={{ fontSize: 10, color: PASTEL.mint, fontWeight: 700 }}>✏️ 풀이 방향</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: theme.text, marginTop: 4 }}>이제 식을 세워보자!</div>
-                  </div>
-                  <div style={{ padding: "12px 16px" }}>
-                    <div style={{
-                      padding: "14px 18px", borderRadius: 12, background: theme.bg,
-                      border: `1.5px solid ${PASTEL.coral}30`,
-                      fontSize: 16, fontWeight: 700, color: theme.text, textAlign: "center",
-                      fontFamily: "'Playfair Display', serif",
-                    }}><MathSpan>{result.equation}</MathSpan></div>
-                    <p style={{ fontSize: 12, color: theme.textSec, marginTop: 10, lineHeight: 1.8 }}>{result.direction}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Navigation buttons */}
-            {currentStep >= 0 && (
-              <div style={{ display: "flex", gap: 8, padding: "8px 12px" }}>
-                <button onClick={prevStep} style={{
-                  flex: 1, padding: "12px", borderRadius: 12,
-                  border: `1px solid ${theme.border}`, background: theme.card,
-                  color: theme.textSec, fontSize: 13, cursor: "pointer",
-                }}>← 이전</button>
-                {!isLastStep && (
-                  <button onClick={nextStep} style={{
-                    flex: 2, padding: "12px", borderRadius: 12, border: "none",
-                    background: `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`,
-                    color: "white", fontSize: 14, fontWeight: 700, cursor: "pointer",
-                  }}>다음 →</button>
-                )}
-              </div>
-            )}
-
-            {/* Step progress dots */}
-            {currentStep >= 0 && (
-              <div style={{ display: "flex", justifyContent: "center", gap: 4, padding: "6px 0" }}>
-                {result.steps.map((_, i) => (
-                  <div key={i} style={{
-                    width: i === currentStep ? 16 : 6, height: 6, borderRadius: 3,
-                    background: i <= currentStep ? PASTEL.coral : `${theme.textSec}30`,
-                    transition: "all 0.3s",
-                  }} />
-                ))}
-                <div style={{
-                  width: isLastStep ? 16 : 6, height: 6, borderRadius: 3,
-                  background: isLastStep ? PASTEL.mint : `${theme.textSec}30`,
-                  transition: "all 0.3s",
-                }} />
-              </div>
-            )}
-
-            {/* Save/Close after final step */}
-            {isLastStep && currentStep > 0 && !helpMode && (
-              <div style={{ display: "flex", gap: 8, padding: "4px 12px 12px" }}>
-                <button onClick={reset} style={{ flex: 1, padding: "12px", borderRadius: 12, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 12, cursor: "pointer" }}>닫기</button>
-                <button onClick={saveToArchive} style={{ flex: 2, padding: "12px", borderRadius: 12, border: "none", background: `linear-gradient(135deg, ${PASTEL.coral}, ${PASTEL.dustyRose})`, color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>📂 아카이브에 저장</button>
-              </div>
-            )}
-
-            {/* ===== HELP FLOW ===== */}
-            {currentStep >= 0 && !helpMode && (
-              <div style={{ padding: "12px 20px 20px", textAlign: "center" }}>
-                <button onClick={() => setHelpMode("select")} style={{
-                  padding: "10px 20px", borderRadius: 12,
-                  border: `1.5px solid ${theme.border}`, background: theme.card,
-                  color: theme.textSec, fontSize: 12, cursor: "pointer",
-                }}>😕 이해가 안 돼요</button>
-              </div>
-            )}
-
-            {helpMode === "select" && (
-              <div style={{ padding: "0 12px 16px", animation: "slideUp 0.3s ease" }}>
-                <div style={{ borderRadius: 16, border: `1.5px solid ${PASTEL.sky}`, background: theme.card, padding: 16 }}>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: theme.text, marginBottom: 10 }}>
-                    어디서부터 이해가 안 됐어?
-                  </p>
-                  {result.steps.slice(0, currentStep + 1).map((step, i) => (
-                    <button key={i} onClick={() => { setHelpStepIdx(i); setHelpMode("deep"); }}
-                      style={{
-                        width: "100%", textAlign: "left", padding: "10px 14px", marginBottom: 6,
-                        borderRadius: 12, border: `1.5px solid ${CMAP[step.color]}30`,
-                        background: `${CMAP[step.color]}06`, cursor: "pointer",
-                        display: "flex", alignItems: "center", gap: 8,
-                      }}>
-                      <span style={{ fontSize: 14 }}>{CAT_ICON[step.category] || "📌"}</span>
-                      <div>
-                        <div style={{ fontSize: 10, color: CMAP[step.color], fontWeight: 700 }}>STEP {i + 1}</div>
-                        <div style={{ fontSize: 13, color: theme.text }}>{step.title}</div>
-                      </div>
-                    </button>
-                  ))}
-                  <button onClick={() => setHelpMode(null)} style={{
-                    width: "100%", padding: 8, marginTop: 4, borderRadius: 10,
-                    border: "none", background: "transparent", color: theme.textSec, fontSize: 11, cursor: "pointer",
-                  }}>괜찮아, 다시 읽어볼게</button>
-                </div>
-              </div>
-            )}
-
-            {helpMode === "deep" && deepHelp && (
-              <div style={{ padding: "0 12px 16px", animation: "slideUp 0.3s ease" }}>
-                <div style={{ borderRadius: 16, border: `2px solid ${PASTEL.lavender}`, background: theme.card, overflow: "hidden" }}>
-                  <div style={{ padding: "12px 16px", background: `${PASTEL.lavender}10` }}>
-                    <div style={{ fontSize: 10, color: PASTEL.lavender, fontWeight: 700 }}>
-                      💜 {deepHelp.prerequisiteGrade} · {deepHelp.prerequisite}
-                    </div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: theme.text, marginTop: 4 }}>
-                      먼저 이걸 알아야 해!
-                    </div>
-                  </div>
-                  <div style={{ padding: "12px 16px", fontSize: 13, lineHeight: 2.2, color: theme.text }}>
-                    <MathSpan>{deepHelp.simpleExplain}</MathSpan>
-                  </div>
-
-                  {/* 쉬운 예시 */}
-                  {deepHelp.example && (
-                    <div style={{ margin: "0 16px 12px", padding: "12px 14px", borderRadius: 12, background: `${PASTEL.mint}08`, border: `1px solid ${PASTEL.mint}25` }}>
-                      <div style={{ fontSize: 11, color: PASTEL.mint, fontWeight: 700, marginBottom: 6 }}>🔢 쉬운 숫자로 해보면</div>
-                      <div style={{ fontSize: 13, lineHeight: 2, color: theme.text }}><MathSpan>{deepHelp.example}</MathSpan></div>
-                    </div>
-                  )}
-
-                  {/* 일상 비유 */}
-                  {deepHelp.analogy && (
-                    <div style={{ margin: "0 16px 12px", padding: "12px 14px", borderRadius: 12, background: `${PASTEL.sky}08`, border: `1px solid ${PASTEL.sky}25` }}>
-                      <div style={{ fontSize: 11, color: PASTEL.sky, fontWeight: 700, marginBottom: 6 }}>🌍 이렇게 생각해봐</div>
-                      <div style={{ fontSize: 13, lineHeight: 2, color: theme.text }}><MathSpan>{deepHelp.analogy}</MathSpan></div>
-                    </div>
-                  )}
-
-                  <div style={{ padding: "0 16px 14px", display: "flex", gap: 8 }}>
-                    <button onClick={() => { setHelpMode(null); setHelpStepIdx(null); }}
-                      style={{ flex: 1, padding: 10, borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.card, color: theme.textSec, fontSize: 12, cursor: "pointer" }}>
-                      이해했어!
-                    </button>
-                    <button onClick={() => setHelpMode("ask")}
-                      style={{ flex: 1, padding: 10, borderRadius: 10, border: "none", background: `${PASTEL.coral}15`, color: PASTEL.coral, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                      그래도 모르겠어 😢
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {helpMode === "deep" && !deepHelp && (
-              <div style={{ padding: "0 12px 16px", animation: "slideUp 0.3s ease" }}>
-                <div style={{ padding: 16, borderRadius: 16, background: theme.card, border: `1.5px solid ${theme.border}`, textAlign: "center" }}>
-                  <p style={{ fontSize: 13, color: theme.text }}>이 부분은 추가 설명이 준비되지 않았어요.</p>
-                  <button onClick={() => setHelpMode("ask")} style={{
-                    marginTop: 10, padding: "10px 20px", borderRadius: 10, border: "none",
-                    background: `${PASTEL.coral}15`, color: PASTEL.coral, fontSize: 12, fontWeight: 700, cursor: "pointer",
-                  }}>선생님께 물어볼래요</button>
-                </div>
-              </div>
-            )}
-
-            {helpMode === "ask" && (
-              <div style={{ padding: "0 12px 20px", animation: "slideUp 0.3s ease" }}>
-                <div style={{ padding: 20, borderRadius: 16, background: theme.card, border: `2px solid ${PASTEL.coral}`, textAlign: "center" }}>
-                  <div style={{ fontSize: 28, marginBottom: 8 }}>🙋</div>
-                  <p style={{ fontSize: 14, fontWeight: 700, color: theme.text, marginBottom: 4 }}>선생님께 전달해둘까요?</p>
-                  <p style={{ fontSize: 11, color: theme.textSec, marginBottom: 14 }}>
-                    어떤 문제를 풀다가, 어디서 막혔는지<br />선생님이 확인할 수 있어요
-                  </p>
-                  <button onClick={sendHelp} style={{
-                    ...btnPrimary, background: PASTEL.coral, marginBottom: 8,
-                  }}>📨 선생님께 전달하기</button>
-                  <button onClick={() => { setHelpMode(null); setHelpStepIdx(null); }}
-                    style={{ width: "100%", padding: 8, border: "none", background: "transparent", color: theme.textSec, fontSize: 11, cursor: "pointer" }}>
-                    아니야, 다시 해볼게
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {helpMode === "sent" && (
-              <div style={{ padding: "0 12px 20px", animation: "slideUp 0.3s ease" }}>
-                <div style={{ padding: 20, borderRadius: 16, background: `${PASTEL.mint}08`, border: `1.5px solid ${PASTEL.mint}`, textAlign: "center" }}>
-                  <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
-                  <p style={{ fontSize: 14, fontWeight: 700, color: PASTEL.mint }}>선생님께 전달했어요!</p>
-                  <p style={{ fontSize: 11, color: theme.textSec, marginTop: 4 }}>
-                    선생님이 확인하면 풀이를 보내줄 거예요
-                  </p>
-                  <button onClick={reset} style={{
-                    marginTop: 14, padding: "10px 24px", borderRadius: 12,
-                    border: `1px solid ${theme.border}`, background: theme.card,
-                    color: theme.text, fontSize: 12, cursor: "pointer",
-                  }}>다른 문제 풀기</button>
-                </div>
-              </div>
-            )}
-          </div>
+        ) : !mode ? (
+          <QuizHub
+            theme={theme}
+            playSfx={playSfx}
+            setMode={(m) => { setMode(m); setQuizSession(Date.now()); }}
+            activeTimeQuiz={activeTimeQuiz}
+            reviewDueCount={reviewDue.length}
+            currentUser={user}
+          />
+        ) : mode === "speed" ? (
+          <SpeedQuizPlayer
+            key={quizSession}
+            theme={theme}
+            playSfx={playSfx}
+            onFinish={handleSpeedFinish}
+          />
+        ) : (
+          <QuizPlayer
+            key={quizSession}
+            problems={getProblems(mode)}
+            theme={theme}
+            playSfx={playSfx}
+            onFinish={handleQuizFinish}
+            multiplier={mode === "time" && activeTimeQuiz ? activeTimeQuiz.multiplier : 1}
+            timeLimit={0}
+            modeName={QUIZ_MODES.find(m => m.id === mode)?.label || "퀴즈"}
+          />
         )}
       </div>
     </div>
   );
 }
 
-export function renderProblemScreen(ctx) {
-  const { archive, setArchive, theme, setScreen, playSfx, showMsg, user, helpRequests, setHelpRequests } = ctx;
-  return <ProblemScreenInner theme={theme} setScreen={setScreen} playSfx={playSfx} showMsg={showMsg} user={user} helpRequests={helpRequests} setHelpRequests={setHelpRequests} archive={archive} setArchive={setArchive} archiveDefaultPublic={ctx.archiveDefaultPublic} analysisModel={ctx.analysisModel} progress={ctx.progress} />;
+export function renderQuizScreen(ctx) {
+  return <QuizScreenInner {...ctx} />;
 }
