@@ -1,12 +1,14 @@
 import { useState } from "react";
 import EpisodePlayer from "../recipedetective/EpisodePlayer";
 import haagendazsVanilla from "../recipedetective/episodes/haagendazs-vanilla";
+import nutella from "../recipedetective/episodes/nutella";
+import bananaMilk from "../recipedetective/episodes/banana-milk";
 
-// 에피소드 목록 (추후 확장)
+// 에피소드 목록
 const EPISODES = [
   haagendazsVanilla,
-  // nutella,
-  // bananaMilk,
+  nutella,
+  bananaMilk,
 ];
 
 export function renderRecipeDetectiveScreen(ctx) {
