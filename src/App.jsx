@@ -88,7 +88,7 @@ function AppInner() {
   const savedUser = useMemo(() => { try { return JSON.parse(localStorage.getItem("ar_user")); } catch { return null; } }, []);
   // Screens that should NOT auto-restore on page reload (experimental/heavy 3D screens
   // that can crash if unmounted improperly — fallback to menu instead).
-  const NO_AUTO_RESTORE_SCREENS = ["googolGear", "precipitation-sim"];
+  const NO_AUTO_RESTORE_SCREENS = ["googolGear"];
   const savedScreen = useMemo(() => {
     const s = localStorage.getItem("ar_screen");
     if (s && NO_AUTO_RESTORE_SCREENS.includes(s)) {
