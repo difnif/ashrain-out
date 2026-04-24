@@ -44,6 +44,8 @@ const LazyGoogolGearScreen = lazy(() =>
     }
   }))
 );
+// Lazy-loaded: Canvas 기반 석출 시뮬레이터 (useless-math 서브 메뉴에서 진입)
+const LazyPrecipitationSimScreen = lazy(() => import("./screens/PrecipitationSimScreen"));
 import { getProperties as getPropertiesFn, renderHighlight as renderHighlightFn, renderTriangleAnim as renderTriangleAnimFn } from "./rendering/TriangleRenderer";
 import { useUserSystem } from "./hooks/useUserSystem";
 import { useJakdoCanvas } from "./hooks/useJakdoCanvas";
@@ -78,7 +80,7 @@ function AppInner() {
   const savedUser = useMemo(() => { try { return JSON.parse(localStorage.getItem("ar_user")); } catch { return null; } }, []);
   // Screens that should NOT auto-restore on page reload (experimental/heavy 3D screens
   // that can crash if unmounted improperly — fallback to menu instead).
-  const NO_AUTO_RESTORE_SCREENS = ["googolGear"];
+  const NO_AUTO_RESTORE_SCREENS = ["googolGear", "precipitation-sim"];
   const savedScreen = useMemo(() => {
     const s = localStorage.getItem("ar_screen");
     if (s && NO_AUTO_RESTORE_SCREENS.includes(s)) {
@@ -875,7 +877,7 @@ function AppInner() {
     const items = [
       { icon: "⚙️", label: "구골 기어 체험", desc: "10¹⁰⁰ 회전 시뮬레이션", action: () => setScreen("googolGear") },
       { icon: "🍳", label: "레시피 분석하기", desc: "요리 속 비율과 단위 변환", disabled: true },
-      { icon: "🧪", label: "물질의 석출량 계산하기", desc: "화학 반응과 수학의 만남", disabled: true },
+      { icon: "🧪", label: "물질의 석출량 계산하기", desc: "화학 반응과 수학의 만남", action: () => setScreen("precipitation-sim") },
     ];
     return (
       <ScreenWrap title="쓸모 없어 보이는 수학" back="복습하기" backTo="study">
@@ -902,6 +904,26 @@ function AppInner() {
         </div>
       }>
         <LazyGoogolGearScreen {...ctx} />
+      </Suspense>
+    );
+  }
+
+  // --- 쓸모 없어 보이는 수학: 석출 시뮬레이터 (lazy-loaded Canvas) ---
+  if (screen === "precipitation-sim") {
+    return (
+      <Suspense fallback={
+        <div style={{
+          height: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+          background: theme.bg, color: theme.text, fontSize: 14,
+          fontFamily: "'Noto Serif KR', serif",
+        }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 28, marginBottom: 12 }}>🧪</div>
+            <div>시뮬레이터를 불러오는 중...</div>
+          </div>
+        </div>
+      }>
+        <LazyPrecipitationSimScreen onBack={() => setScreen("useless-math")} />
       </Suspense>
     );
   }
