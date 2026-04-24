@@ -30,6 +30,7 @@ export default function SolubilityChart({
   coldTemp,
   hotSolubility,
   coldSolubility,
+  useFormula = false,
 }) {
   return (
     <div style={{ width: '100%', maxWidth: CHART_W, margin: '0 auto' }}>
@@ -202,7 +203,7 @@ export default function SolubilityChart({
                   borderRadius: 2,
                 }}
               />
-              <span>{sub.formula}</span>
+              <span>{useFormula ? sub.formula : sub.name}</span>
             </div>
           );
         })}
