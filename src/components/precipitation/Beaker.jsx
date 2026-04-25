@@ -95,17 +95,10 @@ export default function Beaker(props) {
     renderer.toneMappingExposure = 1.1;
     mount.appendChild(renderer.domElement);
 
-    // 돋보기 카메라
-    const magCamera = new THREE.PerspectiveCamera(20, 1, 0.1, 100);
-    // 초기 초점 (비커 중심)
-    const magFocus = new THREE.Vector3(0, -0.1, 0);
-    const MAG_DIST = 1.8;
-    magCamera.position.set(
-      magFocus.x + Math.sin(CAM_YAW) * MAG_DIST,
-      magFocus.y + Math.sin(CAM_PITCH) * MAG_DIST + 0.05,
-      magFocus.z + Math.cos(CAM_YAW) * MAG_DIST
-    );
-    magCamera.lookAt(magFocus);
+    // 돋보기 카메라 — 매 프레임 메인 카메라로부터 속성 복사 후 setViewOffset
+    const magCamera = new THREE.PerspectiveCamera(camera.fov, 1, camera.near, camera.far);
+    magCamera.position.copy(camera.position);
+    magCamera.quaternion.copy(camera.quaternion);
 
     let magRenderer = null;
     if (magMount) {
@@ -397,8 +390,8 @@ export default function Beaker(props) {
 
     const state = {
       scene, sceneRoot, camera, renderer,
-      magCamera, magRenderer, magMount, magFocus,
-      CAM_YAW, CAM_PITCH, MAG_DIST,
+      magCamera, magRenderer, magMount,
+      CAM_YAW, CAM_PITCH,
       liquid, liquidMat, surface, baseWaterColor,
       outerFlame, outerFlameMat, innerFlame, innerFlameMat, flameLight,
       crystalGroup, crystals: [],
@@ -661,38 +654,36 @@ export default function Beaker(props) {
 }
 
 // ═══ 돋보기 카메라 초점 업데이트 ═══
-// 화면 상의 돋보기 중심 좌표 → scene 좌표로 역투영
+// 디지털 줌 방식: 메인 카메라를 그대로 복사하되, setViewOffset으로
+// 화면 일부분만 잘라서 확대 렌더. 위치에 따라 배율이 변하지 않음.
 function updateMagnifierCamera(state, magPos, containerW, containerH) {
-  const { camera, magCamera, CAM_YAW, CAM_PITCH, MAG_DIST } = state;
-  const centerX = magPos.x + 70; // MAG_SIZE/2
-  const centerY = magPos.y + 70;
+  const { camera, magCamera } = state;
+  const MAG_SIZE = 140;
+  const ZOOM = 3.5; // 배율 (높을수록 더 확대)
 
-  // 화면 정규좌표 (-1 ~ 1)
-  const ndcX = (centerX / containerW) * 2 - 1;
-  const ndcY = -((centerY / containerH) * 2 - 1);
+  // 메인 카메라 속성 복사
+  magCamera.position.copy(camera.position);
+  magCamera.quaternion.copy(camera.quaternion);
+  magCamera.fov = camera.fov;
+  magCamera.near = camera.near;
+  magCamera.far = camera.far;
+  magCamera.aspect = 1; // 정사각형 뷰
 
-  // y=0 평면에 투영 (비커 중앙 높이)
-  const raycaster = new THREE.Raycaster();
-  raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
-  const targetY = -0.1; // 비커 중앙 근처
-  // 평면 y=targetY와 ray 교차
-  const rayOrigin = raycaster.ray.origin;
-  const rayDir = raycaster.ray.direction;
-  if (Math.abs(rayDir.y) < 0.0001) return;
-  const t = (targetY - rayOrigin.y) / rayDir.y;
-  const focus = new THREE.Vector3(
-    rayOrigin.x + rayDir.x * t,
-    rayOrigin.y + rayDir.y * t,
-    rayOrigin.z + rayDir.z * t
-  );
+  // setViewOffset: 큰 가상 캔버스에서 일부분만 잘라서 렌더
+  // 화면을 ZOOM배 확대한 것과 동일한 효과
+  const fullW = containerW * ZOOM;
+  const fullH = containerH * ZOOM;
+  // 돋보기 중심이 가리키는 화면 좌표를 ZOOM배 환산
+  const centerX = magPos.x + MAG_SIZE / 2;
+  const centerY = magPos.y + MAG_SIZE / 2;
+  // 잘라낼 영역 크기 (정사각형, ZOOM배 확대해도 MAG_SIZE 안에 맞도록)
+  const cropSize = MAG_SIZE; // 가상 캔버스 기준 cropSize 픽셀을 MAG_SIZE에 표시
+  // 가상 캔버스에서 돋보기 중심을 cropSize의 중심으로 잡음
+  const offsetX = centerX * ZOOM - cropSize / 2;
+  const offsetY = centerY * ZOOM - cropSize / 2;
 
-  state.magFocus.copy(focus);
-  magCamera.position.set(
-    focus.x + Math.sin(CAM_YAW) * MAG_DIST,
-    focus.y + Math.sin(CAM_PITCH) * MAG_DIST + 0.05,
-    focus.z + Math.cos(CAM_YAW) * MAG_DIST
-  );
-  magCamera.lookAt(focus);
+  magCamera.setViewOffset(fullW, fullH, offsetX, offsetY, cropSize, cropSize);
+  magCamera.updateProjectionMatrix();
 }
 
 // ═══ Scene update ═══
@@ -890,8 +881,14 @@ function updateScene(state, p) {
 
     while (crystals.length < targetCrystalCount) {
       const idx = crystals.length;
-      const size = 0.06 + Math.random() * 0.05;
+      const size = 0.045 + Math.random() * 0.03; // 더 작고 일관된 크기
+
+      // 결정 모양: 길쭉한 주상(prismatic) 형태
+      // OctahedronGeometry를 베이스로 한 축을 늘려서 결정처럼
       const cGeom = new THREE.OctahedronGeometry(size, 0);
+      // y축 (또는 랜덤 축) 으로 살짝 늘림 — 자연 결정의 prismatic 느낌
+      const elongation = 1.3 + Math.random() * 0.5;
+      cGeom.scale(1, elongation, 1);
 
       const origColor = new THREE.Color(crystalColor);
       const hsl = {};
@@ -900,14 +897,21 @@ function updateScene(state, p) {
         ? origColor.clone()
         : new THREE.Color().setHSL(hsl.h, Math.min(1, hsl.s * 1.15), hsl.l * 0.95);
 
-      const cMat = new THREE.MeshStandardMaterial({
+      // 무색/흰색 결정은 살짝 반투명하게 (자연 결정의 투명감)
+      const isColorlessSub = sub.realColor === '무색' || sub.realColor === '흰색';
+      const cMat = new THREE.MeshPhysicalMaterial({
         color: enhancedColor,
-        roughness: 0.12,
-        metalness: 0.25,
+        roughness: 0.18,
+        metalness: 0.05,
+        transmission: isColorlessSub ? 0.3 : 0,
+        thickness: 0.1,
+        ior: 1.5,
+        clearcoat: 0.6,
+        clearcoatRoughness: 0.15,
         transparent: true,
-        opacity: 1, // 즉시 표시 (fade-in 제거)
+        opacity: 1,
         flatShading: true,
-        envMapIntensity: 1.4,
+        envMapIntensity: 1.0,
       });
       const c = new THREE.Mesh(cGeom, cMat);
       c.renderOrder = 1;
@@ -919,28 +923,40 @@ function updateScene(state, p) {
       const z = Math.sin(baseAngle) * radius;
 
       let targetY, startY, dir;
+      // 수면 위로 튀어나가지 않도록 최대 높이 제한
+      // 수면 - 결정 크기 만큼 여유
+      const maxStackY = stableLiquidTopY - size * 1.2;
+
       if (isLighterThanWater) {
-        targetY = stableLiquidTopY - 0.05 - level * 0.05;
+        // 부유: 수면 근처에 모임
+        targetY = stableLiquidTopY - 0.04 - level * 0.04;
+        if (targetY < beakerBottomY + 0.06) targetY = beakerBottomY + 0.06;
         startY = beakerBottomY + 0.3 + Math.random() * 0.15;
         dir = -1;
       } else {
-        targetY = beakerBottomY + 0.06 + level * 0.065;
-        startY = stableLiquidTopY - 0.1 - Math.random() * 0.05;
-        // startY가 targetY보다 작으면 즉시 안착 위치에서 시작
+        // 침전: 바닥에 쌓임 (수면 위로 못 올라감)
+        targetY = beakerBottomY + 0.04 + level * 0.04;
+        if (targetY > maxStackY) targetY = maxStackY;
+        startY = stableLiquidTopY - 0.05 - Math.random() * 0.04;
         if (startY <= targetY) startY = targetY;
         dir = 1;
       }
 
       c.position.set(x, startY, z);
-      c.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+      // 길쭉한 결정이 자연스럽게 보이도록 — 한 축으로만 살짝 기울임
+      c.rotation.set(
+        (Math.random() - 0.5) * 0.6,
+        Math.random() * Math.PI * 2,
+        (Math.random() - 0.5) * 0.6
+      );
       c.userData = {
-        targetY, settled: phase === 'cold', // cold면 즉시 안착
+        targetY, settled: phase === 'cold',
         direction: dir,
-        speed: 0.012 + Math.random() * 0.008,
-        rotSpeedY: (Math.random() - 0.5) * 0.03,
-        rotSpeedX: (Math.random() - 0.5) * 0.02,
+        speed: 0.008 + Math.random() * 0.005, // 침강 속도 살짝 느리게
+        // 떨어지는 중에만 살짝 회전 (안착 후엔 정지)
+        rotSpeedY: (Math.random() - 0.5) * 0.015,
+        rotSpeedX: (Math.random() - 0.5) * 0.01,
       };
-      // cold로 시작하면 바로 targetY에 배치
       if (phase === 'cold') {
         c.position.y = targetY;
       }
