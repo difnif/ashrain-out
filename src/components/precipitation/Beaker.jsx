@@ -1,16 +1,17 @@
 // src/components/precipitation/Beaker.jsx
-// v10 — 피드백 반영
+// v11 — 물 가시성 강화 + 결정 강조 + 돋보기 확대 기능
 //
 // 주요 수정:
-//   1) 물이 보이도록: 유리 transmission 0.85 (95→85), 용액 색 더 파랗게,
-//      용액 불투명도 높임
-//   2) 비커 크기 축소: scale 0.82 적용 (원래 비율 유지하면서 작게)
-//   3) 카메라 사선 구도: 살짝 옆에서 (Y축 15도), 살짝 위에서 내려다보기
-//   4) 페트리 접시: solute-added 단계에서 비커 위에 기울어진 접시 + 쏟아지는 가루
-//   5) 알콜램프 구조 수정: 뚜껑 높이 조정, 불꽃은 심지에 붙어있도록
-//   6) 수위 계산 개선
+//   1) 물을 더 진하게: baseWaterColor 0xb8dce8 → 0x89c4dc (선명한 하늘색),
+//      liquidMat transmission 0.3 → 0.15, opacity 0.95 유지
+//   2) 결정 강화: 크기 0.035~0.07 → 0.055~0.1, 색 채도 높임
+//      (더 많이/크게 만들어 확실히 보이도록), 바닥에 깔리는 조건 개선
+//   3) 돋보기 확대 기능:
+//      - 우측 하단 돋보기 버튼
+//      - 클릭 시 두 번째 렌더러로 비커 내부 확대 뷰 표시
+//      - 원형 마스크 + 유리 테두리 스타일
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { SUBSTANCES } from '../../data/solubilityData';
@@ -20,9 +21,14 @@ const BEAKER_CAPACITY = 500;
 export default function Beaker(props) {
   const { height = 380 } = props;
   const mountRef = useRef(null);
+  const magnifierMountRef = useRef(null);
   const stateRef = useRef({});
   const propsRef = useRef(props);
   propsRef.current = props;
+
+  const [magnifierOn, setMagnifierOn] = useState(false);
+  const magnifierOnRef = useRef(false);
+  magnifierOnRef.current = magnifierOn;
 
   // phase 변경 시 결정 정리
   useEffect(() => {
@@ -43,6 +49,7 @@ export default function Beaker(props) {
 
   useEffect(() => {
     const mount = mountRef.current;
+    const magMount = magnifierMountRef.current;
     if (!mount) return;
 
     const W = mount.clientWidth || 300;
@@ -50,13 +57,11 @@ export default function Beaker(props) {
 
     const scene = new THREE.Scene();
 
-    // ═══ 카메라: 사선 구도 ═══
-    // 살짝 옆에서 보면서 약간 위에서 내려다보는 각도 (사람 시선)
+    // ═══ 메인 카메라 (사선 구도) ═══
     const camera = new THREE.PerspectiveCamera(34, W / H, 0.1, 100);
-    // Y축 회전 ~15도 (사선), 위에서 내려다보기 약간
     const CAM_DIST = 6.2;
-    const CAM_YAW = 0.26;   // rad (~15도)
-    const CAM_PITCH = 0.16; // rad (위에서 살짝)
+    const CAM_YAW = 0.26;
+    const CAM_PITCH = 0.16;
     camera.position.set(
       Math.sin(CAM_YAW) * CAM_DIST,
       Math.sin(CAM_PITCH) * CAM_DIST + 0.3,
@@ -65,9 +70,7 @@ export default function Beaker(props) {
     camera.lookAt(0, -0.3, 0);
 
     const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      powerPreference: 'high-performance',
+      antialias: true, alpha: true, powerPreference: 'high-performance',
     });
     renderer.setSize(W, H);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -77,6 +80,34 @@ export default function Beaker(props) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
     mount.appendChild(renderer.domElement);
+
+    // ═══ 돋보기 카메라 (확대용) ═══
+    // 비커 바닥 근처를 가까이에서 본다 (결정이 쌓이는 모습 관찰)
+    const magCamera = new THREE.PerspectiveCamera(22, 1, 0.1, 100);
+    const magFocus = new THREE.Vector3(0, -0.35, 0); // 비커 바닥 근처
+    magCamera.position.set(
+      Math.sin(CAM_YAW) * 2.2,
+      Math.sin(CAM_PITCH) * 2.2 + 0.1,
+      Math.cos(CAM_YAW) * 2.2
+    );
+    magCamera.lookAt(magFocus);
+
+    // 돋보기 렌더러 (별도)
+    let magRenderer = null;
+    if (magMount) {
+      magRenderer = new THREE.WebGLRenderer({
+        antialias: true, alpha: true,
+      });
+      magRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      magRenderer.shadowMap.enabled = true;
+      magRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      magRenderer.outputEncoding = THREE.sRGBEncoding;
+      magRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+      magRenderer.toneMappingExposure = 1.1;
+      const magSize = magMount.clientWidth || 140;
+      magRenderer.setSize(magSize, magSize);
+      magMount.appendChild(magRenderer.domElement);
+    }
 
     // ═══ 환경맵 ═══
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
@@ -88,7 +119,6 @@ export default function Beaker(props) {
 
     // ═══ 조명 ═══
     scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-
     const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
     keyLight.position.set(3, 6, 4);
     keyLight.castShadow = true;
@@ -113,18 +143,18 @@ export default function Beaker(props) {
     flameLight.position.set(0, -1.15, 0);
     scene.add(flameLight);
 
-    // ═══ 비커 크기 축소 (scale group) ═══
+    // ═══ 씬 루트 ═══
     const sceneRoot = new THREE.Group();
-    sceneRoot.scale.setScalar(0.82); // 전체 씬 82% 축소
+    sceneRoot.scale.setScalar(0.82);
     scene.add(sceneRoot);
 
-    // ═══ 치수 ═══
+    // 치수
     const beakerRadius = 0.7;
     const beakerHeight = 1.35;
     const beakerBottomY = -0.45;
     const beakerTopY = beakerBottomY + beakerHeight;
 
-    // ═══ 바닥 (그림자) ═══
+    // 바닥
     const groundGeom = new THREE.PlaneGeometry(8, 8);
     const groundMat = new THREE.ShadowMaterial({ opacity: 0.22 });
     const ground = new THREE.Mesh(groundGeom, groundMat);
@@ -133,27 +163,18 @@ export default function Beaker(props) {
     ground.receiveShadow = true;
     sceneRoot.add(ground);
 
-    // ═══ 비커 (유리) ═══
-    // transmission 0.85로 낮춰서 안쪽 내용물이 보이도록
+    // 비커 유리
     const glassMat = new THREE.MeshPhysicalMaterial({
-      color: 0xffffff,
-      metalness: 0,
-      roughness: 0.05,
-      transmission: 0.85,
-      thickness: 0.35,
-      transparent: true,
-      opacity: 1,
-      side: THREE.DoubleSide,
-      ior: 1.5,
-      clearcoat: 0.9,
-      clearcoatRoughness: 0.08,
+      color: 0xffffff, metalness: 0, roughness: 0.05,
+      transmission: 0.85, thickness: 0.35,
+      transparent: true, opacity: 1, side: THREE.DoubleSide,
+      ior: 1.5, clearcoat: 0.9, clearcoatRoughness: 0.08,
       envMapIntensity: 1.0,
       attenuationColor: new THREE.Color(0xeef5fa),
       attenuationDistance: 2.0,
     });
 
     const beakerGroup = new THREE.Group();
-
     const wallGeom = new THREE.CylinderGeometry(beakerRadius, beakerRadius, beakerHeight, 64, 1, true);
     const wall = new THREE.Mesh(wallGeom, glassMat);
     wall.position.y = beakerBottomY + beakerHeight / 2;
@@ -173,48 +194,43 @@ export default function Beaker(props) {
     rim.rotation.x = Math.PI / 2;
     rim.position.y = beakerTopY;
     beakerGroup.add(rim);
-
     sceneRoot.add(beakerGroup);
 
-    // ═══ 용액 ═══
-    // 물색을 살짝 더 파랗고 진하게
-    const baseWaterColor = new THREE.Color(0xb8dce8);
+    // ═══ 용액 (물 진하게) ═══
+    const baseWaterColor = new THREE.Color(0x89c4dc); // 더 선명한 하늘색
     const liquidGeom = new THREE.CylinderGeometry(beakerRadius * 0.985, beakerRadius * 0.985, 1, 64);
     const liquidMat = new THREE.MeshPhysicalMaterial({
       color: baseWaterColor.clone(),
-      transmission: 0.3, // 낮춰서 더 잘 보이게
+      transmission: 0.15,  // 더 낮춤 (0.3 → 0.15)
       transparent: true,
       opacity: 0.95,
       roughness: 0.08,
       metalness: 0,
       ior: 1.33,
       thickness: 0.4,
-      envMapIntensity: 0.6,
+      envMapIntensity: 0.7,
     });
     const liquid = new THREE.Mesh(liquidGeom, liquidMat);
     liquid.scale.y = 0.001;
     liquid.position.y = beakerBottomY + 0.015;
     sceneRoot.add(liquid);
 
-    // 수면 디스크 (하이라이트용 얇은 disc)
+    // 수면 하이라이트
     const surfaceGeom = new THREE.CircleGeometry(beakerRadius * 0.985, 64);
     const surfaceMat = new THREE.MeshPhysicalMaterial({
       color: baseWaterColor.clone(),
-      metalness: 0,
-      roughness: 0.05,
-      transparent: true,
-      opacity: 0.5,
-      envMapIntensity: 1.2,
+      metalness: 0, roughness: 0.05,
+      transparent: true, opacity: 0.6,
+      envMapIntensity: 1.3,
     });
     const surface = new THREE.Mesh(surfaceGeom, surfaceMat);
     surface.rotation.x = -Math.PI / 2;
     surface.visible = false;
     sceneRoot.add(surface);
 
-    // ═══ 삼각대 ═══
+    // 삼각대
     const standGroup = new THREE.Group();
     const standY = beakerBottomY - 0.05;
-
     const gauzeGeom = new THREE.BoxGeometry(beakerRadius * 2.6, 0.03, beakerRadius * 2.2);
     const gauzeMat = new THREE.MeshStandardMaterial({
       color: 0x8894a0, roughness: 0.55, metalness: 0.45, envMapIntensity: 0.6,
@@ -240,22 +256,15 @@ export default function Beaker(props) {
     });
     sceneRoot.add(standGroup);
 
-    // ═══ 알콜램프 (구조 수정) ═══
+    // 알콜램프
     const lampGroup = new THREE.Group();
     const lampCenterY = beakerBottomY - 1.05;
-
-    // 본체 (더 촘촘한 프로필)
     const lampProfile = [
-      new THREE.Vector2(0.001, 0.18),  // 상단 중앙 (뚜껑 안쪽)
-      new THREE.Vector2(0.04, 0.18),
-      new THREE.Vector2(0.06, 0.16),
-      new THREE.Vector2(0.08, 0.12),
-      new THREE.Vector2(0.13, 0.08),
-      new THREE.Vector2(0.2, 0.03),
-      new THREE.Vector2(0.24, -0.04),
-      new THREE.Vector2(0.23, -0.13),
-      new THREE.Vector2(0.17, -0.2),
-      new THREE.Vector2(0.05, -0.22),
+      new THREE.Vector2(0.001, 0.18), new THREE.Vector2(0.04, 0.18),
+      new THREE.Vector2(0.06, 0.16), new THREE.Vector2(0.08, 0.12),
+      new THREE.Vector2(0.13, 0.08), new THREE.Vector2(0.2, 0.03),
+      new THREE.Vector2(0.24, -0.04), new THREE.Vector2(0.23, -0.13),
+      new THREE.Vector2(0.17, -0.2), new THREE.Vector2(0.05, -0.22),
       new THREE.Vector2(0.001, -0.22),
     ];
     const lampBodyGeom = new THREE.LatheGeometry(lampProfile, 40);
@@ -263,8 +272,7 @@ export default function Beaker(props) {
       color: 0xffffff, metalness: 0, roughness: 0.12,
       transmission: 0.8, thickness: 0.3,
       transparent: true, opacity: 1, ior: 1.5,
-      clearcoat: 0.9, clearcoatRoughness: 0.08,
-      envMapIntensity: 1,
+      clearcoat: 0.9, clearcoatRoughness: 0.08, envMapIntensity: 1,
       attenuationColor: new THREE.Color(0xeaf2f8),
       attenuationDistance: 0.8,
     });
@@ -273,7 +281,6 @@ export default function Beaker(props) {
     lampBody.castShadow = true;
     lampGroup.add(lampBody);
 
-    // 내부 알콜
     const alcoholGeom = new THREE.CylinderGeometry(0.18, 0.18, 0.15, 24);
     const alcoholMat = new THREE.MeshPhysicalMaterial({
       color: 0x3f78d0, transparent: true, opacity: 0.55,
@@ -283,32 +290,29 @@ export default function Beaker(props) {
     alcohol.position.y = lampCenterY - 0.13;
     lampGroup.add(alcohol);
 
-    // 심지 캡: 본체 상단에 딱 붙게 (위치 수정)
     const wickCapGeom = new THREE.CylinderGeometry(0.05, 0.05, 0.04, 20);
     const wickCapMat = new THREE.MeshStandardMaterial({
       color: 0x6b7280, roughness: 0.3, metalness: 0.7, envMapIntensity: 1,
     });
     const wickCap = new THREE.Mesh(wickCapGeom, wickCapMat);
-    wickCap.position.y = lampCenterY + 0.2; // 0.185 → 0.2 (lampProfile top 맞춤)
+    wickCap.position.y = lampCenterY + 0.2;
     wickCap.castShadow = true;
     lampGroup.add(wickCap);
 
-    // 심지
     const wickGeom = new THREE.CylinderGeometry(0.012, 0.012, 0.04, 10);
     const wickMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.9 });
     const wick = new THREE.Mesh(wickGeom, wickMat);
-    wick.position.y = lampCenterY + 0.24; // cap 바로 위
+    wick.position.y = lampCenterY + 0.24;
     lampGroup.add(wick);
-
     sceneRoot.add(lampGroup);
 
-    // ═══ 불꽃 (심지 바로 위) ═══
+    // 불꽃
     const outerFlameGeom = new THREE.ConeGeometry(0.07, 0.2, 20);
     const outerFlameMat = new THREE.MeshBasicMaterial({
       color: 0xff8820, transparent: true, opacity: 0, depthWrite: false,
     });
     const outerFlame = new THREE.Mesh(outerFlameGeom, outerFlameMat);
-    outerFlame.position.y = lampCenterY + 0.37; // 심지 위
+    outerFlame.position.y = lampCenterY + 0.37;
     sceneRoot.add(outerFlame);
 
     const innerFlameGeom = new THREE.ConeGeometry(0.035, 0.12, 16);
@@ -319,21 +323,21 @@ export default function Beaker(props) {
     innerFlame.position.y = lampCenterY + 0.33;
     sceneRoot.add(innerFlame);
 
-    // ═══ 결정 그룹 ═══
+    // 결정
     const crystalGroup = new THREE.Group();
     sceneRoot.add(crystalGroup);
 
-    // ═══ 물줄기 ═══
+    // 물줄기
     const streamGeom = new THREE.CylinderGeometry(0.03, 0.045, 1, 12);
     const streamMat = new THREE.MeshPhysicalMaterial({
-      color: 0x5ca0d0, transparent: true, opacity: 0.85,
+      color: 0x5ca0d0, transparent: true, opacity: 0.9,
       roughness: 0.1, metalness: 0, transmission: 0.3, ior: 1.33,
     });
     const waterStream = new THREE.Mesh(streamGeom, streamMat);
     waterStream.visible = false;
     sceneRoot.add(waterStream);
 
-    // ═══ 유리막대 ═══
+    // 유리막대
     const rodGeom = new THREE.CylinderGeometry(0.025, 0.025, 0.85, 16);
     const rodMat = new THREE.MeshPhysicalMaterial({
       color: 0xffffff, metalness: 0, roughness: 0.06,
@@ -344,39 +348,30 @@ export default function Beaker(props) {
     stirRod.visible = false;
     sceneRoot.add(stirRod);
 
-    // ═══ 페트리 접시 (신규!) ═══
-    // 얕은 원형 접시 2개 (위/아래) 중 아래만 사용
+    // 페트리 접시
     const petriGroup = new THREE.Group();
     petriGroup.visible = false;
-
     const petriRadius = 0.32;
     const petriHeight = 0.055;
     const petriGlassMat = new THREE.MeshPhysicalMaterial({
       color: 0xffffff, metalness: 0, roughness: 0.08,
       transmission: 0.88, thickness: 0.15,
       transparent: true, opacity: 1, ior: 1.5,
-      clearcoat: 0.9, side: THREE.DoubleSide,
-      envMapIntensity: 1,
+      clearcoat: 0.9, side: THREE.DoubleSide, envMapIntensity: 1,
     });
-
-    // 접시 벽
     const petriWallGeom = new THREE.CylinderGeometry(petriRadius, petriRadius, petriHeight, 40, 1, true);
     const petriWall = new THREE.Mesh(petriWallGeom, petriGlassMat);
     petriGroup.add(petriWall);
-    // 접시 바닥
     const petriBottomGeom = new THREE.CircleGeometry(petriRadius, 40);
     const petriBottom = new THREE.Mesh(petriBottomGeom, petriGlassMat);
     petriBottom.rotation.x = -Math.PI / 2;
     petriBottom.position.y = -petriHeight / 2;
     petriGroup.add(petriBottom);
-    // 접시 테두리
     const petriRimGeom = new THREE.TorusGeometry(petriRadius, 0.01, 8, 40);
     const petriRim = new THREE.Mesh(petriRimGeom, petriGlassMat);
     petriRim.rotation.x = Math.PI / 2;
     petriRim.position.y = petriHeight / 2;
     petriGroup.add(petriRim);
-
-    // 접시 안의 물질 가루 덩어리 (Lathe로 돔 형태)
     const pileProfile = [];
     for (let i = 0; i <= 10; i++) {
       const t = i / 10;
@@ -386,23 +381,21 @@ export default function Beaker(props) {
     }
     const pileGeom = new THREE.LatheGeometry(pileProfile, 28);
     const pileMatRef = new THREE.MeshStandardMaterial({
-      color: 0xffffff, // 런타임에 sub.displayColor 반영
-      roughness: 0.75,
+      color: 0xffffff, roughness: 0.75,
     });
     const pile = new THREE.Mesh(pileGeom, pileMatRef);
     pile.castShadow = true;
     petriGroup.add(pile);
-
     sceneRoot.add(petriGroup);
 
-    // ═══ 쏟아지는 가루 그룹 ═══
     const granuleGroup = new THREE.Group();
     granuleGroup.visible = false;
     sceneRoot.add(granuleGroup);
 
     const state = {
       scene, sceneRoot, camera, renderer,
-      liquid, liquidMat, surface, surfaceMat, baseWaterColor,
+      magCamera, magRenderer, magMount,
+      liquid, liquidMat, surface, baseWaterColor,
       outerFlame, outerFlameMat, innerFlame, innerFlameMat, flameLight,
       crystalGroup, crystals: [],
       waterStream, stirRod, granuleGroup,
@@ -410,8 +403,7 @@ export default function Beaker(props) {
       beakerBottomY, beakerHeight, beakerRadius, beakerTopY,
       lampCenterY,
       waterLevel: 0, soluteAnim: 0, flame: 0, time: 0,
-      // 페트리 접시 틸트 상태 (0: 수평, 1: 쏟기 완료)
-      petriTilt: 0, petriTargetTilt: 0,
+      petriTilt: 0,
       envMap,
     };
     stateRef.current = state;
@@ -422,6 +414,10 @@ export default function Beaker(props) {
       state.time++;
       updateScene(state, p);
       renderer.render(scene, camera);
+      // 돋보기 활성 시 추가 렌더
+      if (magnifierOnRef.current && magRenderer) {
+        magRenderer.render(scene, magCamera);
+      }
       animId = requestAnimationFrame(animate);
     };
     animate();
@@ -436,11 +432,25 @@ export default function Beaker(props) {
     });
     ro.observe(mount);
 
+    // 돋보기 렌더러 사이즈 업데이트
+    let magRo = null;
+    if (magMount && magRenderer) {
+      magRo = new ResizeObserver(() => {
+        const s = magMount.clientWidth;
+        if (s > 0) magRenderer.setSize(s, s);
+      });
+      magRo.observe(magMount);
+    }
+
     return () => {
       cancelAnimationFrame(animId);
       ro.disconnect();
+      if (magRo) magRo.disconnect();
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement);
+      }
+      if (magMount && magRenderer && magMount.contains(magRenderer.domElement)) {
+        magMount.removeChild(magRenderer.domElement);
       }
       scene.traverse(obj => {
         if (obj.geometry) obj.geometry.dispose();
@@ -451,6 +461,7 @@ export default function Beaker(props) {
       });
       if (envMap) envMap.dispose();
       renderer.dispose();
+      if (magRenderer) magRenderer.dispose();
     };
   }, []);
 
@@ -468,15 +479,13 @@ export default function Beaker(props) {
 
   return (
     <div style={{
-      width: '100%',
-      height: `${height}px`,
-      position: 'relative',
+      width: '100%', height: `${height}px`, position: 'relative',
       background: 'linear-gradient(180deg, #F5F7FA 0%, #DBE3EC 100%)',
-      borderRadius: 12,
-      overflow: 'hidden',
-      touchAction: 'pan-y',
+      borderRadius: 12, overflow: 'hidden', touchAction: 'pan-y',
     }}>
       <div ref={mountRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+
+      {/* 온도 */}
       <div style={{
         position: 'absolute', top: 12, right: 14,
         fontSize: 16, fontWeight: 700, color: tempColor,
@@ -486,6 +495,8 @@ export default function Beaker(props) {
       }}>
         {Math.round(temperature)}℃
       </div>
+
+      {/* phase 라벨 */}
       {phaseLabel && (
         <div style={{
           position: 'absolute', top: 12, left: 14,
@@ -498,11 +509,87 @@ export default function Beaker(props) {
           {phaseLabel}
         </div>
       )}
+
+      {/* 돋보기 버튼 (우측 하단) */}
+      <button
+        onClick={() => setMagnifierOn(v => !v)}
+        aria-label="돋보기"
+        style={{
+          position: 'absolute', right: 12, bottom: 12,
+          width: 44, height: 44, borderRadius: 22,
+          background: magnifierOn
+            ? 'linear-gradient(135deg, #4A7ED9, #3B5FC2)'
+            : 'rgba(255,255,255,0.95)',
+          color: magnifierOn ? '#fff' : '#4B5563',
+          border: '1.5px solid',
+          borderColor: magnifierOn ? '#3B5FC2' : '#D4D9E0',
+          fontSize: 20,
+          cursor: 'pointer',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'all 0.2s',
+        }}
+      >
+        🔍
+      </button>
+
+      {/* 돋보기 확대 뷰 */}
+      {magnifierOn && (
+        <div style={{
+          position: 'absolute',
+          left: 12, bottom: 12,
+          width: 140, height: 140,
+          pointerEvents: 'none',
+        }}>
+          {/* 유리 렌즈 테두리 */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            borderRadius: '50%',
+            border: '4px solid #4B5563',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.25), inset 0 0 12px rgba(0,0,0,0.1)',
+            overflow: 'hidden',
+            background: '#F5F7FA',
+          }}>
+            <div
+              ref={magnifierMountRef}
+              style={{
+                width: '100%', height: '100%',
+                borderRadius: '50%',
+                overflow: 'hidden',
+              }}
+            />
+          </div>
+          {/* 손잡이 */}
+          <div style={{
+            position: 'absolute',
+            right: -18, bottom: -18,
+            width: 36, height: 10,
+            background: 'linear-gradient(90deg, #4B5563, #6B7280)',
+            borderRadius: 5,
+            transform: 'rotate(45deg)',
+            transformOrigin: 'left center',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          }} />
+          {/* 라벨 */}
+          <div style={{
+            position: 'absolute',
+            top: -8, left: '50%',
+            transform: 'translateX(-50%)',
+            fontSize: 10, fontWeight: 700, color: '#fff',
+            background: '#4A7ED9',
+            padding: '2px 8px',
+            borderRadius: 10,
+            whiteSpace: 'nowrap',
+          }}>
+            확대
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// ═══ Scene update ═══
+// ═══ Scene update (v10과 동일 + 결정 강화) ═══
 function updateScene(state, p) {
   const {
     liquid, liquidMat, surface, baseWaterColor,
@@ -552,7 +639,6 @@ function updateScene(state, p) {
     default: tWater = waterRatio; tSolute = dissolvedRatio; tFlame = 0;
   }
 
-  // 보간
   state.waterLevel += (tWater - state.waterLevel) * 0.05;
   state.soluteAnim += (tSolute - state.soluteAnim) * 0.05;
   state.flame += (tFlame - state.flame) * 0.08;
@@ -568,14 +654,12 @@ function updateScene(state, p) {
 
   const liquidTopY = liquid.position.y + liquidHeight / 2;
 
-  // 수면 하이라이트
   surface.visible = wl > 0.03;
   if (surface.visible) {
     surface.position.y = liquidTopY + 0.001;
     surface.material.color.copy(baseWaterColor).lerp(soluteCol, state.soluteAnim * 0.5);
   }
 
-  // 불꽃
   const flameVal = state.flame;
   const flameOn = flameVal > 0.04;
   outerFlame.visible = flameOn;
@@ -589,7 +673,6 @@ function updateScene(state, p) {
   }
   flameLight.intensity = flameVal * 1.2;
 
-  // 물줄기
   waterStream.visible = showStream && wl < tWater - 0.01;
   if (waterStream.visible) {
     const streamTopY = 2.2;
@@ -599,7 +682,6 @@ function updateScene(state, p) {
     waterStream.position.set(Math.sin(time * 0.25) * 0.008, (streamTopY + streamBottomY) / 2, 0);
   }
 
-  // 유리막대
   stirRod.visible = showStirRod;
   if (showStirRod) {
     const angle = time * 0.1;
@@ -608,39 +690,27 @@ function updateScene(state, p) {
     stirRod.rotation.z = Math.sin(angle) * 0.08;
   }
 
-  // ═══ 페트리 접시 (solute-added 단계) ═══
+  // 페트리
   petriGroup.visible = showPetri;
   if (showPetri) {
-    // 접시 위치: 비커 상단 주둥이 근처, 약간 기울어진 자세로 가루를 쏟음
-    // petriTilt: 0 → 1 로 점진 증가 (0: 수평, 1: 크게 기울어짐)
     const targetTilt = 0.75;
     state.petriTilt += (targetTilt - state.petriTilt) * 0.04;
-
-    // 페트리 접시의 피벗 포인트 (비커 가장자리 근처)
     const pivotX = -beakerRadius * 0.85;
     const pivotY = beakerTopY + 0.2;
-    const pivotZ = 0;
-
-    // 접시 중심 위치 (pivot에서 오른쪽으로 petriRadius만큼, 기울어진 각도 반영)
     const tilt = state.petriTilt;
-    const dishDist = 0.3; // pivot에서 접시 중심까지 거리
-
+    const dishDist = 0.3;
     petriGroup.position.set(
       pivotX + dishDist * Math.cos(tilt),
       pivotY - dishDist * Math.sin(tilt) * 0.3,
-      pivotZ
+      0
     );
     petriGroup.rotation.z = -tilt;
-
-    // 접시 내부 가루 색상 업데이트
     pileMatRef.color.set(sub.displayColor);
-    // 가루 덩어리는 기울어질수록 줄어들음 (쏟아지는 표현)
     pile.scale.setScalar(Math.max(0.1, 1 - tilt * 0.8));
   } else {
     state.petriTilt += (0 - state.petriTilt) * 0.1;
   }
 
-  // ═══ 쏟아지는/녹는 가루 ═══
   granuleGroup.visible = showGranules;
   if (showGranules) {
     const granuleRatio = phase === 'stirring' ? (1 - state.soluteAnim) : 1;
@@ -653,10 +723,7 @@ function updateScene(state, p) {
         color: sub.displayColor, roughness: 0.5, metalness: 0.1,
       });
       const g = new THREE.Mesh(gGeom, gMat);
-
-      // 위치: 페트리 쏟기 단계면 접시 근처에서 떨어지고, stirring이면 수면 위
       if (phase === 'solute-added') {
-        // 접시 근처 → 수면으로 포물선
         const pivotX = -beakerRadius * 0.85;
         const angle = Math.random() * Math.PI * 2;
         const r = Math.random() * beakerRadius * 0.7;
@@ -673,7 +740,6 @@ function updateScene(state, p) {
           bob: Math.random() * Math.PI * 2,
         };
       } else {
-        // 수면에 이미 떠있음
         const angle = Math.random() * Math.PI * 2;
         const r = Math.random() * beakerRadius * 0.85;
         g.position.set(Math.cos(angle) * r, liquidTopY + 0.005, Math.sin(angle) * r);
@@ -688,10 +754,9 @@ function updateScene(state, p) {
       g.geometry.dispose();
       g.material.dispose();
     }
-    // 떨어지는 가루 애니메이션
     granuleGroup.children.forEach(g => {
       if (g.userData.falling) {
-        g.userData.vy -= 0.0008; // 중력
+        g.userData.vy -= 0.0008;
         g.position.x += g.userData.vx;
         g.position.y += g.userData.vy;
         if (g.position.y <= g.userData.targetY) {
@@ -706,34 +771,49 @@ function updateScene(state, p) {
     });
   }
 
-  // 결정
+  // ═══ 결정 (크기·개수·색상 강화) ═══
   if (phase === 'cooling' || phase === 'cold') {
-    const targetCrystalCount = Math.min(35, Math.floor(precipitatedMass * 0.7));
+    // 개수 증가: 0.7 → 1.0 계수, 최대 50개
+    const targetCrystalCount = Math.min(50, Math.floor(precipitatedMass * 1.0));
     while (crystals.length < targetCrystalCount) {
       const idx = crystals.length;
-      const size = 0.035 + Math.random() * 0.035;
+      // 크기 증가: 0.035~0.07 → 0.055~0.105
+      const size = 0.055 + Math.random() * 0.05;
       const cGeom = new THREE.OctahedronGeometry(size, 0);
+
+      // 색상 강화: 원본 색에 채도 boost
+      const origColor = new THREE.Color(sub.displayColor);
+      const hsl = {};
+      origColor.getHSL(hsl);
+      const enhancedColor = new THREE.Color().setHSL(hsl.h, Math.min(1, hsl.s * 1.15), hsl.l * 0.95);
+
       const cMat = new THREE.MeshStandardMaterial({
-        color: sub.displayColor, roughness: 0.15, metalness: 0.35,
-        transparent: true, opacity: 0, flatShading: true, envMapIntensity: 1.2,
+        color: enhancedColor,
+        roughness: 0.12,
+        metalness: 0.4,
+        transparent: true,
+        opacity: 0,
+        flatShading: true,
+        envMapIntensity: 1.4,
       });
       const c = new THREE.Mesh(cGeom, cMat);
       c.castShadow = true;
 
-      const level = Math.floor(idx / 7);
-      const posInLevel = idx % 7;
-      const baseAngle = (posInLevel / 7) * Math.PI * 2 + level * 0.4;
-      const radius = 0.1 + (level % 3) * 0.18 + Math.random() * 0.08;
+      // 배치: 바닥 중심부에 더 조밀하게
+      const level = Math.floor(idx / 9);
+      const posInLevel = idx % 9;
+      const baseAngle = (posInLevel / 9) * Math.PI * 2 + level * 0.3;
+      const radius = 0.08 + (level % 3) * 0.16 + Math.random() * 0.1;
       const x = Math.cos(baseAngle) * radius;
       const z = Math.sin(baseAngle) * radius;
 
       let targetY, startY, dir;
       if (isLighterThanWater) {
-        targetY = liquidTopY - 0.04 - level * 0.045;
+        targetY = liquidTopY - 0.05 - level * 0.05;
         startY = beakerBottomY + 0.3 + Math.random() * 0.15;
         dir = -1;
       } else {
-        targetY = beakerBottomY + 0.04 + level * 0.055;
+        targetY = beakerBottomY + 0.06 + level * 0.065;
         startY = liquidTopY - 0.1 - Math.random() * 0.05;
         dir = 1;
       }
