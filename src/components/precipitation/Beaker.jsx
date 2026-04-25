@@ -147,16 +147,18 @@ export default function Beaker(props) {
 
     // (바닥 그림자 제거됨)
 
-    // 비커 유리
+    // 비커 유리 — transmission 대신 단순 transparent (모바일 안정성)
     const glassMat = new THREE.MeshPhysicalMaterial({
-      color: 0xffffff, metalness: 0, roughness: 0.05,
-      transmission: 0.85, thickness: 0.35,
-      transparent: true, opacity: 1, side: THREE.DoubleSide,
-      ior: 1.5, clearcoat: 0.9, clearcoatRoughness: 0.08,
-      envMapIntensity: 1.0,
-      attenuationColor: new THREE.Color(0xeef5fa),
-      attenuationDistance: 2.0,
-      depthWrite: false, // 안쪽 객체가 가려지지 않도록
+      color: 0xf0f5fa,
+      metalness: 0,
+      roughness: 0.1,
+      transparent: true,
+      opacity: 0.25, // 25%만 보이게 (안쪽이 잘 보이도록)
+      side: THREE.DoubleSide,
+      clearcoat: 1,
+      clearcoatRoughness: 0.05,
+      envMapIntensity: 1.5,
+      depthWrite: false,
     });
 
     const beakerGroup = new THREE.Group();
@@ -184,22 +186,18 @@ export default function Beaker(props) {
     bottomMesh.renderOrder = 2;
     sceneRoot.add(beakerGroup);
 
-    // ═══ 용액 (푸른 채도 강화) ═══
-    // 물 기본색 채도 높임 + emissive 추가 (흐린 배경에서도 푸르게 보이도록)
-    const baseWaterColor = new THREE.Color(0x5fb4d4); // 더 진한 하늘색
+    // ═══ 용액 (단순화: 진한 푸른색 + 불투명) ═══
+    const baseWaterColor = new THREE.Color(0x4ba8cc); // 더 진한 청록
     const liquidGeom = new THREE.CylinderGeometry(beakerRadius * 0.985, beakerRadius * 0.985, 1, 64);
-    const liquidMat = new THREE.MeshPhysicalMaterial({
+    const liquidMat = new THREE.MeshStandardMaterial({
       color: baseWaterColor.clone(),
-      emissive: new THREE.Color(0x3589ad), // 푸른 발광
-      emissiveIntensity: 0.12,
-      transmission: 0.08, // 더 낮춤 (0.15 → 0.08)
+      emissive: new THREE.Color(0x2d7a99),
+      emissiveIntensity: 0.25,
       transparent: true,
-      opacity: 0.96,
-      roughness: 0.1,
+      opacity: 0.85,
+      roughness: 0.2,
       metalness: 0,
-      ior: 1.33,
-      thickness: 0.4,
-      envMapIntensity: 0.6,
+      envMapIntensity: 0.4,
     });
     const liquid = new THREE.Mesh(liquidGeom, liquidMat);
     liquid.scale.y = 0.001;
@@ -245,21 +243,23 @@ export default function Beaker(props) {
     ];
     const lampBodyGeom = new THREE.LatheGeometry(lampProfile, 40);
     const lampBodyMat = new THREE.MeshPhysicalMaterial({
-      color: 0xffffff, metalness: 0, roughness: 0.12,
-      transmission: 0.8, thickness: 0.3,
-      transparent: true, opacity: 1, ior: 1.5,
-      clearcoat: 0.9, clearcoatRoughness: 0.08, envMapIntensity: 1,
-      attenuationColor: new THREE.Color(0xeaf2f8),
-      attenuationDistance: 0.8,
+      color: 0xeaf2f8,
+      metalness: 0,
+      roughness: 0.15,
+      transparent: true,
+      opacity: 0.4,
+      clearcoat: 1,
+      clearcoatRoughness: 0.05,
+      envMapIntensity: 1.2,
     });
     const lampBody = new THREE.Mesh(lampBodyGeom, lampBodyMat);
     lampBody.position.y = lampCenterY;
     lampGroup.add(lampBody);
 
     const alcoholGeom = new THREE.CylinderGeometry(0.18, 0.18, 0.15, 24);
-    const alcoholMat = new THREE.MeshPhysicalMaterial({
-      color: 0x3f78d0, transparent: true, opacity: 0.55,
-      roughness: 0.1, transmission: 0.3, ior: 1.36,
+    const alcoholMat = new THREE.MeshStandardMaterial({
+      color: 0x3f78d0, transparent: true, opacity: 0.7,
+      roughness: 0.15,
     });
     const alcohol = new THREE.Mesh(alcoholGeom, alcoholMat);
     alcohol.position.y = lampCenterY - 0.13;
@@ -303,29 +303,25 @@ export default function Beaker(props) {
 
     // 물줄기
     const streamGeom = new THREE.CylinderGeometry(0.03, 0.045, 1, 12);
-    const streamMat = new THREE.MeshPhysicalMaterial({
-      color: 0x4a9fd0, transparent: true, opacity: 0.9,
-      roughness: 0.1, metalness: 0, transmission: 0.2, ior: 1.33,
+    const streamMat = new THREE.MeshStandardMaterial({
+      color: 0x4a9fd0, transparent: true, opacity: 0.85,
+      roughness: 0.15,
     });
     const waterStream = new THREE.Mesh(streamGeom, streamMat);
     waterStream.visible = false;
     sceneRoot.add(waterStream);
 
-    // ═══ 유리막대 (가시성 강화) ═══
-    // 굵기 증가 (0.025 → 0.035), 회색 계열 + clearcoat로 또렷하게
+    // ═══ 유리막대 ═══
     const rodGeom = new THREE.CylinderGeometry(0.035, 0.035, 0.95, 20);
     const rodMat = new THREE.MeshPhysicalMaterial({
-      color: 0xd4d9e0, // 살짝 회색
-      metalness: 0.1,
-      roughness: 0.04,
-      transmission: 0.65, // 약간 낮춰서 더 보이게
-      thickness: 0.4,
+      color: 0xc8d0dc,
+      metalness: 0.15,
+      roughness: 0.1,
       transparent: true,
-      opacity: 1,
-      ior: 1.5,
+      opacity: 0.7,
       clearcoat: 1,
-      clearcoatRoughness: 0.02,
-      envMapIntensity: 1.2,
+      clearcoatRoughness: 0.05,
+      envMapIntensity: 1.5,
     });
     const stirRod = new THREE.Mesh(rodGeom, rodMat);
     stirRod.visible = false;
@@ -337,10 +333,15 @@ export default function Beaker(props) {
     const petriRadius = 0.32;
     const petriHeight = 0.055;
     const petriGlassMat = new THREE.MeshPhysicalMaterial({
-      color: 0xffffff, metalness: 0, roughness: 0.08,
-      transmission: 0.88, thickness: 0.15,
-      transparent: true, opacity: 1, ior: 1.5,
-      clearcoat: 0.9, side: THREE.DoubleSide, envMapIntensity: 1,
+      color: 0xeaf2f8,
+      metalness: 0,
+      roughness: 0.12,
+      transparent: true,
+      opacity: 0.35,
+      side: THREE.DoubleSide,
+      clearcoat: 1,
+      clearcoatRoughness: 0.05,
+      envMapIntensity: 1.2,
     });
     const petriWallGeom = new THREE.CylinderGeometry(petriRadius, petriRadius, petriHeight, 40, 1, true);
     const petriWall = new THREE.Mesh(petriWallGeom, petriGlassMat);
@@ -878,21 +879,16 @@ function updateScene(state, p) {
         ? origColor.clone()
         : new THREE.Color().setHSL(hsl.h, Math.min(1, hsl.s * 1.15), hsl.l * 0.95);
 
-      // 무색/흰색 결정은 살짝 반투명하게 (자연 결정의 투명감)
+      // 무색/흰색 결정은 살짝 반투명하게
       const isColorlessSub = sub.realColor === '무색' || sub.realColor === '흰색';
-      const cMat = new THREE.MeshPhysicalMaterial({
+      const cMat = new THREE.MeshStandardMaterial({
         color: enhancedColor,
-        roughness: 0.18,
-        metalness: 0.05,
-        transmission: isColorlessSub ? 0.3 : 0,
-        thickness: 0.1,
-        ior: 1.5,
-        clearcoat: 0.6,
-        clearcoatRoughness: 0.15,
+        roughness: 0.2,
+        metalness: 0.1,
         transparent: true,
-        opacity: 1,
+        opacity: isColorlessSub ? 0.85 : 1,
         flatShading: true,
-        envMapIntensity: 1.0,
+        envMapIntensity: 1.2,
       });
       const c = new THREE.Mesh(cGeom, cMat);
       c.renderOrder = 1;
