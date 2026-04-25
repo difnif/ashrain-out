@@ -580,14 +580,12 @@ function BeakerCard({ title, subtitle, ctx, sim, beakerState, onNextPhase, onRes
       {/* 단계별 버튼 */}
       <div style={cardStyles.controls}>
         {sim.phase === 'cold' ? (
-          <>
-            <button style={cardStyles.nextBtn} onClick={onRecool}>
-              🧪 다시 냉각
-            </button>
-            <button style={cardStyles.resetBtn} onClick={onReset}>
-              🔄 처음부터
-            </button>
-          </>
+          <button
+            style={{ ...cardStyles.nextBtn, flex: 1 }}
+            onClick={onReset}
+          >
+            🔄 처음부터 다시
+          </button>
         ) : isAutoPhase ? (
           <>
             <button style={{ ...cardStyles.nextBtn, opacity: 0.5 }} disabled>
@@ -663,10 +661,12 @@ function BeakerCard2({ ctx, sim, beakerState, result1, result2, onNextPhase, onR
 
       <div style={cardStyles.controls}>
         {sim.phase === 'cold' ? (
-          <>
-            <button style={cardStyles.nextBtn} onClick={onRecool}>🧪 다시 냉각</button>
-            <button style={cardStyles.resetBtn} onClick={onReset}>🔄 처음부터</button>
-          </>
+          <button
+            style={{ ...cardStyles.nextBtn, flex: 1 }}
+            onClick={onReset}
+          >
+            🔄 처음부터 다시
+          </button>
         ) : isAutoPhase ? (
           <>
             <button style={{ ...cardStyles.nextBtn, opacity: 0.5 }} disabled>
