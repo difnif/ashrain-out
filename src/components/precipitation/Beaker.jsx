@@ -163,6 +163,7 @@ export default function Beaker(props) {
       envMapIntensity: 1.0,
       attenuationColor: new THREE.Color(0xeef5fa),
       attenuationDistance: 2.0,
+      depthWrite: false, // 안쪽 객체가 가려지지 않도록
     });
 
     const beakerGroup = new THREE.Group();
@@ -185,6 +186,9 @@ export default function Beaker(props) {
     rim.rotation.x = Math.PI / 2;
     rim.position.y = beakerTopY;
     beakerGroup.add(rim);
+    // 비커 유리는 가장 나중에 렌더 (안쪽 내용물이 먼저 그려지도록)
+    wall.renderOrder = 2;
+    bottomMesh.renderOrder = 2;
     sceneRoot.add(beakerGroup);
 
     // ═══ 용액 (푸른 채도 강화) ═══
@@ -207,6 +211,7 @@ export default function Beaker(props) {
     const liquid = new THREE.Mesh(liquidGeom, liquidMat);
     liquid.scale.y = 0.001;
     liquid.position.y = beakerBottomY + 0.015;
+    liquid.renderOrder = 0;
     sceneRoot.add(liquid);
 
     // 수면 하이라이트
@@ -313,6 +318,7 @@ export default function Beaker(props) {
     sceneRoot.add(innerFlame);
 
     const crystalGroup = new THREE.Group();
+    crystalGroup.renderOrder = 1;
     sceneRoot.add(crystalGroup);
 
     // 물줄기
@@ -877,15 +883,19 @@ function updateScene(state, p) {
   // 결정 (무색/흰색 물질은 흰색 결정)
   if (phase === 'cooling' || phase === 'cold') {
     const targetCrystalCount = Math.min(50, Math.floor(precipitatedMass * 1.0));
+
+    // 결정 생성 시 liquidTopY가 0 가까이일 수 있으므로
+    // 안정적인 기준 위치 사용 (보간 무관)
+    const stableLiquidTopY = beakerBottomY + (waterRatio * beakerHeight * 0.98);
+
     while (crystals.length < targetCrystalCount) {
       const idx = crystals.length;
-      const size = 0.055 + Math.random() * 0.05;
+      const size = 0.06 + Math.random() * 0.05;
       const cGeom = new THREE.OctahedronGeometry(size, 0);
 
       const origColor = new THREE.Color(crystalColor);
       const hsl = {};
       origColor.getHSL(hsl);
-      // 무색/흰색은 채도 boost 안 함
       const enhancedColor = (sub.realColor === '무색' || sub.realColor === '흰색')
         ? origColor.clone()
         : new THREE.Color().setHSL(hsl.h, Math.min(1, hsl.s * 1.15), hsl.l * 0.95);
@@ -895,12 +905,12 @@ function updateScene(state, p) {
         roughness: 0.12,
         metalness: 0.25,
         transparent: true,
-        opacity: 0,
+        opacity: 1, // 즉시 표시 (fade-in 제거)
         flatShading: true,
         envMapIntensity: 1.4,
       });
       const c = new THREE.Mesh(cGeom, cMat);
-
+      c.renderOrder = 1;
       const level = Math.floor(idx / 9);
       const posInLevel = idx % 9;
       const baseAngle = (posInLevel / 9) * Math.PI * 2 + level * 0.3;
@@ -910,23 +920,30 @@ function updateScene(state, p) {
 
       let targetY, startY, dir;
       if (isLighterThanWater) {
-        targetY = liquidTopY - 0.05 - level * 0.05;
+        targetY = stableLiquidTopY - 0.05 - level * 0.05;
         startY = beakerBottomY + 0.3 + Math.random() * 0.15;
         dir = -1;
       } else {
         targetY = beakerBottomY + 0.06 + level * 0.065;
-        startY = liquidTopY - 0.1 - Math.random() * 0.05;
+        startY = stableLiquidTopY - 0.1 - Math.random() * 0.05;
+        // startY가 targetY보다 작으면 즉시 안착 위치에서 시작
+        if (startY <= targetY) startY = targetY;
         dir = 1;
       }
 
       c.position.set(x, startY, z);
       c.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
       c.userData = {
-        targetY, settled: false, direction: dir,
-        speed: 0.008 + Math.random() * 0.006,
+        targetY, settled: phase === 'cold', // cold면 즉시 안착
+        direction: dir,
+        speed: 0.012 + Math.random() * 0.008,
         rotSpeedY: (Math.random() - 0.5) * 0.03,
         rotSpeedX: (Math.random() - 0.5) * 0.02,
       };
+      // cold로 시작하면 바로 targetY에 배치
+      if (phase === 'cold') {
+        c.position.y = targetY;
+      }
       crystalGroup.add(c);
       crystals.push(c);
     }
