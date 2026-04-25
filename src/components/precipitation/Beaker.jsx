@@ -707,18 +707,15 @@ function updateScene(state, p) {
   const dissolvedRatio = maxDissolvedMass > 0 ? Math.min(1, dissolvedMass / maxDissolvedMass) : 0;
 
   // ★ 수위 계산
-  //   - 물 100g → 100mL
-  //   - 용질이 녹으면 부피 추가 (KNO₃ 109g/밀도2.11 ≈ 52mL)
-  //   - cooling/cold: 결정이 석출되어도 결정도 수면 아래 잠겨있으므로
-  //     총 부피(물+석출 전체 용질)는 유지된다고 가정
-  //   - 가루(solute-added) 단계는 아직 안 녹았으므로 물 부피만
+  //   - 액체 수위 = 물 부피 + 녹아있는 용질 부피
+  //   - 석출되면 결정이 빠져나가므로 액체 수위 내려감 → 결정이 액체 위로 노출됨
+  //     (실제 실험에서도 그렇게 보임)
+  //   - 가루(solute-added)는 아직 안 녹았으므로 물 부피만
   let referenceSoluteMass;
-  if (phase === 'cooling' || phase === 'cold') {
-    // 석출된 양 + 녹은 양 = 원래 투입한 전체 용질
-    referenceSoluteMass = dissolvedMass + precipitatedMass;
-  } else if (phase === 'solute-added') {
-    referenceSoluteMass = 0; // 가루는 액체 부피에 영향 안 줌
+  if (phase === 'solute-added') {
+    referenceSoluteMass = 0;
   } else {
+    // 녹아있는 양만 반영 (석출된 결정은 액체에서 빠져나간 상태)
     referenceSoluteMass = dissolvedMass;
   }
   const soluteVolumeML = sub.density > 0 ? referenceSoluteMass / sub.density : 0;
@@ -929,21 +926,20 @@ function updateScene(state, p) {
       const z = Math.sin(baseAngle) * radius;
 
       let targetY, startY, dir;
-      // 수면 위로 튀어나가지 않도록 최대 높이 제한
-      // 수면 - 결정 크기 만큼 여유
-      const maxStackY = stableLiquidTopY - size * 1.2;
+      // 비커 상단 근처 (수면이 낮아져도 결정이 위에서 떨어지는 모습)
+      const beakerTopInner = beakerBottomY + beakerHeight - 0.1;
 
       if (isLighterThanWater) {
-        // 부유: 수면 근처에 모임
         targetY = stableLiquidTopY - 0.04 - level * 0.04;
         if (targetY < beakerBottomY + 0.06) targetY = beakerBottomY + 0.06;
         startY = beakerBottomY + 0.3 + Math.random() * 0.15;
         dir = -1;
       } else {
-        // 침전: 바닥에 쌓임 (수면 위로 못 올라감)
+        // 침전: 바닥에 쌓임. 수면 제한 없음 (수위가 낮아지면 자연스럽게 노출)
         targetY = beakerBottomY + 0.04 + level * 0.04;
-        if (targetY > maxStackY) targetY = maxStackY;
-        startY = stableLiquidTopY - 0.05 - Math.random() * 0.04;
+        // 수면보다 위에 쌓이는 결정은 비커 상단 안쪽까지만
+        if (targetY > beakerTopInner) targetY = beakerTopInner;
+        startY = beakerTopInner - 0.05 - Math.random() * 0.05;
         if (startY <= targetY) startY = targetY;
         dir = 1;
       }
