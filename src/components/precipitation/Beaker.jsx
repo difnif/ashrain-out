@@ -312,16 +312,12 @@ export default function Beaker(props) {
     sceneRoot.add(waterStream);
 
     // ═══ 유리막대 ═══
-    const rodGeom = new THREE.CylinderGeometry(0.035, 0.035, 0.95, 20);
-    const rodMat = new THREE.MeshPhysicalMaterial({
-      color: 0xc8d0dc,
-      metalness: 0.15,
-      roughness: 0.1,
-      transparent: true,
-      opacity: 0.7,
-      clearcoat: 1,
-      clearcoatRoughness: 0.05,
-      envMapIntensity: 1.5,
+    const rodGeom = new THREE.CylinderGeometry(0.04, 0.04, 0.95, 20);
+    const rodMat = new THREE.MeshStandardMaterial({
+      color: 0x8a96a6, // 진한 회색 (액체와 명확히 구분)
+      metalness: 0.4,
+      roughness: 0.15,
+      envMapIntensity: 1.0,
     });
     const stirRod = new THREE.Mesh(rodGeom, rodMat);
     stirRod.visible = false;
@@ -332,16 +328,24 @@ export default function Beaker(props) {
     petriGroup.visible = false;
     const petriRadius = 0.32;
     const petriHeight = 0.055;
+    // 유리 부분 (벽·바닥): 옅은 투명, 안의 가루를 가리지 않도록
     const petriGlassMat = new THREE.MeshPhysicalMaterial({
-      color: 0xeaf2f8,
-      metalness: 0,
-      roughness: 0.12,
+      color: 0xc4d4e0,
+      metalness: 0.05,
+      roughness: 0.15,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.55,
       side: THREE.DoubleSide,
       clearcoat: 1,
       clearcoatRoughness: 0.05,
-      envMapIntensity: 1.2,
+      envMapIntensity: 1.5,
+    });
+    // 테두리는 더 진하게 (페트리 접시 형태가 또렷이 보이도록)
+    const petriRimMat = new THREE.MeshStandardMaterial({
+      color: 0x7a8896,
+      metalness: 0.5,
+      roughness: 0.2,
+      envMapIntensity: 1.0,
     });
     const petriWallGeom = new THREE.CylinderGeometry(petriRadius, petriRadius, petriHeight, 40, 1, true);
     const petriWall = new THREE.Mesh(petriWallGeom, petriGlassMat);
@@ -351,11 +355,16 @@ export default function Beaker(props) {
     petriBottom.rotation.x = -Math.PI / 2;
     petriBottom.position.y = -petriHeight / 2;
     petriGroup.add(petriBottom);
-    const petriRimGeom = new THREE.TorusGeometry(petriRadius, 0.01, 8, 40);
-    const petriRim = new THREE.Mesh(petriRimGeom, petriGlassMat);
-    petriRim.rotation.x = Math.PI / 2;
-    petriRim.position.y = petriHeight / 2;
-    petriGroup.add(petriRim);
+    // 위/아래 테두리 둘 다 (또렷하게)
+    const petriRimGeom = new THREE.TorusGeometry(petriRadius, 0.012, 8, 40);
+    const petriRimTop = new THREE.Mesh(petriRimGeom, petriRimMat);
+    petriRimTop.rotation.x = Math.PI / 2;
+    petriRimTop.position.y = petriHeight / 2;
+    petriGroup.add(petriRimTop);
+    const petriRimBottom = new THREE.Mesh(petriRimGeom, petriRimMat);
+    petriRimBottom.rotation.x = Math.PI / 2;
+    petriRimBottom.position.y = -petriHeight / 2;
+    petriGroup.add(petriRimBottom);
 
     const pileProfile = [];
     for (let i = 0; i <= 10; i++) {
@@ -696,9 +705,26 @@ function updateScene(state, p) {
   const time = state.time;
 
   const dissolvedRatio = maxDissolvedMass > 0 ? Math.min(1, dissolvedMass / maxDissolvedMass) : 0;
-  const effectiveMass = waterMass + dissolvedMass * 0.55;
+
+  // ★ 수위 계산
+  //   - 물 100g → 100mL
+  //   - 용질이 녹으면 부피 추가 (KNO₃ 109g/밀도2.11 ≈ 52mL)
+  //   - cooling/cold: 결정이 석출되어도 결정도 수면 아래 잠겨있으므로
+  //     총 부피(물+석출 전체 용질)는 유지된다고 가정
+  //   - 가루(solute-added) 단계는 아직 안 녹았으므로 물 부피만
+  let referenceSoluteMass;
+  if (phase === 'cooling' || phase === 'cold') {
+    // 석출된 양 + 녹은 양 = 원래 투입한 전체 용질
+    referenceSoluteMass = dissolvedMass + precipitatedMass;
+  } else if (phase === 'solute-added') {
+    referenceSoluteMass = 0; // 가루는 액체 부피에 영향 안 줌
+  } else {
+    referenceSoluteMass = dissolvedMass;
+  }
+  const soluteVolumeML = sub.density > 0 ? referenceSoluteMass / sub.density : 0;
+  const liquidVolumeML = waterMass + soluteVolumeML;
   const waterRatio = waterMass > 0
-    ? Math.min(0.88, Math.max(0.06, effectiveMass / BEAKER_CAPACITY))
+    ? Math.min(0.88, Math.max(0.06, liquidVolumeML / BEAKER_CAPACITY))
     : 0;
 
   let tWater, tSolute, tFlame;
