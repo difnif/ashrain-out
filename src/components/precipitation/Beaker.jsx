@@ -36,15 +36,14 @@ export default function Beaker(props) {
   const magnifierOnRef = useRef(false);
   magnifierOnRef.current = magnifierOn;
 
-  // 돋보기 위치 (containerRef 기준 px, 좌상단)
-  // 기본: 좌측 중단. 드래그로 이동 가능.
-  const [magPos, setMagPos] = useState({ x: 16, y: 120 });
-  const magPosRef = useRef(magPos);
-  magPosRef.current = magPos;
+  // 돋보기 위치 — ref 기반 (state로 하면 리렌더 충돌로 드래그 불안정)
+  // DOM transform으로 위치 직접 업데이트, React 리렌더 없음
   const MAG_SIZE = 140;
+  const magPosRef = useRef({ x: 16, y: 120 });
+  const magWrapperRef = useRef(null); // 외부 래퍼 DOM (transform 적용 대상)
 
   // 드래그 상태
-  const dragStateRef = useRef({ dragging: false, offsetX: 0, offsetY: 0 });
+  const dragStateRef = useRef({ dragging: false, startX: 0, startY: 0, startMagX: 0, startMagY: 0 });
 
   // phase 변경 시 결정 정리
   useEffect(() => {
@@ -474,36 +473,54 @@ export default function Beaker(props) {
     'cooling': '❄️ 냉각 중...',
   }[phase];
 
-  // 돋보기 드래그 핸들러
+  // 돋보기 드래그 핸들러 (ref 기반, DOM 직접 조작)
   const containerRef = useRef(null);
+
+  // 돋보기 위치를 DOM에 반영
+  const applyMagPos = (x, y) => {
+    magPosRef.current = { x, y };
+    const wrap = magWrapperRef.current;
+    if (wrap) {
+      wrap.style.left = `${x}px`;
+      wrap.style.top = `${y}px`;
+    }
+  };
+
   const onDragStart = (clientX, clientY) => {
-    const center = { x: magPos.x + MAG_SIZE / 2, y: magPos.y + MAG_SIZE / 2 };
     dragStateRef.current = {
       dragging: true,
-      offsetX: clientX - center.x,
-      offsetY: clientY - center.y,
+      startX: clientX,
+      startY: clientY,
+      startMagX: magPosRef.current.x,
+      startMagY: magPosRef.current.y,
     };
   };
   const onDragMove = (clientX, clientY) => {
-    if (!dragStateRef.current.dragging) return;
+    const d = dragStateRef.current;
+    if (!d.dragging) return;
     const container = containerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
-    const cx = clientX - rect.left - dragStateRef.current.offsetX;
-    const cy = clientY - rect.top - dragStateRef.current.offsetY;
-    const nx = Math.max(0, Math.min(rect.width - MAG_SIZE, cx - MAG_SIZE / 2));
-    const ny = Math.max(0, Math.min(rect.height - MAG_SIZE, cy - MAG_SIZE / 2));
-    setMagPos({ x: nx, y: ny });
+    // 포인터가 시작점에서 움직인 델타만큼 돋보기 이동
+    const dx = clientX - d.startX;
+    const dy = clientY - d.startY;
+    let nx = d.startMagX + dx;
+    let ny = d.startMagY + dy;
+    // 경계 제한
+    nx = Math.max(0, Math.min(rect.width - MAG_SIZE, nx));
+    ny = Math.max(0, Math.min(rect.height - MAG_SIZE, ny));
+    applyMagPos(nx, ny);
   };
   const onDragEnd = () => { dragStateRef.current.dragging = false; };
 
   const handleMouseDown = (e) => {
     e.preventDefault();
+    e.stopPropagation();
     onDragStart(e.clientX, e.clientY);
   };
   const handleTouchStart = (e) => {
     const t = e.touches[0];
-    if (t) onDragStart(t.clientX, t.clientY);
+    if (t) { e.stopPropagation(); onDragStart(t.clientX, t.clientY); }
   };
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -586,53 +603,53 @@ export default function Beaker(props) {
         🔍
       </button>
 
-      {/* 돋보기 확대 뷰 (드래그 가능) */}
-      {magnifierOn && (
-        <div
-          onMouseDown={handleMouseDown}
-          onTouchStart={handleTouchStart}
-          style={{
-            position: 'absolute',
-            left: magPos.x, top: magPos.y,
-            width: MAG_SIZE, height: MAG_SIZE,
-            cursor: dragStateRef.current.dragging ? 'grabbing' : 'grab',
-            touchAction: 'none',
-            zIndex: 9,
-          }}
-        >
-          <div style={{
-            position: 'absolute', inset: 0,
-            borderRadius: '50%',
-            border: '4px solid #4B5563',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.25), inset 0 0 12px rgba(0,0,0,0.1)',
-            overflow: 'hidden',
-            background: '#F5F7FA',
-          }}>
-            <div
-              ref={magnifierMountRef}
-              style={{
-                width: '100%', height: '100%',
-                borderRadius: '50%',
-                overflow: 'hidden',
-                pointerEvents: 'none',
-              }}
-            />
-          </div>
-          <div style={{
-            position: 'absolute',
-            top: -8, left: '50%',
-            transform: 'translateX(-50%)',
-            fontSize: 10, fontWeight: 700, color: '#fff',
-            background: '#4A7ED9',
-            padding: '2px 8px',
-            borderRadius: 10,
-            whiteSpace: 'nowrap',
-            pointerEvents: 'none',
-          }}>
-            확대 (드래그)
-          </div>
+      {/* 돋보기 확대 뷰 (항상 DOM 존재, visibility만 토글) */}
+      <div
+        ref={magWrapperRef}
+        onMouseDown={handleMouseDown}
+        onTouchStart={handleTouchStart}
+        style={{
+          position: 'absolute',
+          left: magPosRef.current.x, top: magPosRef.current.y,
+          width: MAG_SIZE, height: MAG_SIZE,
+          cursor: 'grab',
+          touchAction: 'none',
+          zIndex: 9,
+          display: magnifierOn ? 'block' : 'none',
+        }}
+      >
+        <div style={{
+          position: 'absolute', inset: 0,
+          borderRadius: '50%',
+          border: '4px solid #4B5563',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.25), inset 0 0 12px rgba(0,0,0,0.1)',
+          overflow: 'hidden',
+          background: '#F5F7FA',
+        }}>
+          <div
+            ref={magnifierMountRef}
+            style={{
+              width: '100%', height: '100%',
+              borderRadius: '50%',
+              overflow: 'hidden',
+              pointerEvents: 'none',
+            }}
+          />
         </div>
-      )}
+        <div style={{
+          position: 'absolute',
+          top: -8, left: '50%',
+          transform: 'translateX(-50%)',
+          fontSize: 10, fontWeight: 700, color: '#fff',
+          background: '#4A7ED9',
+          padding: '2px 8px',
+          borderRadius: 10,
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+        }}>
+          확대 (드래그)
+        </div>
+      </div>
     </div>
   );
 }
