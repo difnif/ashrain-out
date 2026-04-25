@@ -268,7 +268,7 @@ function AppInner() {
   });
   useEffect(() => { localStorage.setItem("ar_crosstalk", JSON.stringify(crossTalkPosts)); }, [crossTalkPosts]);
 
-  const [analysisModel, setAnalysisModel] = useState(() => localStorage.getItem("ar_analysis_model") || "claude-sonnet-4-20250514");
+  const [analysisModel, setAnalysisModel] = useState(() => localStorage.getItem("ar_analysis_model") || "claude-opus-4-20250514");
   useEffect(() => { localStorage.setItem("ar_analysis_model", analysisModel); }, [analysisModel]);
 
   const [archiveDefaultPublic, setArchiveDefaultPublic] = useState(() => localStorage.getItem("ar_archive_public") === "true");
@@ -1051,8 +1051,8 @@ function AppInner() {
   // --- Admin Script Editor ---
   if (screen === "admin-model") {
     const MODELS = [
-      { key: "claude-opus-4-20250514", label: "Opus", desc: "최고 성능, 느림, 비쌈", icon: "👑" },
-      { key: "claude-sonnet-4-20250514", label: "Sonnet", desc: "균형 잡힌 성능 (기본값)", icon: "⚡" },
+      { key: "claude-opus-4-20250514", label: "Opus", desc: "최고 성능, 느림, 비쌈 (기본값)", icon: "👑" },
+      { key: "claude-sonnet-4-20250514", label: "Sonnet", desc: "균형 잡힌 성능", icon: "⚡" },
       { key: "claude-haiku-4-5-20251001", label: "Haiku", desc: "빠르고 저렴", icon: "🚀" },
     ];
     return (
