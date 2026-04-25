@@ -186,15 +186,15 @@ export default function Beaker(props) {
     bottomMesh.renderOrder = 2;
     sceneRoot.add(beakerGroup);
 
-    // ═══ 용액 (단순화: 진한 푸른색 + 불투명) ═══
-    const baseWaterColor = new THREE.Color(0x4ba8cc); // 더 진한 청록
+    // ═══ 용액 (단순화: 진한 푸른색 + 약간 투명) ═══
+    const baseWaterColor = new THREE.Color(0x4ba8cc);
     const liquidGeom = new THREE.CylinderGeometry(beakerRadius * 0.985, beakerRadius * 0.985, 1, 64);
     const liquidMat = new THREE.MeshStandardMaterial({
       color: baseWaterColor.clone(),
       emissive: new THREE.Color(0x2d7a99),
-      emissiveIntensity: 0.25,
+      emissiveIntensity: 0.18,  // 0.25 → 0.18 (결정 가시성 위해 살짝 낮춤)
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.7,  // 0.85 → 0.7 (안쪽 결정 비치도록)
       roughness: 0.2,
       metalness: 0,
       envMapIntensity: 0.4,
@@ -881,43 +881,46 @@ function updateScene(state, p) {
 
   // 결정 (무색/흰색 물질은 흰색 결정)
   if (phase === 'cooling' || phase === 'cold') {
-    const targetCrystalCount = Math.min(50, Math.floor(precipitatedMass * 1.0));
+    // 개수 늘림: 0.7 계수 → 1.5 (풍성하게)
+    const targetCrystalCount = Math.min(70, Math.floor(precipitatedMass * 1.5));
 
-    // 결정 생성 시 liquidTopY가 0 가까이일 수 있으므로
-    // 안정적인 기준 위치 사용 (보간 무관)
     const stableLiquidTopY = beakerBottomY + (waterRatio * beakerHeight * 0.98);
 
     while (crystals.length < targetCrystalCount) {
       const idx = crystals.length;
-      const size = 0.045 + Math.random() * 0.03; // 더 작고 일관된 크기
+      // 크기 증가: 0.045~0.075 → 0.07~0.11
+      const size = 0.07 + Math.random() * 0.04;
 
-      // 결정 모양: 길쭉한 주상(prismatic) 형태
-      // OctahedronGeometry를 베이스로 한 축을 늘려서 결정처럼
       const cGeom = new THREE.OctahedronGeometry(size, 0);
-      // y축 (또는 랜덤 축) 으로 살짝 늘림 — 자연 결정의 prismatic 느낌
       const elongation = 1.3 + Math.random() * 0.5;
       cGeom.scale(1, elongation, 1);
 
-      const origColor = new THREE.Color(crystalColor);
-      const hsl = {};
-      origColor.getHSL(hsl);
-      const enhancedColor = (sub.realColor === '무색' || sub.realColor === '흰색')
-        ? origColor.clone()
-        : new THREE.Color().setHSL(hsl.h, Math.min(1, hsl.s * 1.15), hsl.l * 0.95);
-
-      // 무색/흰색 결정은 살짝 반투명하게
       const isColorlessSub = sub.realColor === '무색' || sub.realColor === '흰색';
+      // 무색 물질도 살짝 푸른빛 띤 흰색 (액체와 구분)
+      // 유색 물질은 채도 강화
+      let crystalColMesh;
+      if (isColorlessSub) {
+        // 푸른빛이 도는 화이트 (액체보다 밝고 살짝 회색)
+        crystalColMesh = new THREE.Color(0xe8f0f5);
+      } else {
+        const origColor = new THREE.Color(crystalColor);
+        const hsl = {};
+        origColor.getHSL(hsl);
+        crystalColMesh = new THREE.Color().setHSL(hsl.h, Math.min(1, hsl.s * 1.2), hsl.l * 0.92);
+      }
+
       const cMat = new THREE.MeshStandardMaterial({
-        color: enhancedColor,
-        roughness: 0.2,
-        metalness: 0.1,
-        transparent: true,
-        opacity: isColorlessSub ? 0.85 : 1,
+        color: crystalColMesh,
+        roughness: 0.3,
+        metalness: 0.15,
         flatShading: true,
-        envMapIntensity: 1.2,
+        envMapIntensity: 1.5,
+        // 무색이어도 불투명 (액체에 묻히지 않게)
+        emissive: isColorlessSub ? new THREE.Color(0xffffff) : new THREE.Color(crystalColor),
+        emissiveIntensity: 0.15,
       });
       const c = new THREE.Mesh(cGeom, cMat);
-      c.renderOrder = 1;
+      c.renderOrder = 3; // 액체(0)·비커유리(2)보다 위에 그려지도록
       const level = Math.floor(idx / 9);
       const posInLevel = idx % 9;
       const baseAngle = (posInLevel / 9) * Math.PI * 2 + level * 0.3;
