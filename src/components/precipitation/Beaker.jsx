@@ -207,19 +207,6 @@ export default function Beaker(props) {
     liquid.renderOrder = 0;
     sceneRoot.add(liquid);
 
-    // 수면 하이라이트
-    const surfaceGeom = new THREE.CircleGeometry(beakerRadius * 0.985, 64);
-    const surfaceMat = new THREE.MeshPhysicalMaterial({
-      color: baseWaterColor.clone(),
-      metalness: 0, roughness: 0.04,
-      transparent: true, opacity: 0.75,
-      envMapIntensity: 1.5,
-    });
-    const surface = new THREE.Mesh(surfaceGeom, surfaceMat);
-    surface.rotation.x = -Math.PI / 2;
-    surface.visible = false;
-    sceneRoot.add(surface);
-
     // 삼각대 (그림자 없음)
     const standGroup = new THREE.Group();
     const standY = beakerBottomY - 0.05;
@@ -392,7 +379,7 @@ export default function Beaker(props) {
       scene, sceneRoot, camera, renderer,
       magCamera, magRenderer, magMount,
       CAM_YAW, CAM_PITCH,
-      liquid, liquidMat, surface, baseWaterColor,
+      liquid, liquidMat, baseWaterColor,
       outerFlame, outerFlameMat, innerFlame, innerFlameMat, flameLight,
       crystalGroup, crystals: [],
       waterStream, stirRod, granuleGroup,
@@ -689,7 +676,7 @@ function updateMagnifierCamera(state, magPos, containerW, containerH) {
 // ═══ Scene update ═══
 function updateScene(state, p) {
   const {
-    liquid, liquidMat, surface, baseWaterColor,
+    liquid, liquidMat, baseWaterColor,
     outerFlame, outerFlameMat, innerFlame, innerFlameMat, flameLight,
     crystalGroup, crystals,
     waterStream, stirRod, granuleGroup,
@@ -753,12 +740,6 @@ function updateScene(state, p) {
   liquidMat.color.copy(baseWaterColor).lerp(soluteCol, state.soluteAnim * (isColorless ? 0 : 0.5));
 
   const liquidTopY = liquid.position.y + liquidHeight / 2;
-
-  surface.visible = wl > 0.03;
-  if (surface.visible) {
-    surface.position.y = liquidTopY + 0.001;
-    surface.material.color.copy(baseWaterColor).lerp(soluteCol, state.soluteAnim * (isColorless ? 0 : 0.4));
-  }
 
   const flameVal = state.flame;
   const flameOn = flameVal > 0.04;
