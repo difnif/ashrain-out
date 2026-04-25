@@ -849,6 +849,14 @@ function CustomControls({
   computedSolutionMass,
   useFormula,
 }) {
+  // 용액 양 슬라이더 활성화 상태
+  // null이면 "자동(포화)" 모드, 숫자면 수동 모드
+  const isAutoSolution = solutionMass == null;
+  const sliderSolutionMass = solutionMass != null ? solutionMass : (computedSolutionMass ?? 200);
+
+  // 용액 양 최대값: 비커 용량에 맞춰 800g 정도까지
+  const SOLUTION_MAX = 800;
+
   return (
     <div style={styles.controlPanel}>
       <div style={styles.panelTitle}>{mode === 'advanced' ? '심화 모드' : '커스텀 모드'}</div>
@@ -861,43 +869,158 @@ function CustomControls({
         ))}
       </TagRow>
 
-      <div style={styles.fieldLabel}>물 양: <b>{waterMass}g</b></div>
-      <input type="range" min={50} max={500} step={10} value={waterMass}
-        onChange={e => onWaterMass(+e.target.value)} style={styles.slider} />
+      {/* 물 양 */}
+      <div style={styles.sliderField}>
+        <div style={styles.sliderLabel}>
+          <span>물 양</span>
+          <b style={{ color: '#1F2937' }}>{waterMass}g</b>
+        </div>
+        <input type="range" min={50} max={500} step={10} value={waterMass}
+          onChange={e => onWaterMass(+e.target.value)} style={styles.slider} />
+        <div style={styles.quickChipRow}>
+          {[50, 100, 200, 300, 500].map(v => (
+            <QuickChip key={v} active={waterMass === v} onClick={() => onWaterMass(v)} color="#4A7ED9">
+              {v}g
+            </QuickChip>
+          ))}
+        </div>
+      </div>
 
-      <TagRow label="용해 온도">
-        {PRESET_TEMPERATURES.map(t => (
-          <Chip key={t} active={hotTemp === t} onClick={() => t > coldTemp && onHotTemp(t)} activeColor="#D94A4A" disabled={t <= coldTemp}>
-            {t}℃
-          </Chip>
-        ))}
-      </TagRow>
-      <TagRow label="냉각 온도">
-        {PRESET_TEMPERATURES.map(t => (
-          <Chip key={t} active={coldTemp === t} onClick={() => t < hotTemp && onColdTemp(t)} activeColor="#4A7ED9" disabled={t >= hotTemp}>
-            {t}℃
-          </Chip>
-        ))}
-      </TagRow>
+      {/* 용해 온도 */}
+      <div style={styles.sliderField}>
+        <div style={styles.sliderLabel}>
+          <span>용해 온도</span>
+          <b style={{ color: '#D94A4A' }}>{hotTemp}℃</b>
+        </div>
+        <input
+          type="range"
+          min={Math.max(10, coldTemp + 10)}
+          max={100}
+          step={1}
+          value={hotTemp}
+          onChange={e => {
+            const v = +e.target.value;
+            if (v > coldTemp) onHotTemp(v);
+          }}
+          style={{ ...styles.slider, accentColor: '#D94A4A' }}
+        />
+        <div style={styles.quickChipRow}>
+          {PRESET_TEMPERATURES.map(t => (
+            <QuickChip
+              key={t}
+              active={hotTemp === t}
+              onClick={() => t > coldTemp && onHotTemp(t)}
+              color="#D94A4A"
+              disabled={t <= coldTemp}
+            >
+              {t}℃
+            </QuickChip>
+          ))}
+        </div>
+      </div>
 
+      {/* 냉각 온도 */}
+      <div style={styles.sliderField}>
+        <div style={styles.sliderLabel}>
+          <span>냉각 온도</span>
+          <b style={{ color: '#4A7ED9' }}>{coldTemp}℃</b>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={Math.min(90, hotTemp - 10)}
+          step={1}
+          value={coldTemp}
+          onChange={e => {
+            const v = +e.target.value;
+            if (v < hotTemp) onColdTemp(v);
+          }}
+          style={{ ...styles.slider, accentColor: '#4A7ED9' }}
+        />
+        <div style={styles.quickChipRow}>
+          {PRESET_TEMPERATURES.map(t => (
+            <QuickChip
+              key={t}
+              active={coldTemp === t}
+              onClick={() => t < hotTemp && onColdTemp(t)}
+              color="#4A7ED9"
+              disabled={t >= hotTemp}
+            >
+              {t}℃
+            </QuickChip>
+          ))}
+        </div>
+      </div>
+
+      {/* 심화: 초기 포화도 */}
       {mode === 'advanced' && (
-        <>
-          <div style={styles.fieldLabel}>초기 포화도: <b style={{ color: '#F59E0B' }}>{saturation}%</b></div>
+        <div style={styles.sliderField}>
+          <div style={styles.sliderLabel}>
+            <span>초기 포화도</span>
+            <b style={{ color: '#F59E0B' }}>{saturation}%</b>
+          </div>
           <input type="range" min={20} max={100} step={5} value={saturation}
-            onChange={e => onSaturation(+e.target.value)} style={styles.slider} />
-        </>
+            onChange={e => onSaturation(+e.target.value)}
+            style={{ ...styles.slider, accentColor: '#F59E0B' }} />
+        </div>
       )}
 
-      <div style={styles.fieldLabel}>
-        용액 양: <b>{solutionMass != null ? `${solutionMass}g` : `${computedSolutionMass}g (자동)`}</b>
+      {/* 용액 양 */}
+      <div style={styles.sliderField}>
+        <div style={styles.sliderLabel}>
+          <span>용액 양</span>
+          <b style={{ color: '#059669' }}>
+            {isAutoSolution ? `${computedSolutionMass}g (자동)` : `${solutionMass}g`}
+          </b>
+        </div>
+        <input
+          type="range"
+          min={50}
+          max={SOLUTION_MAX}
+          step={10}
+          value={sliderSolutionMass}
+          disabled={isAutoSolution}
+          onChange={e => onSolutionMass(+e.target.value)}
+          style={{ ...styles.slider, accentColor: '#059669', opacity: isAutoSolution ? 0.4 : 1 }}
+        />
+        <div style={styles.quickChipRow}>
+          <QuickChip active={isAutoSolution} onClick={() => onSolutionMass(null)} color="#059669">
+            자동(포화)
+          </QuickChip>
+          {[100, 200, 300, 500].map(v => (
+            <QuickChip key={v} active={solutionMass === v} onClick={() => onSolutionMass(v)} color="#059669">
+              {v}g
+            </QuickChip>
+          ))}
+        </div>
       </div>
-      <TagRow label="">
-        <Chip active={solutionMass == null} onClick={() => onSolutionMass(null)} activeColor="#4A7ED9">자동(포화)</Chip>
-        {[100, 200, 500].map(v => (
-          <Chip key={v} active={solutionMass === v} onClick={() => onSolutionMass(v)} activeColor="#4A7ED9">{v}g</Chip>
-        ))}
-      </TagRow>
     </div>
+  );
+}
+
+// 빠른 선택 칩 — 슬라이더 보조용 (가로 스크롤)
+function QuickChip({ active, onClick, children, color, disabled }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        padding: '4px 10px',
+        borderRadius: 999,
+        border: '1px solid',
+        borderColor: disabled ? '#E5E8EC' : active ? color : '#D4D9E0',
+        background: disabled ? '#F9FAFB' : active ? color : '#FFFFFF',
+        color: disabled ? '#D1D5DB' : active ? '#FFFFFF' : '#6B7280',
+        fontSize: 11,
+        fontWeight: active ? 700 : 500,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        whiteSpace: 'nowrap',
+        flexShrink: 0,
+        transition: 'all 0.12s',
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -959,6 +1082,29 @@ const styles = {
   panelTitle: { fontSize: 13, fontWeight: 700, color: '#1F2937', marginBottom: 4 },
   fieldLabel: { fontSize: 11, color: '#6B7280', marginTop: 4, fontWeight: 500 },
   slider: { width: '100%', marginTop: 2, accentColor: '#4A7ED9' },
+  sliderField: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    padding: '6px 0',
+  },
+  sliderLabel: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: 600,
+  },
+  quickChipRow: {
+    display: 'flex',
+    flexWrap: 'nowrap',
+    gap: 4,
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    WebkitOverflowScrolling: 'touch',
+    paddingBottom: 2,
+  },
   chartSection: {
     padding: 12, background: '#FFFFFF', borderRadius: 12, border: '1px solid #E5E8EC',
   },
