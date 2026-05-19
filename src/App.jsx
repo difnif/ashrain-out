@@ -57,6 +57,7 @@ const LazyRecipeDetectiveScreen = lazy(() =>
 import { getProperties as getPropertiesFn, renderHighlight as renderHighlightFn, renderTriangleAnim as renderTriangleAnimFn } from "./rendering/TriangleRenderer";
 import { useUserSystem } from "./hooks/useUserSystem";
 import { useJakdoCanvas } from "./hooks/useJakdoCanvas";
+import { isGuardActive, ASHRAIN_INTERNAL_BACK_FLAG } from "./hooks/useBackGuard";
 
 // ============================================================
 // ashrain.out — Interactive Geometry Education App (v5.1)
@@ -117,6 +118,10 @@ function AppInner() {
   // Back button support
   useEffect(() => {
     const onPop = (e) => {
+      // useBackGuard가 활성 상태면 해당 인스턴스가 처리 — App 레벨은 양보
+      if (isGuardActive()) return;
+      // useBackGuard의 finish()가 발생시킨 내부 back이면 무시
+      if (window[ASHRAIN_INTERNAL_BACK_FLAG]) return;
       const s = e.state?.screen || "menu";
       setScreenRaw(s);
       localStorage.setItem("ar_screen", s);
@@ -1097,6 +1102,11 @@ function AppInner() {
   if (screen === "draw") return renderDrawScreen(ctx);
 
 
+  // --- Fallback: 매칭되지 않는 screen → menu로 복구 (흰 화면 방지) ---
+  if (screen !== "menu") {
+    console.warn("[App] 알 수 없는 screen:", screen, "→ menu로 복구");
+    setScreen("menu");
+  }
   return null;
 }
 
